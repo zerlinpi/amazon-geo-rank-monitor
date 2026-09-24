@@ -21,6 +21,7 @@ def api_main() -> None:
     app = create_app(
         build_services(settings),
         cors_origins=settings.cors_origin_list,
+        api_rate_limit_per_minute=settings.api_rate_limit_per_minute,
     )
     uvicorn.run(
         app,
