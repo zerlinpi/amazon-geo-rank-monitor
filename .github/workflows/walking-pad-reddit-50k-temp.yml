@@ -1,0 +1,38 @@
+name: Walking Pad Reddit 50K Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/walking-pad-reddit-50k-temp.yml'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/walking-pad-voc-10k
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Collect Reddit supplement
+        env:
+          TARGET_REDDIT: "50000"
+          OUTDIR: "reddit_output"
+        run: python scripts/walking_pad_reddit_50k.py
+      - name: Stats
+        if: always()
+        run: |
+          find reddit_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
+          cat reddit_output/reddit_stats.json || true
+      - name: Upload Reddit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walking-pad-reddit-50k
+          path: reddit_output/
+          if-no-files-found: warn
+          retention-days: 7
