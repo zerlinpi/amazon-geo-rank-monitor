@@ -24,3 +24,11 @@ class UpstreamBlockedError(ProviderUnavailableError):
 
 class GeoVerificationError(RankMonitorError):
     """Raised when requested IP or delivery geography cannot be verified."""
+
+
+class BillingError(RankMonitorError):
+    """Base error for credit and payment operations."""
+
+
+class InsufficientCreditsError(BillingError):
+    """Raised when available prepaid credits cannot cover a reservation."""
