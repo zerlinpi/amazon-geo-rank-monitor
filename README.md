@@ -247,3 +247,39 @@ All tenant-owned lookups are filtered server-side. A resource owned by another t
 - `get_rank_history`
 
 MCP tools call the same application services used by REST; there is no duplicate ranking implementation.
+
+
+## Prepaid credits and Stripe
+
+Rank usage is billed by actual SERP probe, not by ASIN. The default configurable rate card is:
+
+- managed SERP: 1 credit per geographic probe;
+- strict browser-verified SERP: 5 credits per geographic probe.
+
+A request reserves the maximum probe cost before provider work. Only successful geographic probes are settled; unused reserved credits are released.
+
+Credit packs are disabled by default because their prices are business configuration. Set the corresponding `CREDIT_PACK_*_AMOUNT_MINOR` values above zero to publish them.
+
+Stripe configuration:
+
+```env
+STRIPE_SECRET_KEY=sk_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_SUCCESS_URL=https://app.example.com/billing/success
+STRIPE_CANCEL_URL=https://app.example.com/billing
+CREDIT_PACK_STARTER_AMOUNT_MINOR=...
+CREDIT_PACK_GROWTH_AMOUNT_MINOR=...
+CREDIT_PACK_SCALE_AMOUNT_MINOR=...
+```
+
+The browser success redirect never grants credits. Purchased credits are granted only after a signed Stripe webhook reports a paid Checkout Session. The internal append-only credit ledger remains the source of truth for application credits.
+
+Billing REST endpoints:
+
+- `GET /api/v1/credits`
+- `GET /api/v1/credits/ledger`
+- `GET /api/v1/billing/packs`
+- `POST /api/v1/billing/checkout`
+- `POST /api/v1/billing/webhook`
+
+MCP exposes `get_credit_balance` as read-only; it does not expose ledger mutation or Stripe operations.

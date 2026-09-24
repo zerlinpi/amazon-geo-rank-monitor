@@ -85,3 +85,9 @@ class RankMcpTools:
             owner_id=self._owner_id,
             limit=limit,
         )
+
+    def get_credit_balance(self) -> dict:
+        billing = getattr(self._services, "billing_repository", None)
+        if billing is None:
+            raise RuntimeError("billing is unavailable")
+        return billing.get_balance(self._owner_id)

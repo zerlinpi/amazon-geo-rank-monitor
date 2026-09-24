@@ -32,6 +32,19 @@ class AppSettings(BaseSettings):
     api_port: int = 8000
     worker_poll_seconds: float = 2.0
     mcp_tenant_id: str | None = None
+    managed_serp_credit_cost: int = 1
+    strict_serp_credit_cost: int = 5
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_success_url: str = "http://localhost:5173/billing/success"
+    stripe_cancel_url: str = "http://localhost:5173/billing"
+    billing_currency: str = "usd"
+    credit_pack_starter_credits: int = 500
+    credit_pack_starter_amount_minor: int = 0
+    credit_pack_growth_credits: int = 2000
+    credit_pack_growth_amount_minor: int = 0
+    credit_pack_scale_credits: int = 10000
+    credit_pack_scale_amount_minor: int = 0
 
 
 class GeoProfilesDocument(BaseModel):
