@@ -6,10 +6,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
 from amazon_geo_rank_monitor.api.app import AppServices
-from amazon_geo_rank_monitor.billing.rate_card import RateCard
-from amazon_geo_rank_monitor.billing.stripe_service import StripeBillingService
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
+from amazon_geo_rank_monitor.billing.rate_card import RateCard
+from amazon_geo_rank_monitor.billing.stripe_service import StripeBillingService
 from amazon_geo_rank_monitor.config import (
     AppSettings,
     build_oxylabs_provider,
