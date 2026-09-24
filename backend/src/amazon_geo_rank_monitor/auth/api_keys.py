@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import hmac
 import secrets
+from dataclasses import dataclass
 
 
 ALLOWED_API_KEY_SCOPES = frozenset(
