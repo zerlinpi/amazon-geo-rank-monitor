@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
 from amazon_geo_rank_monitor.api.app import AppServices
+from amazon_geo_rank_monitor.api.rate_limit import build_rate_limiter
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
@@ -21,6 +22,7 @@ from amazon_geo_rank_monitor.providers.playwright_amazon import (
     PlaywrightAmazonBrowserClient,
 )
 from amazon_geo_rank_monitor.providers.strict_browser import StrictBrowserRankProvider
+from amazon_geo_rank_monitor.repositories.audit_repository import AuditRepository
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
@@ -162,6 +164,11 @@ def build_services(settings: AppSettings) -> AppServices:
         stripe_billing=_stripe_billing(billing, settings),
         database_engine=engine,
         worker_status_repository=WorkerStatusRepository(engine),
+        audit_repository=AuditRepository(engine),
+        rate_limiter=build_rate_limiter(
+            requests_per_minute=settings.api_rate_limit_per_minute,
+            redis_url=settings.redis_url,
+        ),
         provider_registry=ProviderRegistry(
             managed=_managed_provider(settings),
             strict=_strict_provider(settings),
