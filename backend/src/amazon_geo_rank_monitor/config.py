@@ -30,6 +30,7 @@ class AppSettings(BaseSettings):
     api_key_pepper: str | None = None
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    api_rate_limit_per_minute: int = 120
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     worker_poll_seconds: float = 2.0
     scheduler_poll_seconds: float = 30.0

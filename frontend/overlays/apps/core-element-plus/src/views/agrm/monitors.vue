@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi, type GeoProfile, type Monitor } from '@/api/agrm'
 
 defineOptions({ name: 'Monitors' })
@@ -82,6 +82,36 @@ async function create() {
   }
 }
 
+async function toggleEnabled(row: Monitor) {
+  try {
+    await agrmApi.updateMonitor(row.id, { enabled: !row.enabled })
+    ElMessage.success(row.enabled ? 'Monitor disabled' : 'Monitor enabled')
+    await load()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to update monitor')
+  }
+}
+
+async function remove(row: Monitor) {
+  try {
+    await ElMessageBox.confirm(
+      `Delete monitor "${row.name}"? Existing rank history will be retained.`,
+      'Delete monitor',
+      { type: 'warning', confirmButtonText: 'Delete' },
+    )
+    await agrmApi.deleteMonitor(row.id)
+    ElMessage.success('Monitor deleted')
+    await load()
+  }
+  catch (error: any) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(error.response?.data?.detail || 'Failed to delete monitor')
+  }
+}
+
 async function run(row: any) {
   try {
     const monitor = row as Monitor
@@ -126,9 +156,16 @@ onMounted(load)
         <el-table-column prop="schedule" label="Schedule" min-width="150">
           <template #default="{ row }">{{ row.schedule || 'Manual' }}</template>
         </el-table-column>
-        <el-table-column label="Actions" width="120" fixed="right">
+        <el-table-column label="Status" width="100">
           <template #default="{ row }">
-            <el-button size="small" type="primary" plain @click="run(row)">Run now</el-button>
+            <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? 'Enabled' : 'Disabled' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="Actions" width="260" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" plain :disabled="!row.enabled" @click="run(row)">Run now</el-button>
+            <el-button size="small" @click="toggleEnabled(row as Monitor)">{{ row.enabled ? 'Disable' : 'Enable' }}</el-button>
+            <el-button size="small" type="danger" text @click="remove(row as Monitor)">Delete</el-button>
           </template>
         </el-table-column>
       </el-table>

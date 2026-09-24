@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from amazon_geo_rank_monitor.api.dependencies import current_tenant, get_services
-from amazon_geo_rank_monitor.api.schemas import MonitorCreate
+from amazon_geo_rank_monitor.api.schemas import MonitorCreate, MonitorUpdate
 from amazon_geo_rank_monitor.application.rank_application import enqueue_monitor
 
 router = APIRouter(prefix="/api/v1/monitors", tags=["monitors"])
@@ -53,6 +53,41 @@ def get_monitor(
     if monitor is None:
         raise HTTPException(status_code=404, detail="monitor not found")
     return monitor
+
+
+@router.patch("/{monitor_id}")
+def update_monitor(
+    monitor_id: str,
+    body: MonitorUpdate,
+    request: Request,
+    owner_id: str = Depends(current_tenant),
+):
+    services = get_services(request)
+    try:
+        return services.monitor_repository.update(
+            monitor_id,
+            owner_id=owner_id,
+            changes=body.model_dump(exclude_unset=True),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="monitor not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/{monitor_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_monitor(
+    monitor_id: str,
+    request: Request,
+    owner_id: str = Depends(current_tenant),
+):
+    try:
+        get_services(request).monitor_repository.delete(
+            monitor_id,
+            owner_id=owner_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="monitor not found") from exc
 
 
 @router.get("/{monitor_id}/history")
