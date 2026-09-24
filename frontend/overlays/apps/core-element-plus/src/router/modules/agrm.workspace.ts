@@ -23,6 +23,12 @@ const routes: RouteRecordRaw = {
       meta: { title: 'API Keys', icon: 'i-lucide:key-round' },
     },
     {
+      path: 'system-status',
+      name: 'systemStatus',
+      component: () => import('@/views/agrm/system-status.vue'),
+      meta: { title: 'System Status', icon: 'i-lucide:activity' },
+    },
+    {
       path: 'mcp',
       name: 'mcpSetup',
       component: () => import('@/views/agrm/mcp.vue'),
