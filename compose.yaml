@@ -7,6 +7,22 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U amazon_geo_rank -d amazon_geo_rank"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   api:
     build:
@@ -14,6 +30,7 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
+      AUTO_CREATE_SCHEMA: "false"
       API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
       API_HOST: 0.0.0.0
       OXYLABS_USERNAME: ${OXYLABS_USERNAME:-}
@@ -24,7 +41,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - postgres
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -33,6 +51,7 @@ services:
     command: ["agrm-worker"]
     environment:
       DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
+      AUTO_CREATE_SCHEMA: "false"
       API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
       OXYLABS_USERNAME: ${OXYLABS_USERNAME:-}
       OXYLABS_PASSWORD: ${OXYLABS_PASSWORD:-}
@@ -40,7 +59,22 @@ services:
       RESIDENTIAL_PROXY_PASSWORD: ${RESIDENTIAL_PROXY_PASSWORD:-}
       RESIDENTIAL_PROXY_SERVER: ${RESIDENTIAL_PROXY_SERVER:-http://pr.oxylabs.io:7777}
     depends_on:
-      - postgres
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["agrm-scheduler"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
+      AUTO_CREATE_SCHEMA: "false"
+      API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
+      SCHEDULER_POLL_SECONDS: ${SCHEDULER_POLL_SECONDS:-30}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres-data:
