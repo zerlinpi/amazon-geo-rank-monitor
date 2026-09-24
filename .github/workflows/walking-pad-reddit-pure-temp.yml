@@ -1,0 +1,37 @@
+name: Walking Pad Reddit Pure Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/walking-pad-reddit-pure-temp.yml'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/walking-pad-voc-10k
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Collect pure Reddit comments
+        env:
+          OUTDIR: "reddit_pure_output"
+        run: python scripts/walking_pad_reddit_pure.py
+      - name: Stats
+        if: always()
+        run: |
+          find reddit_pure_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
+          cat reddit_pure_output/stats.json || true
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walking-pad-reddit-pure
+          path: reddit_pure_output/
+          if-no-files-found: warn
+          retention-days: 7
