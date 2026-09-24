@@ -300,8 +300,8 @@ class PaymentRow(Base):
     )
     credit_pack_id: Mapped[str] = mapped_column(String(64), nullable=False)
     provider: Mapped[str] = mapped_column(String(32), nullable=False, default="stripe")
-    provider_session_id: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True, nullable=False
+    provider_session_id: Mapped[str | None] = mapped_column(
+        String(255), unique=True, index=True, nullable=True
     )
     provider_payment_intent_id: Mapped[str | None] = mapped_column(String(255))
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)

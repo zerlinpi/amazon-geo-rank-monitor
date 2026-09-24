@@ -34,6 +34,10 @@ class AppSettings(BaseSettings):
     mcp_tenant_id: str | None = None
     managed_serp_credit_cost: int = 1
     strict_serp_credit_cost: int = 5
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_success_url: str = "http://localhost:5173/billing/success"
+    stripe_cancel_url: str = "http://localhost:5173/billing"
 
 
 class GeoProfilesDocument(BaseModel):

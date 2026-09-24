@@ -12,6 +12,9 @@ from .models import (
     CreditAccountRow,
     CreditLedgerEntryRow,
     CreditReservationRow,
+    CreditPackRow,
+    PaymentRow,
+    WebhookEventRow,
 )
 
 
@@ -204,6 +207,187 @@ class BillingRepository:
                 }
                 for row in rows
             ]
+
+
+    def upsert_credit_pack(
+        self,
+        *,
+        pack_id: str,
+        name: str,
+        credits: int,
+        amount_minor: int,
+        currency: str = "usd",
+        active: bool = True,
+    ) -> dict:
+        if credits <= 0 or amount_minor <= 0:
+            raise ValueError("pack credits and amount_minor must be positive")
+        with self._sessions.begin() as session:
+            row = session.get(CreditPackRow, pack_id)
+            if row is None:
+                row = CreditPackRow(id=pack_id)
+                session.add(row)
+            row.name = name
+            row.credits = credits
+            row.amount_minor = amount_minor
+            row.currency = currency.lower()
+            row.active = active
+        return self.get_credit_pack(pack_id, active_only=False)
+
+    def list_credit_packs(self, *, active_only: bool = True) -> list[dict]:
+        with self._sessions() as session:
+            statement = select(CreditPackRow).order_by(CreditPackRow.credits)
+            if active_only:
+                statement = statement.where(CreditPackRow.active.is_(True))
+            rows = session.scalars(statement).all()
+            return [self._serialize_pack(row) for row in rows]
+
+    def get_credit_pack(self, pack_id: str, *, active_only: bool = True) -> dict:
+        with self._sessions() as session:
+            row = session.get(CreditPackRow, pack_id)
+            if row is None or (active_only and not row.active):
+                raise KeyError(f"credit pack not found: {pack_id}")
+            return self._serialize_pack(row)
+
+    def create_payment(self, *, owner_id: str, credit_pack_id: str) -> dict:
+        pack = self.get_credit_pack(credit_pack_id)
+        payment_id = str(uuid4())
+        with self._sessions.begin() as session:
+            session.add(
+                PaymentRow(
+                    id=payment_id,
+                    owner_id=owner_id,
+                    credit_pack_id=pack["id"],
+                    provider="stripe",
+                    provider_session_id=None,
+                    amount_minor=pack["amount_minor"],
+                    currency=pack["currency"],
+                    credits=pack["credits"],
+                    status="pending",
+                )
+            )
+        return self.get_payment(payment_id, owner_id=owner_id)
+
+    def attach_payment_session(self, payment_id: str, *, session_id: str) -> dict:
+        with self._sessions.begin() as session:
+            row = session.get(PaymentRow, payment_id)
+            if row is None:
+                raise KeyError(f"payment not found: {payment_id}")
+            if row.provider_session_id and row.provider_session_id != session_id:
+                raise ValueError("payment already has a different checkout session")
+            row.provider_session_id = session_id
+            owner_id = row.owner_id
+        return self.get_payment(payment_id, owner_id=owner_id)
+
+    def get_payment(self, payment_id: str, *, owner_id: str | None = None) -> dict:
+        with self._sessions() as session:
+            row = session.get(PaymentRow, payment_id)
+            if row is None or (owner_id is not None and row.owner_id != owner_id):
+                raise KeyError(f"payment not found: {payment_id}")
+            return self._serialize_payment(row)
+
+    def record_webhook_event(
+        self,
+        *,
+        provider_event_id: str,
+        event_type: str,
+        payload_hash: str,
+    ) -> bool:
+        with self._sessions.begin() as session:
+            if session.get(WebhookEventRow, provider_event_id) is not None:
+                return False
+            session.add(
+                WebhookEventRow(
+                    provider_event_id=provider_event_id,
+                    event_type=event_type,
+                    payload_hash=payload_hash,
+                )
+            )
+            return True
+
+    def apply_paid_checkout(
+        self,
+        *,
+        provider_event_id: str,
+        event_type: str,
+        payload_hash: str,
+        payment_id: str,
+        session_id: str,
+        payment_intent_id: str | None,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            if session.get(WebhookEventRow, provider_event_id) is not None:
+                row = session.get(PaymentRow, payment_id)
+                if row is None:
+                    raise KeyError(f"payment not found: {payment_id}")
+                return self._serialize_payment(row)
+
+            payment = session.scalar(
+                select(PaymentRow)
+                .where(PaymentRow.id == payment_id)
+                .with_for_update()
+            )
+            if payment is None:
+                raise KeyError(f"payment not found: {payment_id}")
+            if payment.provider_session_id not in {None, session_id}:
+                raise ValueError("checkout session does not match payment")
+            payment.provider_session_id = session_id
+
+            if payment.status != "paid":
+                account = self._account_for_update(session, payment.owner_id)
+                account.balance += payment.credits
+                account.updated_at = datetime.now(UTC)
+                payment.status = "paid"
+                payment.provider_payment_intent_id = payment_intent_id
+                payment.paid_at = datetime.now(UTC)
+                session.add(
+                    CreditLedgerEntryRow(
+                        id=str(uuid4()),
+                        owner_id=payment.owner_id,
+                        entry_type="purchase",
+                        delta_credits=payment.credits,
+                        balance_after=account.balance,
+                        reference_type="stripe_checkout",
+                        reference_id=session_id,
+                        idempotency_key=f"stripe_session:{session_id}:credits",
+                    )
+                )
+
+            session.add(
+                WebhookEventRow(
+                    provider_event_id=provider_event_id,
+                    event_type=event_type,
+                    payload_hash=payload_hash,
+                )
+            )
+            return self._serialize_payment(payment)
+
+    @staticmethod
+    def _serialize_pack(row: CreditPackRow) -> dict:
+        return {
+            "id": row.id,
+            "name": row.name,
+            "credits": row.credits,
+            "amount_minor": row.amount_minor,
+            "currency": row.currency,
+            "active": row.active,
+        }
+
+    @staticmethod
+    def _serialize_payment(row: PaymentRow) -> dict:
+        return {
+            "id": row.id,
+            "owner_id": row.owner_id,
+            "credit_pack_id": row.credit_pack_id,
+            "provider": row.provider,
+            "provider_session_id": row.provider_session_id,
+            "provider_payment_intent_id": row.provider_payment_intent_id,
+            "amount_minor": row.amount_minor,
+            "currency": row.currency,
+            "credits": row.credits,
+            "status": row.status,
+            "created_at": row.created_at,
+            "paid_at": row.paid_at,
+        }
 
     def get_reservation(self, reservation_id: str) -> dict:
         with self._sessions() as session:
