@@ -36,6 +36,8 @@ def create_monitor(
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/{monitor_id}")
@@ -51,6 +53,38 @@ def get_monitor(
     if monitor is None:
         raise HTTPException(status_code=404, detail="monitor not found")
     return monitor
+
+
+@router.get("/{monitor_id}/history")
+def get_monitor_history(
+    monitor_id: str,
+    request: Request,
+    owner_id: str = Depends(current_tenant),
+    limit: int = 50,
+):
+    services = get_services(request)
+    monitor = services.monitor_repository.get(monitor_id, owner_id=owner_id)
+    if monitor is None:
+        raise HTTPException(status_code=404, detail="monitor not found")
+
+    jobs = services.job_repository.list_for_monitor(
+        owner_id=owner_id,
+        monitor_target_id=monitor_id,
+        limit=min(max(limit, 1), 500),
+    )
+    history = []
+    for job in jobs:
+        run = None
+        if job["run_id"]:
+            try:
+                run = services.rank_repository.get_run(
+                    job["run_id"],
+                    owner_id=owner_id,
+                )
+            except KeyError:
+                run = None
+        history.append({"job": job, "run": run})
+    return history
 
 
 @router.post("/{monitor_id}/run", status_code=status.HTTP_202_ACCEPTED)
