@@ -88,7 +88,13 @@ async def execute_rank_check(
     return result
 
 
-def enqueue_monitor(*, services, owner_id: str, monitor: dict) -> dict:
+def enqueue_monitor(
+    *,
+    services,
+    owner_id: str,
+    monitor: dict,
+    job_id: str | None = None,
+) -> dict:
     request = build_rank_request(
         geo_repository=services.geo_repository,
         owner_id=owner_id,
@@ -103,6 +109,7 @@ def enqueue_monitor(*, services, owner_id: str, monitor: dict) -> dict:
         monitor_target_id=monitor["id"],
         provider_mode=monitor["provider_mode"],
         request_payload=request.model_dump(mode="json"),
+        job_id=job_id,
     )
 
 

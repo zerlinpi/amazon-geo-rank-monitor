@@ -12,6 +12,7 @@ from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 from amazon_geo_rank_monitor.mcp.server import build_local_mcp_server
 from amazon_geo_rank_monitor.mcp.tools import RankMcpTools
 from amazon_geo_rank_monitor.runtime import build_services
+from amazon_geo_rank_monitor.scheduling.service import MonitorScheduler
 from amazon_geo_rank_monitor.workers.rank_worker import RankWorker
 
 
@@ -71,6 +72,26 @@ def worker_main() -> None:
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     asyncio.run(_worker_loop(once=args.once))
+
+
+async def _scheduler_loop(*, once: bool) -> None:
+    settings = AppSettings()
+    scheduler = MonitorScheduler(services=build_services(settings))
+
+    while True:
+        outcomes = scheduler.run_once()
+        if outcomes:
+            print(json.dumps(outcomes, default=str))
+        if once:
+            return
+        await asyncio.sleep(settings.scheduler_poll_seconds)
+
+
+def scheduler_main() -> None:
+    parser = argparse.ArgumentParser(description="Dispatch due monitor schedules")
+    parser.add_argument("--once", action="store_true")
+    args = parser.parse_args()
+    asyncio.run(_scheduler_loop(once=args.once))
 
 
 def mcp_main() -> None:
