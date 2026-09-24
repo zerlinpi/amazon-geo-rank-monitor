@@ -1,6 +1,7 @@
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
+
+from alembic import command
 
 
 def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
