@@ -183,6 +183,8 @@ export interface AuditEvent {
   id: string
   owner_id: string
   api_key_id?: string | null
+  user_id?: string | null
+  actor_type?: 'api_key' | 'session' | string
   request_id: string
   method: string
   path: string
