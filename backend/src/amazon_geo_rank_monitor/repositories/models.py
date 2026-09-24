@@ -296,3 +296,47 @@ class CreditPackRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+
+
+class PaymentRow(Base):
+    __tablename__ = "payments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    credit_pack_id: Mapped[str] = mapped_column(
+        ForeignKey("credit_packs.id"),
+        index=True,
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, default="stripe")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="created")
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(
+        String(128), unique=True, index=True
+    )
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(String(128))
+    idempotency_key: Mapped[str] = mapped_column(
+        String(200), unique=True, index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WebhookEventRow(Base):
+    __tablename__ = "webhook_events"
+    __table_args__ = (
+        UniqueConstraint("provider", "event_id", name="uq_webhook_provider_event"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
