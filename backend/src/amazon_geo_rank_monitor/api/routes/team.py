@@ -88,6 +88,11 @@ def update_member_role(
     request: Request,
     principal: TeamManagePrincipal,
 ):
+    if not isinstance(principal, HumanPrincipal):
+        raise HTTPException(
+            status_code=403,
+            detail="human session required to update team members",
+        )
     if body.role not in ROLES:
         raise HTTPException(status_code=422, detail="unsupported workspace role")
     services = get_services(request)
@@ -121,6 +126,11 @@ def remove_member(
     request: Request,
     principal: TeamManagePrincipal,
 ):
+    if not isinstance(principal, HumanPrincipal):
+        raise HTTPException(
+            status_code=403,
+            detail="human session required to remove team members",
+        )
     services = get_services(request)
     try:
         target = services.account_repository.get_membership(
