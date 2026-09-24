@@ -18,7 +18,7 @@ def list_geo_profiles(
 def create_geo_profile(
     profile: GeoProfile,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("geo:write")),
 ):
     if profile.marketplace.strip() == "":
         raise HTTPException(status_code=422, detail="marketplace required")
