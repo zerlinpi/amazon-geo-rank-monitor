@@ -26,3 +26,12 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         column["name"] for column in inspector.get_columns("api_keys")
     }
     assert "scopes" in api_key_columns
+    rank_job_columns = {
+        column["name"] for column in inspector.get_columns("rank_jobs")
+    }
+    assert {
+        "available_at",
+        "claimed_by",
+        "lease_expires_at",
+        "max_attempts",
+    } <= rank_job_columns
