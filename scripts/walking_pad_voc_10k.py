@@ -1,40 +1,33 @@
 #!/usr/bin/env python3
-import csv, json, os, re, hashlib, gzip, io
-from collections import Counter, defaultdict
+import csv, json, os, re, hashlib, gzip, io, time, random
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import requests
 
-TARGET = int(os.getenv("TARGET_REVIEWS", "100000"))
+TARGET = int(os.getenv("TARGET_REVIEWS", "105000"))
+MIN_VALID = int(os.getenv("MIN_VALID", "100000"))
 OUTDIR = Path(os.getenv("OUTDIR", "voc_output"))
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
-BASE = "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw"
-CATEGORIES = ["Sports_and_Outdoors", "Office_Products", "Home_and_Kitchen"]
+META_URL = "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Sports_and_Outdoors.jsonl.gz"
+REVIEWS_URL = "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Sports_and_Outdoors.jsonl.gz"
+ARCTIC = "https://arctic-shift.photon-reddit.com/api"
 
-CORE_TERMS = [
+KEYWORDS = [
     "walking pad","walkingpad","under desk treadmill","under-desk treadmill",
     "desk treadmill","walking treadmill","portable treadmill","compact treadmill",
     "foldable treadmill","folding treadmill","mini treadmill","2 in 1 treadmill",
     "2-in-1 treadmill","home office treadmill","treadmill for office",
     "treadmill under desk","walking machine"
 ]
-CORE_BRANDS = [
+BRANDS = [
     "walkingpad","kingsmith","urevo","deerrun","sperax","egofit","goyouth",
-    "goplus","merach","lifespan","toputure","maksone","wellfit","axefit",
-    "motiongrey","freepi","vitalwalk"
+    "goplus","merach","lifespan","sunny health","toputure","maksone","wellfit",
+    "axefit","motiongrey","freepi","vitalwalk"
 ]
-ACCESSORY_HINTS = [
-    "treadmill mat","treadmill cover","treadmill belt replacement","replacement belt",
-    "lubricant","lubrication","silicone oil","safety key","replacement key",
-    "remote control replacement","replacement remote","treadmill motor","motor controller",
-    "treadmill desk attachment","treadmill phone holder","treadmill book holder",
-    "treadmill tablet holder","treadmill cup holder","treadmill wheel","treadmill part",
-    "treadmill accessory","treadmill accessories","treadmill maintenance kit",
-    "treadmill cleaner","treadmill brush"
-]
-NON_HUMAN_HINTS = ["dog treadmill","pet treadmill","cat treadmill","hamster treadmill","toy treadmill"]
-
 CATEGORY_PATTERNS = {
     "安全/召回": r"recall|fire|burn|smoke|unsafe|fall|fell|injur|shock|sudden stop|abrupt stop|almost fell",
     "耐久/质量": r"fail|broke|broken|stopped working|died|motor|overheat|hot|burnt|squeak|grind|lasted",
@@ -51,6 +44,12 @@ CATEGORY_PATTERNS = {
     "运输/到货": r"arrived damaged|damaged|shipping|delivery|missing|box",
 }
 
+FIELDS = [
+    "platform","source_type","source_url","date","rating_or_score","verified_purchase","helpful_vote",
+    "brand","model","asin","parent_asin","subreddit","post_id","post_title","comment_id",
+    "review_title","comment","category","dedup_key"
+]
+
 def norm(s):
     return re.sub(r"\s+", " ", str(s or "").strip().lower())
 
@@ -60,51 +59,30 @@ def as_text(v):
     if isinstance(v,dict): return json.dumps(v,ensure_ascii=False)
     return str(v)
 
-def classify_scope(row):
-    title = norm(as_text(row.get("title")))
-    desc = norm(as_text(row.get("description")))
-    feats = norm(as_text(row.get("features")))
-    cats = norm(as_text(row.get("categories")))
-    store = norm(as_text(row.get("store")))
-    blob = " ".join([title,desc,feats,cats,store])
-
-    if any(x in title for x in ACCESSORY_HINTS) or any(x in title for x in NON_HUMAN_HINTS):
-        return None
-
-    if any(k in blob for k in CORE_TERMS):
-        return "Core Walking Pad"
-
-    if "treadmill" in blob and any(b in blob for b in CORE_BRANDS) and any(
-        q in blob for q in ["walking","under desk","under-desk","compact","portable","foldable","folding","mini","office"]
-    ):
-        return "Core Walking Pad"
-
-    # Adjacent actual human treadmill product. Used only to fill the statistical corpus.
-    if "treadmill" in title and not any(x in title for x in ACCESSORY_HINTS + NON_HUMAN_HINTS):
-        return "Adjacent Treadmill"
-
-    # Some category records omit treadmill from title but explicitly place the item in treadmill/cardio metadata.
-    if "treadmill" in cats and "treadmill" in blob and not any(x in title for x in ACCESSORY_HINTS + NON_HUMAN_HINTS):
-        return "Adjacent Treadmill"
-    return None
+def match_product(row):
+    blob = norm(" ".join([
+        as_text(row.get("title")), as_text(row.get("description")),
+        as_text(row.get("features")), as_text(row.get("categories")), as_text(row.get("store"))
+    ]))
+    if any(k in blob for k in KEYWORDS):
+        return True
+    if any(b in blob for b in BRANDS) and "treadmill" in blob and any(x in blob for x in ["walking","under desk","foldable","folding","compact","portable","2 in 1","2-in-1","mini"]):
+        return True
+    return False
 
 def classify(text):
-    low = norm(text)
-    best_cat,best_n="其他/待聚类",0
+    low=norm(text); best=("其他/待聚类",0)
     for cat,pat in CATEGORY_PATTERNS.items():
         n=len(re.findall(pat,low,flags=re.I))
-        if n>best_n:
-            best_cat,best_n=cat,n
-    return best_cat
+        if n>best[1]: best=(cat,n)
+    return best[0]
 
-def dedup_key(text,user_id):
-    base=norm(text)
-    if user_id: base=str(user_id)+"|"+base
-    return hashlib.sha256(base.encode("utf-8")).hexdigest()
+def hash_text(text, context=""):
+    return hashlib.sha256((norm(text)+"|"+norm(context)).encode("utf-8")).hexdigest()
 
 def iso_date(ts):
     try:
-        ts=int(ts)
+        ts=float(ts)
         if ts>10**12: ts/=1000
         return datetime.fromtimestamp(ts,tz=timezone.utc).date().isoformat()
     except Exception:
@@ -112,10 +90,9 @@ def iso_date(ts):
 
 def iter_jsonl_gz(url,label):
     print(f"Streaming {label}: {url}",flush=True)
-    headers={"User-Agent":"Mozilla/5.0 walking-pad-voc-research/3.0"}
+    headers={"User-Agent":"Mozilla/5.0 walking-pad-voc-research/2.0"}
     with requests.get(url,stream=True,timeout=(30,900),headers=headers) as r:
-        r.raise_for_status()
-        r.raw.decode_content=False
+        r.raise_for_status(); r.raw.decode_content=False
         with gzip.GzipFile(fileobj=r.raw,mode="rb") as gz:
             txt=io.TextIOWrapper(gz,encoding="utf-8",errors="replace")
             for line in txt:
@@ -124,224 +101,228 @@ def iter_jsonl_gz(url,label):
                 try: yield json.loads(line)
                 except json.JSONDecodeError: continue
 
-fields=[
-    "source_category","scope","platform","source_type","source_url","date","rating",
-    "verified_purchase","helpful_vote","user_id","brand","model","asin","parent_asin",
-    "review_title","comment","category","dedup_key"
-]
+def request_json(url, params=None, retries=4, timeout=45):
+    headers={"User-Agent":"walking-pad-voc-research/2.0"}
+    for i in range(retries):
+        try:
+            r=requests.get(url,params=params,headers=headers,timeout=timeout)
+            if r.status_code==200:
+                return r.json()
+            if r.status_code in (429,500,502,503,504,422):
+                time.sleep(min(8,1.5*(i+1))+random.random())
+                continue
+            return {"data":[],"_status":r.status_code,"_text":r.text[:300]}
+        except Exception as e:
+            if i==retries-1: return {"data":[],"_error":repr(e)}
+            time.sleep(min(8,1.5*(i+1))+random.random())
+    return {"data":[]}
 
+# ---------- AMAZON: full Sports & Outdoors scan ----------
+products={}
+meta_scanned=0
+for row in iter_jsonl_gz(META_URL,"Sports & Outdoors metadata"):
+    meta_scanned+=1
+    if match_product(row):
+        parent=str(row.get("parent_asin") or "")
+        if parent:
+            products[parent]={
+                "parent_asin":parent,"title":as_text(row.get("title")),"brand":as_text(row.get("store")),
+                "rating_number":row.get("rating_number"),"average_rating":row.get("average_rating"),"price":row.get("price"),
+            }
+    if meta_scanned%200000==0:
+        print(f"metadata scanned={meta_scanned:,}; matched products={len(products):,}",flush=True)
+
+rating_sum=sum(int(p.get("rating_number") or 0) for p in products.values())
+print(f"Amazon metadata complete: scanned={meta_scanned:,}; matched_products={len(products):,}; rating_number_sum={rating_sum:,}",flush=True)
+with open(OUTDIR/"matched_products.csv","w",encoding="utf-8-sig",newline="") as f:
+    w=csv.DictWriter(f,fieldnames=["parent_asin","title","brand","rating_number","average_rating","price"])
+    w.writeheader(); w.writerows(products.values())
+
+all_rows=[]
 seen=set()
-core=[]
-adjacent=[]
-product_rows=[]
-category_stats={}
-global_products=0
-global_meta_scanned=0
-global_review_scanned=0
-rating_sum_total=0
+cats=Counter(); platform_counts=Counter()
+amazon_scanned=amazon_raw=0
 
-for cat_name in CATEGORIES:
-    if len(core)+len(adjacent) >= TARGET:
-        print(f"Target pool already reached before {cat_name}; stopping category expansion.",flush=True)
-        break
-
-    meta_url=f"{BASE}/meta_categories/meta_{cat_name}.jsonl.gz"
-    review_url=f"{BASE}/review_categories/{cat_name}.jsonl.gz"
-
-    products={}
-    scope_products=Counter()
-    meta_scanned=0
-
-    for row in iter_jsonl_gz(meta_url,f"{cat_name} metadata"):
-        meta_scanned+=1
-        scope=classify_scope(row)
-        if scope:
-            parent=str(row.get("parent_asin") or "")
-            if parent:
-                p={
-                    "source_category":cat_name,
-                    "scope":scope,
-                    "parent_asin":parent,
-                    "title":as_text(row.get("title")),
-                    "brand":as_text(row.get("store")),
-                    "rating_number":row.get("rating_number"),
-                    "average_rating":row.get("average_rating"),
-                    "price":row.get("price")
-                }
-                products[parent]=p
-                scope_products[scope]+=1
-        if meta_scanned%100000==0:
-            print(f"{cat_name} metadata scanned={meta_scanned:,}; products={len(products):,}; scopes={dict(scope_products)}",flush=True)
-
-    cat_rating_sum=sum(int(p.get("rating_number") or 0) for p in products.values())
-    global_meta_scanned += meta_scanned
-    global_products += len(products)
-    rating_sum_total += cat_rating_sum
-    product_rows.extend(products.values())
-
-    print(f"{cat_name} metadata complete: scanned={meta_scanned:,}; matched={len(products):,}; scopes={dict(scope_products)}",flush=True)
-
-    review_scanned=0
-    added_core=0
-    added_adj=0
-
-    for rv in iter_jsonl_gz(review_url,f"{cat_name} reviews"):
-        review_scanned+=1
-        parent=str(rv.get("parent_asin") or "")
-        p=products.get(parent)
-        if not p:
-            if review_scanned%1000000==0:
-                print(f"{cat_name} reviews scanned={review_scanned:,}; global core={len(core):,}; adjacent={len(adjacent):,}",flush=True)
-            continue
-
-        text=as_text(rv.get("text")).strip()
-        if len(text)<8: continue
-        title=as_text(rv.get("title"))
-        user_id=as_text(rv.get("user_id"))
-        dk=dedup_key(text,user_id)
-        if dk in seen: continue
-        seen.add(dk)
-
-        row={
-            "source_category":cat_name,
-            "scope":p["scope"],
-            "platform":"Amazon Reviews 2023",
-            "source_type":"historical review dataset",
-            "source_url":f"https://www.amazon.com/dp/{parent}",
-            "date":iso_date(rv.get("timestamp")),
-            "rating":rv.get("rating"),
-            "verified_purchase":rv.get("verified_purchase"),
-            "helpful_vote":rv.get("helpful_vote"),
-            "user_id":user_id,
-            "brand":p["brand"],
-            "model":p["title"],
-            "asin":as_text(rv.get("asin")),
-            "parent_asin":parent,
-            "review_title":title,
-            "comment":text,
-            "category":classify(title+" "+text),
-            "dedup_key":dk
-        }
-
-        if p["scope"]=="Core Walking Pad":
-            if len(core)<TARGET:
-                core.append(row); added_core+=1
-        else:
-            if len(adjacent)<TARGET:
-                adjacent.append(row); added_adj+=1
-
-        # Sports is scanned fully to establish the complete primary pool.
-        # Extra categories stop immediately once the global unique pool reaches target.
-        if cat_name != "Sports_and_Outdoors" and len(core)+len(adjacent) >= TARGET:
-            print(f"{cat_name}: target pool reached at reviews scanned={review_scanned:,}; global pool={len(core)+len(adjacent):,}", flush=True)
-            break
-
-        if review_scanned%1000000==0:
-            print(f"{cat_name} reviews scanned={review_scanned:,}; global core={len(core):,}; adjacent={len(adjacent):,}",flush=True)
-
-    global_review_scanned += review_scanned
-    category_stats[cat_name]={
-        "meta_scanned":meta_scanned,
-        "matched_products":len(products),
-        "product_scopes":dict(scope_products),
-        "rating_number_sum":cat_rating_sum,
-        "reviews_scanned":review_scanned,
-        "added_core":added_core,
-        "added_adjacent":added_adj
+for rv in iter_jsonl_gz(REVIEWS_URL,"Sports & Outdoors reviews"):
+    amazon_scanned+=1
+    parent=str(rv.get("parent_asin") or "")
+    if parent not in products:
+        if amazon_scanned%1000000==0:
+            print(f"Amazon scanned={amazon_scanned:,}; kept={len(all_rows):,}",flush=True)
+        continue
+    text=as_text(rv.get("text")).strip()
+    if len(text)<8: continue
+    title=as_text(rv.get("title")); p=products[parent]
+    dk=hash_text(text,parent)
+    amazon_raw+=1
+    if dk in seen: continue
+    seen.add(dk)
+    row={
+        "platform":"Amazon Reviews 2023","source_type":"historical product review",
+        "source_url":f"https://www.amazon.com/dp/{parent}","date":iso_date(rv.get("timestamp")),
+        "rating_or_score":rv.get("rating"),"verified_purchase":rv.get("verified_purchase"),"helpful_vote":rv.get("helpful_vote"),
+        "brand":p["brand"],"model":p["title"],"asin":as_text(rv.get("asin")),"parent_asin":parent,
+        "subreddit":"","post_id":"","post_title":"","comment_id":"","review_title":title,"comment":text,
+        "category":classify(title+" "+text),"dedup_key":dk
     }
-    print(f"{cat_name} complete. added core={added_core:,}, adjacent={added_adj:,}; global pool={len(core)+len(adjacent):,}",flush=True)
+    all_rows.append(row); cats[row["category"]]+=1; platform_counts[row["platform"]]+=1
+    if amazon_scanned%1000000==0:
+        print(f"Amazon scanned={amazon_scanned:,}; raw={amazon_raw:,}; dedup={len(all_rows):,}",flush=True)
 
-# Final: all available Core first, then Adjacent to exactly 100K.
-if len(core)>=TARGET:
-    final=core[:TARGET]
-else:
-    need=TARGET-len(core)
-    final=core+adjacent[:need]
+print(f"Amazon full scan complete: scanned={amazon_scanned:,}; raw={amazon_raw:,}; dedup={len(all_rows):,}",flush=True)
 
-if len(final)<TARGET:
-    raise SystemExit(f"Only {len(final):,} unique reviews available after categories {list(category_stats)}; target={TARGET:,}")
-
-final_scope=Counter(r["scope"] for r in final)
-final_cats=Counter(r["category"] for r in final)
-final_sources=Counter(r["source_category"] for r in final)
-
-csv_path=OUTDIR/"walking_pad_reviews_100k.csv"
-with open(csv_path,"w",encoding="utf-8-sig",newline="") as f:
-    w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(final)
-
-# XLSX
-from openpyxl import Workbook
-from openpyxl.styles import Font,PatternFill,Alignment
-from openpyxl.utils import get_column_letter
-
-xlsx=OUTDIR/"walking_pad_voc_100k.xlsx"
-wb=Workbook()
-ws=wb.active
-ws.title="评论明细_All"
-ws.append(fields)
-for c in ws[1]:
-    c.font=Font(bold=True,color="FFFFFF")
-    c.fill=PatternFill("solid",fgColor="121826")
-    c.alignment=Alignment(wrap_text=True,vertical="center")
-for r in final:
-    ws.append([r[h] for h in fields])
-ws.freeze_panes="A2"
-widths=[20,20,20,24,38,13,9,17,12,18,20,48,16,16,32,82,18,68]
-for i,wid in enumerate(widths,1):
-    ws.column_dimensions[get_column_letter(i)].width=wid
-
-sw=wb.create_sheet("汇总")
-sw.append(["指标","值"])
-metrics=[
-    ("最终去重评论",len(final)),
-    ("Core Walking Pad",final_scope.get("Core Walking Pad",0)),
-    ("Adjacent Treadmill",final_scope.get("Adjacent Treadmill",0)),
-    ("扫描评论总数",global_review_scanned),
-    ("扫描商品元数据",global_meta_scanned),
-    ("匹配商品数（分类内合计）",global_products),
-    ("匹配商品rating_number合计",rating_sum_total),
-    ("生成时间",datetime.now(timezone.utc).isoformat())
+# ---------- REDDIT: discover relevant posts, then pull whole comment trees ----------
+# High-purity communities can be collected broadly; larger communities use keyword/year slices.
+community_specs=[
+    ("WalkingPads", None, 2023),
+    ("walkingdesks", None, 2018),
+    ("treadmills", ["walking pad","under desk treadmill","desk treadmill","walking treadmill"], 2019),
+    ("StandingDesks", ["walking pad","under desk treadmill","desk treadmill"], 2019),
+    ("WFH", ["walking pad","under desk treadmill","desk treadmill"], 2020),
+    ("walking", ["walking pad","under desk treadmill"], 2020),
+    ("workingmoms", ["walking pad","under desk treadmill"], 2020),
+    ("PetiteFitness", ["walking pad","under desk treadmill"], 2020),
+    ("loseit", ["walking pad","under desk treadmill"], 2020),
+    ("CICO", ["walking pad","under desk treadmill"], 2020),
 ]
-for row in metrics: sw.append(list(row))
-sw.append([])
-sw.append(["来源分类","最终样本数"])
-for k,v in final_sources.most_common(): sw.append([k,v])
-sw.append([])
-sw.append(["痛点分类","最终样本数"])
-for k,v in final_cats.most_common(): sw.append([k,v])
-sw.append([])
-sw.append(["说明","Core Walking Pad 为走步机主统计；Adjacent Treadmill 仅补充共性电机、跑带、耐久、售后证据。"])
-for c in sw[1]:
-    c.font=Font(bold=True,color="FFFFFF"); c.fill=PatternFill("solid",fgColor="121826")
-sw.column_dimensions["A"].width=36; sw.column_dimensions["B"].width=85
+now_year=2027
+post_map={}
 
-pw=wb.create_sheet("匹配商品")
-pheaders=["source_category","scope","parent_asin","title","brand","rating_number","average_rating","price"]
-pw.append(pheaders)
-for p in product_rows:
-    pw.append([p.get(k) for k in pheaders])
-for c in pw[1]:
-    c.font=Font(bold=True,color="FFFFFF"); c.fill=PatternFill("solid",fgColor="121826")
-pw.freeze_panes="A2"
-pw.column_dimensions["A"].width=24; pw.column_dimensions["B"].width=22; pw.column_dimensions["C"].width=18
-pw.column_dimensions["D"].width=70; pw.column_dimensions["E"].width=28
+def collect_posts_for_slice(sub, query, year):
+    found=[]; after=f"{year}-01-01"; before=f"{year+1}-01-01"; last_after=after
+    for page in range(120):
+        params={"subreddit":sub,"limit":100,"sort":"asc","after":last_after,"before":before,
+                "fields":"id,title,selftext,created_utc,num_comments,subreddit,permalink"}
+        if query: params["query"]=query
+        j=request_json(f"{ARCTIC}/posts/search",params=params,retries=5,timeout=60)
+        data=j.get("data") or []
+        if not data: break
+        found.extend(data)
+        mx=max(int(x.get("created_utc") or 0) for x in data)
+        if mx<=0: break
+        nxt=mx+1
+        # avoid loop on same timestamp
+        if str(nxt)==str(last_after): break
+        last_after=str(nxt)
+        if len(data)<100: break
+        time.sleep(0.08)
+    return found
 
-wb.save(xlsx)
+for sub,queries,start_year in community_specs:
+    qlist=queries or [None]
+    for year in range(start_year,now_year):
+        for q in qlist:
+            data=collect_posts_for_slice(sub,q,year)
+            for p in data:
+                pid=str(p.get("id") or "")
+                if not pid: continue
+                # local relevance safety for broad subreddits
+                blob=norm(as_text(p.get("title"))+" "+as_text(p.get("selftext")))
+                if queries and not any(k in blob for k in ["walking pad","walkingpad","under desk treadmill","desk treadmill","walking treadmill"]):
+                    continue
+                post_map[pid]=p
+            if data:
+                print(f"Reddit discovery: r/{sub} {year} query={q!r}: fetched={len(data):,}, unique_relevant_posts={len(post_map):,}",flush=True)
+            time.sleep(0.15)
+
+print(f"Reddit relevant posts discovered={len(post_map):,}; declared comments={sum(int(p.get('num_comments') or 0) for p in post_map.values()):,}",flush=True)
+
+# Prioritize posts with more comments, but cover all until target hit.
+posts=sorted(post_map.values(),key=lambda p:int(p.get("num_comments") or 0),reverse=True)
+
+def flatten_tree(nodes):
+    out=[]
+    def walk(item):
+        if isinstance(item,list):
+            for x in item: walk(x)
+            return
+        if not isinstance(item,dict): return
+        if item.get("kind")=="t1" and isinstance(item.get("data"),dict):
+            d=item["data"]; out.append(d)
+            rep=d.get("replies")
+            if isinstance(rep,dict):
+                children=((rep.get("data") or {}).get("children") or [])
+                walk(children)
+        elif "data" in item and isinstance(item["data"],list):
+            walk(item["data"])
+    walk(nodes)
+    return out
+
+def fetch_tree(post):
+    pid=str(post.get("id"))
+    params={"link_id":f"t3_{pid}","limit":9999,"start_breadth":999,"start_depth":999}
+    j=request_json(f"{ARCTIC}/comments/tree",params=params,retries=5,timeout=90)
+    return pid,j.get("data") or []
+
+reddit_added=0
+processed_posts=0
+# Work in batches to avoid hammering the service.
+for batch_start in range(0,len(posts),16):
+    if len(all_rows)>=TARGET: break
+    batch=posts[batch_start:batch_start+16]
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futs={ex.submit(fetch_tree,p):p for p in batch}
+        for fut in as_completed(futs):
+            post=futs[fut]
+            try: pid,nodes=fut.result()
+            except Exception: continue
+            comments=flatten_tree(nodes)
+            processed_posts+=1
+            for c in comments:
+                body=as_text(c.get("body")).strip()
+                if len(body)<5 or body in ("[deleted]","[removed]"): continue
+                cid=str(c.get("id") or "")
+                context=f"reddit:{cid or pid}"
+                dk=hash_text(body,context)
+                if dk in seen: continue
+                seen.add(dk)
+                permalink=as_text(c.get("permalink"))
+                url=("https://www.reddit.com"+permalink) if permalink.startswith("/") else permalink
+                row={
+                    "platform":"Reddit","source_type":"comment","source_url":url,
+                    "date":iso_date(c.get("created_utc")),"rating_or_score":c.get("score"),
+                    "verified_purchase":"","helpful_vote":"","brand":"","model":"","asin":"","parent_asin":"",
+                    "subreddit":as_text(post.get("subreddit")),"post_id":pid,"post_title":as_text(post.get("title")),
+                    "comment_id":cid,"review_title":"","comment":body,
+                    "category":classify(as_text(post.get("title"))+" "+body),"dedup_key":dk
+                }
+                all_rows.append(row); reddit_added+=1; cats[row["category"]]+=1; platform_counts[row["platform"]]+=1
+                if len(all_rows)>=TARGET: break
+            if processed_posts%50==0:
+                print(f"Reddit trees processed={processed_posts:,}; Reddit comments added={reddit_added:,}; total={len(all_rows):,}",flush=True)
+            if len(all_rows)>=TARGET: break
+    time.sleep(0.15)
+
+print(f"Reddit stage complete: processed_posts={processed_posts:,}; comments_added={reddit_added:,}; combined={len(all_rows):,}",flush=True)
+
+# ---------- OUTPUT ----------
+# Keep only TARGET if more were collected.
+if len(all_rows)>TARGET: all_rows=all_rows[:TARGET]
+
+csv_path=OUTDIR/"walking_pad_voc_100k.csv"
+with open(csv_path,"w",encoding="utf-8-sig",newline="") as f:
+    w=csv.DictWriter(f,fieldnames=FIELDS); w.writeheader(); w.writerows(all_rows)
+
+# Platform/category summaries
+with open(OUTDIR/"summary_by_category.csv","w",encoding="utf-8-sig",newline="") as f:
+    w=csv.writer(f); w.writerow(["category","count"])
+    for k,v in cats.most_common(): w.writerow([k,v])
+with open(OUTDIR/"summary_by_platform.csv","w",encoding="utf-8-sig",newline="") as f:
+    w=csv.writer(f); w.writerow(["platform","count"])
+    for k,v in platform_counts.most_common(): w.writerow([k,v])
 
 stats={
-    "target":TARGET,
-    "categories_scanned":list(category_stats),
-    "category_stats":category_stats,
-    "global_meta_scanned":global_meta_scanned,
-    "global_review_scanned":global_review_scanned,
-    "unique_core_available":len(core),
-    "unique_adjacent_available":len(adjacent),
-    "final_rows":len(final),
-    "final_scopes":dict(final_scope),
-    "final_source_categories":dict(final_sources),
-    "final_categories":dict(final_cats)
+    "target":TARGET,"minimum":MIN_VALID,"final_rows":len(all_rows),
+    "amazon":{"meta_scanned":meta_scanned,"matched_products":len(products),"rating_number_sum":rating_sum,
+              "reviews_scanned":amazon_scanned,"raw_matches":amazon_raw,
+              "dedup_kept":platform_counts.get("Amazon Reviews 2023",0)},
+    "reddit":{"posts_discovered":len(post_map),"trees_processed":processed_posts,
+              "comments_kept":platform_counts.get("Reddit",0)},
+    "categories":dict(Counter(r["category"] for r in all_rows)),
+    "platforms":dict(Counter(r["platform"] for r in all_rows)),
 }
-with open(OUTDIR/"stats_100k.json","w",encoding="utf-8") as f:
+with open(OUTDIR/"stats.json","w",encoding="utf-8") as f:
     json.dump(stats,f,ensure_ascii=False,indent=2)
-
 print(json.dumps(stats,ensure_ascii=False),flush=True)
+if len(all_rows)<MIN_VALID:
+    raise SystemExit(f"Only {len(all_rows):,} rows collected; need at least {MIN_VALID:,}.")
