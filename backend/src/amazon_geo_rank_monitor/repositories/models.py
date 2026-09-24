@@ -24,6 +24,7 @@ class RankRunRow(Base):
     __tablename__ = "rank_runs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     marketplace: Mapped[str] = mapped_column(String(128), nullable=False)
     keyword: Mapped[str] = mapped_column(String(512), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="running")

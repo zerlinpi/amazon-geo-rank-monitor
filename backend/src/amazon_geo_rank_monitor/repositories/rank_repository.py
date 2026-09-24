@@ -19,13 +19,19 @@ class RankRepository:
         self._sessions = sessionmaker(bind=engine, expire_on_commit=False)
 
     def create_run(
-        self, *, marketplace: str, keyword: str, requested_probe_count: int
+        self,
+        *,
+        marketplace: str,
+        keyword: str,
+        requested_probe_count: int,
+        owner_id: str | None = None,
     ) -> str:
         run_id = str(uuid4())
         with self._sessions.begin() as session:
             session.add(
                 RankRunRow(
                     id=run_id,
+                    owner_id=owner_id,
                     marketplace=marketplace,
                     keyword=keyword,
                     status="running",
@@ -91,9 +97,12 @@ class RankRepository:
             row.error_summary = error_summary
             row.completed_at = datetime.now(UTC)
 
-    def get_run(self, run_id: str) -> dict:
+    def get_run(self, run_id: str, *, owner_id: str | None = None) -> dict:
         with self._sessions() as session:
-            run = session.scalar(select(RankRunRow).where(RankRunRow.id == run_id))
+            statement = select(RankRunRow).where(RankRunRow.id == run_id)
+            if owner_id is not None:
+                statement = statement.where(RankRunRow.owner_id == owner_id)
+            run = session.scalar(statement)
             if run is None:
                 raise KeyError(f"rank run not found: {run_id}")
             return self._serialize_run(session, run)
@@ -112,6 +121,7 @@ class RankRepository:
         ).all()
         return {
             "id": run.id,
+            "owner_id": run.owner_id,
             "marketplace": run.marketplace,
             "keyword": run.keyword,
             "status": run.status,
