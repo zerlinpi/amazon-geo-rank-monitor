@@ -99,3 +99,40 @@ def test_settle_charges_used_and_releases_unused() -> None:
     again = repo.settle(reservation["id"], credits_used=3)
     assert again["settled_amount"] == 3
     assert repo.get_balance("tenant-1")["balance"] == 7
+
+
+def test_idempotency_key_cannot_cross_tenants() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            TenantRow.__table__.insert(),
+            [
+                {"id": "tenant-1", "name": "Tenant 1"},
+                {"id": "tenant-2", "name": "Tenant 2"},
+            ],
+        )
+    repo = BillingRepository(engine)
+    repo.grant(owner_id="tenant-1", credits=10, idempotency_key="shared-key")
+    with pytest.raises(ValueError, match="another tenant"):
+        repo.grant(owner_id="tenant-2", credits=10, idempotency_key="shared-key")
+
+
+def test_reservation_idempotency_requires_same_parameters() -> None:
+    repo = repository()
+    repo.grant(owner_id="tenant-1", credits=20, idempotency_key="grant:1")
+    repo.reserve(
+        owner_id="tenant-1",
+        credits=5,
+        idempotency_key="rank:abc",
+        reference_type="rank_check",
+        reference_id="abc",
+    )
+    with pytest.raises(ValueError, match="different reservation parameters"):
+        repo.reserve(
+            owner_id="tenant-1",
+            credits=6,
+            idempotency_key="rank:abc",
+            reference_type="rank_check",
+            reference_id="abc",
+        )
