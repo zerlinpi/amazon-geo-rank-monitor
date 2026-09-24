@@ -19,6 +19,8 @@ ALLOWED_API_KEY_SCOPES = frozenset(
         "keys:manage",
         "system:read",
         "system:write",
+        "team:read",
+        "team:manage",
     }
 )
 
