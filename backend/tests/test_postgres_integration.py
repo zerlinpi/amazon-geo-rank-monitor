@@ -1,12 +1,11 @@
-from concurrent.futures import ThreadPoolExecutor
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from sqlalchemy import create_engine
 
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
-
 
 POSTGRES_TEST_URL = os.getenv("POSTGRES_TEST_URL")
 
