@@ -179,6 +179,11 @@ def build_services(settings: AppSettings) -> AppServices:
             requests_per_minute=settings.api_rate_limit_per_minute,
             redis_url=settings.redis_url,
         ),
+        auth_rate_limiter=build_rate_limiter(
+            requests_per_minute=settings.auth_rate_limit_per_minute,
+            redis_url=settings.redis_url,
+            namespace="agrm:auth",
+        ),
         provider_registry=ProviderRegistry(
             managed=_managed_provider(settings),
             strict=_strict_provider(settings),
