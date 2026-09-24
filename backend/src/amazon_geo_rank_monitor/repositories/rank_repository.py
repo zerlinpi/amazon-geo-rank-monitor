@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import Engine, select
@@ -18,7 +18,9 @@ class RankRepository:
     def __init__(self, engine: Engine) -> None:
         self._sessions = sessionmaker(bind=engine, expire_on_commit=False)
 
-    def create_run(self, *, marketplace: str, keyword: str, requested_probe_count: int) -> str:
+    def create_run(
+        self, *, marketplace: str, keyword: str, requested_probe_count: int
+    ) -> str:
         run_id = str(uuid4())
         with self._sessions.begin() as session:
             session.add(
@@ -33,7 +35,9 @@ class RankRepository:
             )
         return run_id
 
-    def save_observations(self, run_id: str, observations: list[RankObservation]) -> None:
+    def save_observations(
+        self, run_id: str, observations: list[RankObservation]
+    ) -> None:
         with self._sessions.begin() as session:
             for observation in observations:
                 session.add(
@@ -85,7 +89,7 @@ class RankRepository:
             row.status = status
             row.settled_probe_count = settled_probe_count
             row.error_summary = error_summary
-            row.completed_at = datetime.now(timezone.utc)
+            row.completed_at = datetime.now(UTC)
 
     def get_run(self, run_id: str) -> dict:
         with self._sessions() as session:

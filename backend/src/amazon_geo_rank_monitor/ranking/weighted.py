@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from amazon_geo_rank_monitor.domain.errors import RankingError
-from amazon_geo_rank_monitor.domain.models import GeoProfile, RankObservation, RankSnapshot
+from amazon_geo_rank_monitor.domain.models import (
+    GeoProfile,
+    RankObservation,
+    RankSnapshot,
+)
 
 _TWO_DP = Decimal("0.01")
 
@@ -19,7 +23,9 @@ def calculate_weighted_rank(
     if not relevant:
         raise RankingError(f"no observations available for ASIN {asin}")
 
-    unknown = sorted({o.geo_profile_id for o in relevant if o.geo_profile_id not in profile_by_id})
+    unknown = sorted(
+        {o.geo_profile_id for o in relevant if o.geo_profile_id not in profile_by_id}
+    )
     if unknown:
         raise RankingError(f"unknown geo profiles: {', '.join(unknown)}")
 
@@ -31,7 +37,9 @@ def calculate_weighted_rank(
 
     for observation in relevant:
         if observation.geo_profile_id in seen_geo:
-            raise RankingError(f"duplicate observation for geo profile {observation.geo_profile_id}")
+            raise RankingError(
+                f"duplicate observation for geo profile {observation.geo_profile_id}"
+            )
         seen_geo.add(observation.geo_profile_id)
         weight = profile_by_id[observation.geo_profile_id].weight
         total_weight += weight
@@ -48,8 +56,12 @@ def calculate_weighted_rank(
     if configured_weight <= 0:
         raise RankingError("configured geo weight must be positive")
 
-    weighted_rank = (numerator / total_weight).quantize(_TWO_DP, rounding=ROUND_HALF_UP)
-    confidence = (total_weight / configured_weight).quantize(_TWO_DP, rounding=ROUND_HALF_UP)
+    weighted_rank = (numerator / total_weight).quantize(
+        _TWO_DP, rounding=ROUND_HALF_UP
+    )
+    confidence = (total_weight / configured_weight).quantize(
+        _TWO_DP, rounding=ROUND_HALF_UP
+    )
     return RankSnapshot(
         asin=asin,
         weighted_rank=weighted_rank,

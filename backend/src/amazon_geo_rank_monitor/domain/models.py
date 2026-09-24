@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal
@@ -96,7 +96,9 @@ class RankCheckRequest(BaseModel):
     def validate_geo_marketplace(self) -> RankCheckRequest:
         mismatched = [g.id for g in self.geo_profiles if g.marketplace != self.marketplace]
         if mismatched:
-            raise ValueError(f"geo profiles use a different marketplace: {', '.join(mismatched)}")
+            raise ValueError(
+                f"geo profiles use a different marketplace: {', '.join(mismatched)}"
+            )
         return self
 
 
@@ -137,7 +139,7 @@ class RankObservation(BaseModel):
     sponsored_rank: int | None = Field(default=None, ge=1)
     effective_rank: int = Field(ge=1)
     page: int | None = Field(default=None, ge=1)
-    observed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     raw_result_reference: str | None = None
 
     @field_validator("asin")
@@ -152,7 +154,7 @@ class RankSnapshot(BaseModel):
     found_weight: Decimal
     missing_weight: Decimal
     confidence: Decimal = Decimal("1")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("asin")
     @classmethod
