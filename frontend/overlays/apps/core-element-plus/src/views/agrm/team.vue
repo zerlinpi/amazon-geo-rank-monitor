@@ -247,8 +247,8 @@ onMounted(load)
         <el-table-column prop="role" label="Role" width="120" />
         <el-table-column label="Status" width="120">
           <template #default="{ row }">
-            <el-tag :type="invitationStatus(row) === 'Pending' ? 'warning' : 'info'">
-              {{ invitationStatus(row) }}
+            <el-tag :type="invitationStatus(row as WorkspaceInvitation) === 'Pending' ? 'warning' : 'info'">
+              {{ invitationStatus(row as WorkspaceInvitation) }}
             </el-tag>
           </template>
         </el-table-column>
