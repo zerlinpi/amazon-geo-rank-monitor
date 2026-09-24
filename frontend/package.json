@@ -1,0 +1,10 @@
+{
+  "name": "amazon-geo-rank-monitor-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node scripts/sync-upstream.mjs",
+    "dev": "node scripts/run-upstream.mjs dev",
+    "build": "node scripts/run-upstream.mjs build"
+  }
+}
