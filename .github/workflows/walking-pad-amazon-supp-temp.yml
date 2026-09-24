@@ -1,0 +1,46 @@
+name: Walking Pad Amazon Supplement Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/walking-pad-amazon-supp-temp.yml'
+
+jobs:
+  collect:
+    strategy:
+      fail-fast: false
+      matrix:
+        category:
+          - Health_and_Household
+          - Home_and_Kitchen
+          - Office_Products
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/walking-pad-voc-10k
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Collect category supplement
+        env:
+          AMAZON_CATEGORY: ${{ matrix.category }}
+          OUTDIR: amazon_supp_output
+          MAX_KEEP: "50000"
+        run: python scripts/amazon_walking_pad_category_supplement.py
+      - name: Show stats
+        if: always()
+        run: |
+          find amazon_supp_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
+          cat amazon_supp_output/*_stats.json || true
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walking-pad-amazon-${{ matrix.category }}
+          path: amazon_supp_output/
+          if-no-files-found: warn
+          retention-days: 7
