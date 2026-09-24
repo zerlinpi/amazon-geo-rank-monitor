@@ -1,21 +1,75 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
+import { agrmApi } from '@/api/agrm'
 import ColorScheme from '@/layouts/components/Topbar/Toolbar/ColorScheme/index.vue'
 
 defineOptions({ name: 'Login' })
+
+type Mode = 'login' | 'register' | 'api'
 
 const route = useRoute()
 const router = useRouter()
 const appAccountStore = useAppAccountStore()
 const appSettingsStore = useAppSettingsStore()
+const inviteToken = computed(() => route.query.invite?.toString() || '')
+const mode = ref<Mode>(inviteToken.value ? 'register' : 'login')
+const email = ref('')
+const password = ref('')
+const displayName = ref('')
+const workspaceName = ref('')
 const apiKey = ref('')
 const loading = ref(false)
 
-async function submit() {
+async function finish() {
+  ElMessage.success(inviteToken.value ? 'Workspace joined' : 'Signed in')
+  const redirect = route.query.redirect?.toString() || appSettingsStore.settings.app.home.fullPath
+  await router.replace(redirect)
+}
+
+async function submitLogin() {
+  loading.value = true
+  try {
+    await appAccountStore.loginWithCredentials(email.value, password.value)
+    if (inviteToken.value) {
+      const accepted = await agrmApi.acceptInvitation(inviteToken.value)
+      appAccountStore.applySession(accepted)
+    }
+    await finish()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Email or password is invalid')
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+async function submitRegister() {
+  loading.value = true
+  try {
+    await appAccountStore.registerAccount({
+      email: email.value,
+      password: password.value,
+      display_name: displayName.value,
+      ...(inviteToken.value
+        ? { invitation_token: inviteToken.value }
+        : { workspace_name: workspaceName.value }),
+    })
+    await finish()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Unable to create account')
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+async function submitApiKey() {
   loading.value = true
   try {
     await appAccountStore.loginWithApiKey(apiKey.value)
-    ElMessage.success('Workspace connected')
+    ElMessage.success('Legacy workspace connected')
     const redirect = route.query.redirect?.toString() || appSettingsStore.settings.app.home.fullPath
     await router.replace(redirect)
   }
@@ -44,38 +98,117 @@ async function submit() {
             then calculate a weighted national rank.
           </p>
         </div>
-        <div class="text-xs text-muted-foreground">Fantastic Admin · Element Plus UI foundation</div>
+        <div class="text-xs text-muted-foreground">Secure workspace accounts · API keys remain available for automation</div>
       </div>
     </div>
+
     <div class="login-form flex-col-center">
-      <div class="w-full max-w-sm px-8">
-        <div class="text-2xl font-semibold mb-2">Connect workspace</div>
-        <div class="text-sm text-muted-foreground mb-6">
-          Enter a Workspace API Key. It is stored only in this browser.
-        </div>
-        <el-form @submit.prevent="submit">
-          <el-form-item>
-            <el-input
-              v-model="apiKey"
-              size="large"
-              type="password"
-              show-password
-              autocomplete="off"
-              placeholder="agrm_..."
-              @keyup.enter="submit"
-            />
-          </el-form-item>
-          <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submit">
-            Connect
-          </el-button>
-        </el-form>
+      <div class="w-full max-w-sm px-8 py-8">
         <el-alert
-          class="mt-6"
-          type="info"
+          v-if="inviteToken"
+          type="success"
           :closable="false"
-          title="Need a key?"
-          description="Bootstrap the first workspace with agrm-bootstrap, or create another key from the API Keys page."
+          class="mb-5"
+          title="Workspace invitation"
+          description="Create an account with the invited email, or sign in if you already have one."
         />
+
+        <el-segmented
+          v-model="mode"
+          :options="[
+            { label: 'Sign in', value: 'login' },
+            { label: 'Create account', value: 'register' },
+            { label: 'API Key', value: 'api' },
+          ]"
+          class="w-full mb-6"
+        />
+
+        <template v-if="mode === 'login'">
+          <div class="text-2xl font-semibold mb-2">Welcome back</div>
+          <div class="text-sm text-muted-foreground mb-6">
+            Sign in with your workspace account.
+          </div>
+          <el-form label-position="top" @submit.prevent="submitLogin">
+            <el-form-item label="Email">
+              <el-input v-model="email" size="large" autocomplete="email" placeholder="you@company.com" />
+            </el-form-item>
+            <el-form-item label="Password">
+              <el-input
+                v-model="password"
+                size="large"
+                type="password"
+                show-password
+                autocomplete="current-password"
+                @keyup.enter="submitLogin"
+              />
+            </el-form-item>
+            <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitLogin">
+              Sign in
+            </el-button>
+          </el-form>
+        </template>
+
+        <template v-else-if="mode === 'register'">
+          <div class="text-2xl font-semibold mb-2">{{ inviteToken ? 'Join workspace' : 'Create workspace' }}</div>
+          <div class="text-sm text-muted-foreground mb-6">
+            {{ inviteToken ? 'Create your user account to accept the invitation.' : 'Create the first Owner account for a new workspace.' }}
+          </div>
+          <el-form label-position="top" @submit.prevent="submitRegister">
+            <el-form-item label="Name">
+              <el-input v-model="displayName" size="large" autocomplete="name" placeholder="Your name" />
+            </el-form-item>
+            <el-form-item label="Email">
+              <el-input v-model="email" size="large" autocomplete="email" placeholder="you@company.com" />
+            </el-form-item>
+            <el-form-item v-if="!inviteToken" label="Workspace">
+              <el-input v-model="workspaceName" size="large" placeholder="Acme Commerce" />
+            </el-form-item>
+            <el-form-item label="Password">
+              <el-input
+                v-model="password"
+                size="large"
+                type="password"
+                show-password
+                autocomplete="new-password"
+                placeholder="At least 10 characters"
+                @keyup.enter="submitRegister"
+              />
+            </el-form-item>
+            <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitRegister">
+              {{ inviteToken ? 'Create account & join' : 'Create account' }}
+            </el-button>
+          </el-form>
+        </template>
+
+        <template v-else>
+          <div class="text-2xl font-semibold mb-2">Legacy API Key</div>
+          <div class="text-sm text-muted-foreground mb-6">
+            Use this only for an existing API-key-only workspace. Human accounts are recommended for the web console.
+          </div>
+          <el-form @submit.prevent="submitApiKey">
+            <el-form-item>
+              <el-input
+                v-model="apiKey"
+                size="large"
+                type="password"
+                show-password
+                autocomplete="off"
+                placeholder="agrm_..."
+                @keyup.enter="submitApiKey"
+              />
+            </el-form-item>
+            <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitApiKey">
+              Connect legacy workspace
+            </el-button>
+          </el-form>
+          <el-alert
+            class="mt-6"
+            type="info"
+            :closable="false"
+            title="Migrating an existing workspace?"
+            description="Use an admin API key to bootstrap the first human Owner, then sign in with email and password."
+          />
+        </template>
       </div>
     </div>
   </div>
@@ -95,7 +228,7 @@ async function submit() {
   left: 50%;
   display: flex;
   width: min(980px, calc(100% - 32px));
-  min-height: 560px;
+  min-height: 620px;
   overflow: hidden;
   border: 1px solid oklch(var(--border));
   border-radius: 18px;
@@ -119,6 +252,6 @@ async function submit() {
 @media (max-width: 760px) {
   .login-box { position: relative; top: auto; left: auto; margin: 70px 16px 20px; width: auto; min-height: 0; transform: none; }
   .login-banner { display: none; }
-  .login-form { width: 100%; min-height: 480px; }
+  .login-form { width: 100%; min-height: 560px; }
 }
 </style>
