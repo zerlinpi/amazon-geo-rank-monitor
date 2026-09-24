@@ -22,6 +22,9 @@ def one(x):
  except Exception:return (s,t,-2,0)
 out=[]
 with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
- for r in concurrent.futures.as_completed([ex.submit(one,j) for j in jobs]): out.append(r)
+ futs=[ex.submit(one,j) for j in jobs]
+ for fut in concurrent.futures.as_completed(futs):
+  try: out.append(fut.result())
+  except Exception: pass
 for r in sorted(out,key=lambda x:x[2],reverse=True):
  print(json.dumps({"sub":r[0],"term":r[1],"count":r[2],"status":r[3]}))
