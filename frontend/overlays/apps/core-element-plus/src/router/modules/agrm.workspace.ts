@@ -17,6 +17,12 @@ const routes: RouteRecordRaw = {
       meta: { title: 'Credits & Billing', icon: 'i-lucide:wallet-cards' },
     },
     {
+      path: 'team',
+      name: 'team',
+      component: () => import('@/views/agrm/team.vue'),
+      meta: { title: 'Team', icon: 'i-lucide:users' },
+    },
+    {
       path: 'api-keys',
       name: 'apiKeys',
       component: () => import('@/views/agrm/api-keys.vue'),
