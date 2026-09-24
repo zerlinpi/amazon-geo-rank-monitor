@@ -163,7 +163,8 @@ Implemented:
 - Docker Compose migration gate, API, worker and scheduler services;
 - GitHub Actions tests, Ruff checks, and PostgreSQL integration coverage;
 - least-privilege API-key scopes, database readiness, and worker heartbeats;
-- leased rank jobs, automatic retries, stuck-job recovery, dead-letter queue, and Prometheus-compatible operations metrics.
+- leased rank jobs, automatic retries, stuck-job recovery, dead-letter queue, and Prometheus-compatible operations metrics;
+- tenant audit trails, API-key usage/IP statistics, and Redis-backed multi-replica rate limiting.
 
 The complete architecture is documented in `docs/superpowers/specs/2026-09-24-amazon-geo-rank-saas-design.md`.
 
@@ -243,6 +244,7 @@ The local process boundary is the tenant security boundary for stdio. Streamable
 - `GET /api/v1/system/dead-letters`
 - `POST /api/v1/system/dead-letters/{job_id}/requeue`
 - `GET /api/v1/system/metrics`
+- `GET /api/v1/system/audit`
 
 All tenant-owned lookups are filtered server-side. A resource owned by another tenant is returned as not found.
 
@@ -518,3 +520,59 @@ alembic -c alembic.ini upgrade head
 ```
 
 New databases continue to run all migrations through the existing Docker Compose migration gate.
+
+
+## Audit trail and API key usage
+
+Every authenticated REST request under `/api/v1/*` writes a tenant-scoped audit event after the response is produced. Audit events store metadata only:
+
+- API key ID, never the plaintext key;
+- request ID;
+- HTTP method and path;
+- response status;
+- direct client socket IP;
+- user agent;
+- timestamp.
+
+Request bodies, provider credentials, Stripe secrets, and API key plaintext are never written to the audit table.
+
+API key records also track:
+
+- `usage_count`;
+- `last_used_at`;
+- `last_used_ip`.
+
+The server intentionally uses the direct socket address by default and does not trust `X-Forwarded-For` automatically. If a reverse proxy is introduced, proxy trust should be configured explicitly at the deployment boundary rather than accepting arbitrary forwarded headers.
+
+Operators with `system:read` can query recent tenant events:
+
+```http
+GET /api/v1/system/audit?limit=100
+X-API-Key: <key with system:read>
+```
+
+The Fantastic Admin System Status page displays recent audit events, and the API Keys page shows request count and last client IP.
+
+## Shared Redis rate limiting
+
+Set `REDIS_URL` on API replicas to share rate-limit state:
+
+```env
+API_RATE_LIMIT_PER_MINUTE=120
+REDIS_URL=redis://redis:6379/0
+```
+
+API key plaintext is hashed with SHA-256 before being used as the limiter identity, so Redis keys do not expose credentials.
+
+Redis is the primary limiter in multi-replica deployments. If Redis is temporarily unavailable, the API falls back to the existing process-local limiter instead of failing all requests. Docker Compose now includes Redis 7 and Backend CI executes a real two-instance shared-limit integration test.
+
+## Phase 10 migration
+
+Schema revision `20260924_0004` adds API-key request counters, last client IP, and tenant audit events.
+
+Upgrade existing production databases with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
