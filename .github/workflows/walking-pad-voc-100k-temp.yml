@@ -40,3 +40,5 @@ jobs:
           path: voc_output/
           if-no-files-found: warn
           retention-days: 7
+
+# rerun-extra-categories
