@@ -110,6 +110,7 @@ def build_rate_limiter(
     *,
     requests_per_minute: int,
     redis_url: str | None = None,
+    namespace: str = "agrm:rate",
 ):
     fallback = FixedWindowRateLimiter(
         requests_per_minute=requests_per_minute,
@@ -120,6 +121,7 @@ def build_rate_limiter(
         primary=RedisWindowRateLimiter(
             redis_url=redis_url,
             requests_per_minute=requests_per_minute,
+            namespace=namespace,
         ),
         fallback=fallback,
     )
