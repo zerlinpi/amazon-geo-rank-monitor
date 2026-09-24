@@ -187,12 +187,15 @@ class AccountService:
         if not name:
             raise ValueError("display name is required")
         user = self._repository.find_user_by_email(normalized_email)
-        if user is None:
-            user = self._repository.create_user(
-                email=normalized_email,
-                password_hash=self._passwords.hash(password),
-                display_name=name,
+        if user is not None:
+            raise ValueError(
+                "account already exists; add the user through a workspace invitation"
             )
+        user = self._repository.create_user(
+            email=normalized_email,
+            password_hash=self._passwords.hash(password),
+            display_name=name,
+        )
         membership = self._repository.create_owner_membership(
             owner_id=owner_id,
             user_id=user["id"],
