@@ -230,6 +230,12 @@ for cat_name in CATEGORIES:
             if len(adjacent)<TARGET:
                 adjacent.append(row); added_adj+=1
 
+        # Sports is scanned fully to establish the complete primary pool.
+        # Extra categories stop immediately once the global unique pool reaches target.
+        if cat_name != "Sports_and_Outdoors" and len(core)+len(adjacent) >= TARGET:
+            print(f"{cat_name}: target pool reached at reviews scanned={review_scanned:,}; global pool={len(core)+len(adjacent):,}", flush=True)
+            break
+
         if review_scanned%1000000==0:
             print(f"{cat_name} reviews scanned={review_scanned:,}; global core={len(core):,}; adjacent={len(adjacent):,}",flush=True)
 
