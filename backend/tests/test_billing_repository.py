@@ -136,3 +136,28 @@ def test_reservation_idempotency_requires_same_parameters() -> None:
             reference_type="rank_check",
             reference_id="abc",
         )
+
+
+def test_release_by_idempotency_key_unlocks_stale_attempt_reservation() -> None:
+    repo = repository()
+    repo.grant(owner_id="tenant-1", credits=10, idempotency_key="grant:1")
+    reservation = repo.reserve(
+        owner_id="tenant-1",
+        credits=5,
+        idempotency_key="rank_job:job-1:attempt:1",
+        reference_type="rank_job",
+        reference_id="job-1",
+    )
+
+    released = repo.release_by_idempotency_key(
+        "rank_job:job-1:attempt:1"
+    )
+
+    assert released["id"] == reservation["id"]
+    assert released["status"] == "released"
+    assert repo.get_balance("tenant-1") == {
+        "balance": 10,
+        "reserved": 0,
+        "available": 10,
+    }
+    assert repo.release_by_idempotency_key("missing") is None

@@ -34,7 +34,12 @@ class AppSettings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     worker_poll_seconds: float = 2.0
     worker_id: str | None = None
+    job_max_attempts: int = 3
+    job_lease_seconds: float = 900.0
+    job_retry_base_seconds: float = 30.0
+    job_retry_max_seconds: float = 900.0
     scheduler_poll_seconds: float = 30.0
+    scheduler_id: str | None = None
     auto_create_schema: bool = True
     mcp_tenant_id: str | None = None
     managed_serp_credit_cost: int = 1

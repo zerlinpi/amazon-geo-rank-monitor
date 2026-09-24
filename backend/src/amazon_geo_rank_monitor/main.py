@@ -61,6 +61,9 @@ async def _worker_loop(*, once: bool) -> None:
         rate_card=services.rate_card,
         worker_status_repository=services.worker_status_repository,
         worker_id=settings.worker_id or socket.gethostname(),
+        lease_seconds=settings.job_lease_seconds,
+        retry_base_seconds=settings.job_retry_base_seconds,
+        retry_max_seconds=settings.job_retry_max_seconds,
     )
 
     while True:
@@ -80,10 +83,27 @@ def worker_main() -> None:
 
 async def _scheduler_loop(*, once: bool) -> None:
     settings = AppSettings()
-    scheduler = MonitorScheduler(services=build_services(settings))
+    services = build_services(settings)
+    scheduler = MonitorScheduler(services=services)
+    scheduler_id = settings.scheduler_id or f"scheduler-{socket.gethostname()}"
 
     while True:
+        services.worker_status_repository.heartbeat(
+            worker_id=scheduler_id,
+            worker_type="scheduler",
+            status="running",
+        )
         outcomes = scheduler.run_once()
+        successful = [item for item in outcomes if item.get("job_id")]
+        errors = [item for item in outcomes if item.get("error")]
+        services.worker_status_repository.heartbeat(
+            worker_id=scheduler_id,
+            worker_type="scheduler",
+            status="error" if errors else "idle",
+            last_job_id=successful[-1]["job_id"] if successful else None,
+            last_error=errors[0]["error"] if errors else None,
+            processed_delta=len(successful),
+        )
         if outcomes:
             print(json.dumps(outcomes, default=str))
         if once:

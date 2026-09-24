@@ -127,6 +127,40 @@ export interface ApiKeyRow {
   scopes: string[]
 }
 
+export interface WorkerStatus {
+  worker_id: string
+  worker_type: string
+  status: string
+  last_job_id?: string | null
+  last_error?: string | null
+  processed_jobs: number
+  started_at: string
+  last_seen_at: string
+}
+
+export interface QueueSummary {
+  counts: Record<string, number>
+  oldest_pending_at?: string | null
+}
+
+export interface RankJob {
+  id: string
+  owner_id: string
+  monitor_target_id?: string | null
+  provider_mode: string
+  status: string
+  available_at: string
+  claimed_at?: string | null
+  claimed_by?: string | null
+  lease_expires_at?: string | null
+  completed_at?: string | null
+  run_id?: string | null
+  error?: string | null
+  attempt_count: number
+  max_attempts: number
+  created_at: string
+}
+
 export interface CheckoutResult {
   payment_id: string
   checkout_session_id: string
@@ -173,6 +207,14 @@ export const agrmApi = {
     client.post('/api/v1/api-keys', { name, scopes }),
   ),
   revokeApiKey: (id: string) => data<void>(client.delete('/api/v1/api-keys/' + id)),
+  getSystemWorkers: () => data<WorkerStatus[]>(client.get('/api/v1/system/workers')),
+  getQueueSummary: () => data<QueueSummary>(client.get('/api/v1/system/queue')),
+  getDeadLetters: (limit = 50) => data<RankJob[]>(
+    client.get('/api/v1/system/dead-letters', { params: { limit } }),
+  ),
+  requeueDeadLetter: (id: string) => data<RankJob>(
+    client.post('/api/v1/system/dead-letters/' + id + '/requeue'),
+  ),
 }
 
 export default client

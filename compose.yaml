@@ -64,6 +64,10 @@ services:
       AUTO_CREATE_SCHEMA: "false"
       API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
       WORKER_ID: ${WORKER_ID:-rank-worker-1}
+      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-3}
+      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-900}
+      JOB_RETRY_BASE_SECONDS: ${JOB_RETRY_BASE_SECONDS:-30}
+      JOB_RETRY_MAX_SECONDS: ${JOB_RETRY_MAX_SECONDS:-900}
       OXYLABS_USERNAME: ${OXYLABS_USERNAME:-}
       OXYLABS_PASSWORD: ${OXYLABS_PASSWORD:-}
       RESIDENTIAL_PROXY_USERNAME: ${RESIDENTIAL_PROXY_USERNAME:-}
@@ -83,6 +87,7 @@ services:
       AUTO_CREATE_SCHEMA: "false"
       API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
       SCHEDULER_POLL_SECONDS: ${SCHEDULER_POLL_SECONDS:-30}
+      SCHEDULER_ID: ${SCHEDULER_ID:-scheduler-1}
     depends_on:
       migrate:
         condition: service_completed_successfully

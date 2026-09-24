@@ -162,7 +162,8 @@ Implemented:
 - Alembic production schema migrations;
 - Docker Compose migration gate, API, worker and scheduler services;
 - GitHub Actions tests, Ruff checks, and PostgreSQL integration coverage;
-- least-privilege API-key scopes, database readiness, and worker heartbeats.
+- least-privilege API-key scopes, database readiness, and worker heartbeats;
+- leased rank jobs, automatic retries, stuck-job recovery, dead-letter queue, and Prometheus-compatible operations metrics.
 
 The complete architecture is documented in `docs/superpowers/specs/2026-09-24-amazon-geo-rank-saas-design.md`.
 
@@ -238,6 +239,10 @@ The local process boundary is the tenant security boundary for stdio. Streamable
 - `GET /api/v1/runs/{id}`
 - `GET/POST/DELETE /api/v1/api-keys`
 - `GET /api/v1/system/workers`
+- `GET /api/v1/system/queue`
+- `GET /api/v1/system/dead-letters`
+- `POST /api/v1/system/dead-letters/{job_id}/requeue`
+- `GET /api/v1/system/metrics`
 
 All tenant-owned lookups are filtered server-side. A resource owned by another tenant is returned as not found.
 
@@ -421,7 +426,7 @@ Available scopes:
 - `rank:read`, `rank:write`
 - `billing:read`, `billing:write`
 - `keys:manage`
-- `system:read`
+- `system:read`, `system:write`
 - `*` for full access
 
 Example:
@@ -458,3 +463,58 @@ Schema revision `20260924_0002` adds API-key scopes and worker heartbeat state. 
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## Job reliability and dead-letter recovery
+
+Rank jobs use a database-backed lease rather than assuming a worker will always exit cleanly. A claim records the worker ID and a lease expiry. While provider work is running, the worker renews the lease periodically.
+
+If a worker process disappears, another worker detects the expired lease and recovers the job. Failed attempts use exponential backoff until `JOB_MAX_ATTEMPTS` is exhausted; the job then moves to `dead_letter` and remains visible for operator review.
+
+Default controls:
+
+```env
+JOB_MAX_ATTEMPTS=3
+JOB_LEASE_SECONDS=900
+JOB_RETRY_BASE_SECONDS=30
+JOB_RETRY_MAX_SECONDS=900
+```
+
+The retry delay is capped exponential backoff. A job is not claimable before its `available_at` time. Total provider failure is retried; partial rank results remain a completed `partially_succeeded` run.
+
+Billing reservations are attempt-specific. When a stale lease is recovered, any still-reserved credits for that abandoned attempt are released before the next attempt is claimed.
+
+Operators with `system:read` can inspect queue state and the DLQ. Requeueing a dead-letter job requires `system:write` and resets its attempt counter.
+
+The Fantastic Admin console exposes this under **Workspace → System Status**, including queue counters, worker/scheduler heartbeats, last errors, and dead-letter requeue actions.
+
+## Prometheus-compatible metrics
+
+Authenticated operators can scrape:
+
+```http
+GET /api/v1/system/metrics
+X-API-Key: <key with system:read>
+```
+
+The endpoint uses Prometheus text exposition and currently emits:
+
+- `agrm_rank_jobs{status=...}`
+- `agrm_queue_oldest_pending_age_seconds`
+- `agrm_service_heartbeat_age_seconds{worker_id,worker_type,status}`
+- `agrm_service_processed_jobs_total{worker_id,worker_type,status}`
+
+Schedulers now emit the same persistent heartbeat records as rank workers. Set a unique `SCHEDULER_ID` for each scheduler replica.
+
+## Phase 9 migration
+
+Schema revision `20260924_0003` adds rank-job availability, worker ownership, lease expiry, and maximum-attempt fields.
+
+Existing production databases should run:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
+
+New databases continue to run all migrations through the existing Docker Compose migration gate.

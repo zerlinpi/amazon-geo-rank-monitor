@@ -200,6 +200,17 @@ class BillingRepository:
     def release(self, reservation_id: str) -> dict:
         return self.settle(reservation_id, credits_used=0)
 
+    def release_by_idempotency_key(self, idempotency_key: str) -> dict | None:
+        with self._sessions() as session:
+            reservation_id = session.scalar(
+                select(CreditReservationRow.id).where(
+                    CreditReservationRow.idempotency_key == idempotency_key
+                )
+            )
+        if reservation_id is None:
+            return None
+        return self.release(reservation_id)
+
     def list_ledger(self, *, owner_id: str, limit: int = 100) -> list[dict]:
         with self._sessions() as session:
             rows = session.scalars(

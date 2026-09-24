@@ -18,6 +18,7 @@ ALLOWED_API_KEY_SCOPES = frozenset(
         "billing:write",
         "keys:manage",
         "system:read",
+        "system:write",
     }
 )
 
