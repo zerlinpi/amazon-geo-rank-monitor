@@ -164,3 +164,86 @@ Implemented:
 - GitHub Actions tests and Ruff checks.
 
 Next isolated phases are REST/API-key/worker/MCP exposure, prepaid credits/Stripe, and the Fantastic Admin Basic SaaS UI. The complete architecture is documented in `docs/superpowers/specs/2026-09-24-amazon-geo-rank-saas-design.md`.
+
+
+## API, worker, and MCP runtime
+
+Phase 3 exposes the same rank application through authenticated REST, a database-backed worker, and the official MCP Python SDK v2.
+
+Required SaaS secret:
+
+```env
+API_KEY_PEPPER=replace-with-a-long-random-server-secret
+```
+
+Bootstrap the first tenant and API key:
+
+```bash
+cd backend
+agrm-bootstrap --name "My Workspace"
+```
+
+The plaintext API key is printed once. The database stores only its display prefix and HMAC-SHA256 digest.
+
+Start REST:
+
+```bash
+agrm-api
+```
+
+REST requests use:
+
+```http
+X-API-Key: agrm_...
+```
+
+Run one queued database job:
+
+```bash
+agrm-worker --once
+```
+
+Or run the worker continuously:
+
+```bash
+agrm-worker
+```
+
+For a local MCP stdio server, bind the process to one tenant:
+
+```env
+MCP_TENANT_ID=<tenant uuid>
+```
+
+Then run:
+
+```bash
+agrm-mcp
+```
+
+The local process boundary is the tenant security boundary for stdio. Streamable HTTP is intentionally not exposed by the CLI until an OAuth 2.1 `AuthSettings`, `TokenVerifier`, and access-token-to-tenant resolver are configured. A SaaS API key is not treated as an OAuth bearer token.
+
+### REST endpoints
+
+- `GET /health`
+- `POST/GET /api/v1/geo-profiles`
+- `POST/GET /api/v1/monitors`
+- `GET /api/v1/monitors/{id}`
+- `POST /api/v1/monitors/{id}/run`
+- `GET /api/v1/jobs/{id}`
+- `POST /api/v1/rank/check`
+- `GET /api/v1/runs/{id}`
+- `GET/POST/DELETE /api/v1/api-keys`
+
+All tenant-owned lookups are filtered server-side. A resource owned by another tenant is returned as not found.
+
+### MCP tools
+
+- `check_rank`
+- `list_geo_profiles`
+- `create_monitor`
+- `run_monitor`
+- `get_rank_run`
+- `get_rank_history`
+
+MCP tools call the same application services used by REST; there is no duplicate ranking implementation.

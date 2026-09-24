@@ -27,6 +27,11 @@ class AppSettings(BaseSettings):
     residential_proxy_username: str | None = None
     residential_proxy_password: str | None = None
     residential_proxy_server: str = "http://pr.oxylabs.io:7777"
+    api_key_pepper: str | None = None
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
+    worker_poll_seconds: float = 2.0
+    mcp_tenant_id: str | None = None
 
 
 class GeoProfilesDocument(BaseModel):

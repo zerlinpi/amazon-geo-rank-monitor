@@ -166,6 +166,14 @@ class RankSnapshot(BaseModel):
         return value.strip().upper()
 
 
+class RankExecutionResult(BaseModel):
+    run_id: str
+    status: str
+    observations: list[RankObservation]
+    snapshots: list[RankSnapshot]
+    errors: list[str] = Field(default_factory=list)
+
+
 class ProxyLocation(BaseModel):
     ip: str | None = None
     country: str | None = None

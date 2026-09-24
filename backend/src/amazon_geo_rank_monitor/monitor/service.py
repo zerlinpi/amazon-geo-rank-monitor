@@ -5,6 +5,7 @@ from typing import Any
 from amazon_geo_rank_monitor.domain.errors import RankMonitorError
 from amazon_geo_rank_monitor.domain.models import (
     RankCheckRequest,
+    RankExecutionResult,
     RankObservation,
     RankSnapshot,
     VerificationLevel,
@@ -21,6 +22,14 @@ class RankMonitorService:
         self._repository = repository
 
     async def check(self, request: RankCheckRequest) -> list[RankSnapshot]:
+        return (await self.check_with_result(request)).snapshots
+
+    async def check_with_result(
+        self,
+        request: RankCheckRequest,
+        *,
+        owner_id: str | None = None,
+    ) -> RankExecutionResult:
         if not request.geo_profiles:
             raise ValueError("at least one geo profile is required")
 
@@ -28,6 +37,7 @@ class RankMonitorService:
             marketplace=request.marketplace,
             keyword=request.keyword,
             requested_probe_count=len(request.geo_profiles),
+            owner_id=owner_id,
         )
         observations: list[RankObservation] = []
         errors: list[str] = []
@@ -93,4 +103,10 @@ class RankMonitorService:
             settled_probe_count=successful_probe_count,
             error_summary="; ".join(errors) if errors else None,
         )
-        return snapshots
+        return RankExecutionResult(
+            run_id=run_id,
+            status=status,
+            observations=observations,
+            snapshots=snapshots,
+            errors=errors,
+        )

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     ForeignKey,
@@ -20,10 +21,108 @@ class Base(DeclarativeBase):
     pass
 
 
+class TenantRow(Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class ApiKeyRow(Base):
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    prefix: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GeoProfileRow(Base):
+    __tablename__ = "geo_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    marketplace: Mapped[str] = mapped_column(String(128), nullable=False)
+    ip_country: Mapped[str] = mapped_column(String(8), nullable=False)
+    ip_state: Mapped[str | None] = mapped_column(String(128))
+    ip_city: Mapped[str | None] = mapped_column(String(128))
+    ip_postal_code: Mapped[str | None] = mapped_column(String(32))
+    delivery_country: Mapped[str] = mapped_column(String(8), nullable=False)
+    delivery_postal_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    device: Mapped[str] = mapped_column(String(16), nullable=False)
+    weight: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class MonitorTargetRow(Base):
+    __tablename__ = "monitor_targets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    marketplace: Mapped[str] = mapped_column(String(128), nullable=False)
+    keyword: Mapped[str] = mapped_column(String(512), nullable=False)
+    search_depth: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    provider_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="managed")
+    schedule: Mapped[str | None] = mapped_column(String(128))
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class MonitorTargetAsinRow(Base):
+    __tablename__ = "monitor_target_asins"
+    __table_args__ = (
+        UniqueConstraint("monitor_target_id", "asin", name="uq_monitor_asin"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    monitor_target_id: Mapped[str] = mapped_column(
+        ForeignKey("monitor_targets.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    asin: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class MonitorTargetGeoRow(Base):
+    __tablename__ = "monitor_target_geos"
+    __table_args__ = (
+        UniqueConstraint("monitor_target_id", "geo_profile_id", name="uq_monitor_geo"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    monitor_target_id: Mapped[str] = mapped_column(
+        ForeignKey("monitor_targets.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    geo_profile_id: Mapped[str] = mapped_column(
+        ForeignKey("geo_profiles.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+
+
 class RankRunRow(Base):
     __tablename__ = "rank_runs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     marketplace: Mapped[str] = mapped_column(String(128), nullable=False)
     keyword: Mapped[str] = mapped_column(String(512), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="running")
@@ -101,3 +200,22 @@ class RankSnapshotRow(Base):
     )
 
     run: Mapped[RankRunRow] = relationship(back_populates="snapshots")
+
+
+class RankJobRow(Base):
+    __tablename__ = "rank_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    monitor_target_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    provider_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    request_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
