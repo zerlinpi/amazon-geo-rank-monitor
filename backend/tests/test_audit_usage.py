@@ -93,6 +93,16 @@ def test_audit_endpoint_is_tenant_scoped() -> None:
     key_b = keys.create(owner_id=tenant_b["id"], name="B root")
 
     audit.record(
+        owner_id=tenant_a["id"],
+        api_key_id=key_a.id,
+        request_id="tenant-a-event",
+        method="GET",
+        path="/api/v1/runs",
+        status_code=200,
+        client_ip="10.0.0.1",
+        user_agent="test",
+    )
+    audit.record(
         owner_id=tenant_b["id"],
         api_key_id=key_b.id,
         request_id="tenant-b-event",
