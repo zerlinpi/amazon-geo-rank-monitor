@@ -11,7 +11,7 @@ OUTDIR.mkdir(parents=True, exist_ok=True)
 ARCTIC = "https://arctic-shift.photon-reddit.com/api"
 UA = {"User-Agent":"walking-pad-voc-research/3.0"}
 
-TERMS = ["walking pad","walkingpad","under desk treadmill","desk treadmill","walking treadmill","walking desk","under desk"]
+TERMS = ["walking pad","walkingpad","under desk treadmill","desk treadmill","walking treadmill"]
 PURE_SUBS = [
     ("WalkingPads", 2023),
     ("walkingdesks", 2018),
@@ -86,7 +86,7 @@ def get_json(path, params=None, retries=6, timeout=60):
         except Exception as e:
             last=repr(e)
             time.sleep(min(12,1.5*(i+1))+random.random())
-    return {"data":[],"_err":str(last)}
+    return {"data":[],"_err":str(last),"_status":(last[0] if isinstance(last,tuple) else None)}
 
 def paginate_posts(sub, after, before, query=None, max_pages=200):
     out=[]; cursor=after
@@ -119,30 +119,46 @@ def discover_query_slice(sub, term, year):
     return allm
 
 posts={}
-# High-purity subs: all posts
+# Parallel discovery to reduce wall-clock time.
+jobs=[]
 for sub,start in PURE_SUBS:
     for year in range(start,2027):
-        a,b=year_bounds(year)
-        data=paginate_posts(sub,a,b,None,max_pages=200)
-        for p in data:
-            pid=str(p.get("id") or "")
-            if pid: posts[pid]=p
-        print(f"discover pure r/{sub} {year}: fetched={len(data):,}, unique={len(posts):,}",flush=True)
-
-# Larger subs: keyword searches, sliced by year with monthly fallback
+        jobs.append(("pure",sub,year,None))
 for sub,start in QUERY_SUBS:
     for year in range(start,2027):
         for term in TERMS:
-            data=discover_query_slice(sub,term,year)
-            for p in data:
-                pid=str(p.get("id") or "")
-                if not pid: continue
+            jobs.append(("query",sub,year,term))
+
+def run_discovery_job(job):
+    kind,sub,year,term=job
+    if kind=="pure":
+        a,b=year_bounds(year)
+        data,_=paginate_posts(sub,a,b,None,max_pages=200)
+    else:
+        data=discover_query_slice(sub,term,year)
+    return job,data
+
+with ThreadPoolExecutor(max_workers=8) as ex:
+    futs={ex.submit(run_discovery_job,j):j for j in jobs}
+    done=0
+    for fut in as_completed(futs):
+        job=futs[fut]; done+=1
+        try: _,data=fut.result()
+        except Exception: data=[]
+        kind,sub,year,term=job
+        for p in data:
+            pid=str(p.get("id") or "")
+            if not pid: continue
+            if kind=="query":
                 blob=norm(str(p.get("title") or "")+" "+str(p.get("selftext") or ""))
-                if any(t in blob for t in TERMS):
-                    posts[pid]=p
-            if data:
-                print(f"discover query r/{sub} {year} {term!r}: fetched={len(data):,}, unique={len(posts):,}",flush=True)
-            time.sleep(0.05)
+                if not any(t in blob for t in TERMS):
+                    continue
+            posts[pid]=p
+        if data:
+            print(f"discover {kind} r/{sub} {year} {term!r}: fetched={len(data):,}, unique={len(posts):,}",flush=True)
+        if done%25==0:
+            print(f"discovery progress {done}/{len(jobs)} unique_posts={len(posts):,}",flush=True)
+        time.sleep(0.02)
 
 declared=sum(int(p.get("num_comments") or 0) for p in posts.values())
 print(f"POST DISCOVERY COMPLETE unique_posts={len(posts):,} declared_comments={declared:,}",flush=True)
@@ -180,7 +196,7 @@ seen_ids=set(); seen_hashes=set(); rows=[]; processed=0
 for start in range(0,len(ordered),20):
     if len(rows)>=TARGET: break
     batch=ordered[start:start+20]
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=8) as ex:
         futs=[ex.submit(fetch_comments,p) for p in batch if int(p.get("num_comments") or 0)>0]
         for fut in as_completed(futs):
             try: post,comments=fut.result()
