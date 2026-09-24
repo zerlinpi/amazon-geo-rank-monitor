@@ -1,0 +1,60 @@
+geo_profiles:
+  - id: us-ny-10001
+    name: New York
+    marketplace: amazon.com
+    ip_country: US
+    ip_state: NY
+    ip_city: New York
+    ip_postal_code: "10001"
+    delivery_country: US
+    delivery_postal_code: "10001"
+    device: desktop
+    weight: 20
+
+  - id: us-ca-90001
+    name: Los Angeles
+    marketplace: amazon.com
+    ip_country: US
+    ip_state: CA
+    ip_city: Los Angeles
+    ip_postal_code: "90001"
+    delivery_country: US
+    delivery_postal_code: "90001"
+    device: desktop
+    weight: 25
+
+  - id: us-tx-75201
+    name: Dallas
+    marketplace: amazon.com
+    ip_country: US
+    ip_state: TX
+    ip_city: Dallas
+    ip_postal_code: "75201"
+    delivery_country: US
+    delivery_postal_code: "75201"
+    device: desktop
+    weight: 20
+
+  - id: us-fl-33101
+    name: Miami
+    marketplace: amazon.com
+    ip_country: US
+    ip_state: FL
+    ip_city: Miami
+    ip_postal_code: "33101"
+    delivery_country: US
+    delivery_postal_code: "33101"
+    device: desktop
+    weight: 20
+
+  - id: us-wa-98101
+    name: Seattle
+    marketplace: amazon.com
+    ip_country: US
+    ip_state: WA
+    ip_city: Seattle
+    ip_postal_code: "98101"
+    delivery_country: US
+    delivery_postal_code: "98101"
+    device: desktop
+    weight: 15
