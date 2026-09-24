@@ -64,7 +64,8 @@ def make_services(provider):
 
 def add_geo(repo, profile_id, zip_code):
     return repo.create(
-        GeoProfile(
+        owner_id="tenant-1",
+        profile=GeoProfile(
             id=profile_id,
             name=profile_id,
             marketplace="amazon.com",
@@ -73,7 +74,6 @@ def add_geo(repo, profile_id, zip_code):
             delivery_postal_code=zip_code,
             weight=Decimal("1"),
         ),
-        owner_id="tenant-1",
     )
 
 
