@@ -7,8 +7,6 @@ from fastapi import Depends, Header, HTTPException, Request, status
 
 from amazon_geo_rank_monitor.auth.accounts import HumanPrincipal
 from amazon_geo_rank_monitor.auth.api_keys import ApiPrincipal
-
-
 Principal = ApiPrincipal | HumanPrincipal
 
 
