@@ -20,11 +20,14 @@ dependencies = [
   "mcp>=2,<3",
   "psycopg[binary]>=3.2,<4",
   "stripe>=15.6,<16",
+  "alembic>=1.16,<2",
+  "croniter>=6.0,<7",
 ]
 
 [project.scripts]
 agrm-api = "amazon_geo_rank_monitor.main:api_main"
 agrm-worker = "amazon_geo_rank_monitor.main:worker_main"
+agrm-scheduler = "amazon_geo_rank_monitor.main:scheduler_main"
 agrm-bootstrap = "amazon_geo_rank_monitor.main:bootstrap_main"
 agrm-mcp = "amazon_geo_rank_monitor.main:mcp_main"
 
