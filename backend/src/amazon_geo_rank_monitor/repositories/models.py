@@ -219,3 +219,80 @@ class RankJobRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+
+
+class CreditAccountRow(Base):
+    __tablename__ = "credit_accounts"
+
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    available_credits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reserved_credits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class CreditLedgerEntryRow(Base):
+    __tablename__ = "credit_ledger_entries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    entry_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    available_delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    reserved_delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(
+        String(200), unique=True, index=True, nullable=False
+    )
+    reference_type: Mapped[str | None] = mapped_column(String(64))
+    reference_id: Mapped[str | None] = mapped_column(String(128))
+    entry_metadata: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class CreditReservationRow(Base):
+    __tablename__ = "credit_reservations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    settled_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    released_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")
+    idempotency_key: Mapped[str] = mapped_column(
+        String(200), unique=True, index=True, nullable=False
+    )
+    reference_type: Mapped[str | None] = mapped_column(String(64))
+    reference_id: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CreditPackRow(Base):
+    __tablename__ = "credit_packs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    credits: Mapped[int] = mapped_column(Integer, nullable=False)
+    stripe_price_id: Mapped[str] = mapped_column(
+        String(128), unique=True, index=True, nullable=False
+    )
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
