@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from amazon_geo_rank_monitor.api.dependencies import current_tenant, get_services
+from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
 from amazon_geo_rank_monitor.api.schemas import RankCheckBody
 from amazon_geo_rank_monitor.application.rank_application import (
     execute_rank_check,
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1", tags=["rank"])
 async def check_rank(
     body: RankCheckBody,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("rank:write")),
 ):
     services = get_services(request)
     try:
@@ -39,7 +39,7 @@ async def check_rank(
 def get_job(
     job_id: str,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("rank:read")),
 ):
     try:
         return get_services(request).job_repository.get(job_id, owner_id=owner_id)
@@ -50,7 +50,7 @@ def get_job(
 @router.get("/runs")
 def list_runs(
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("rank:read")),
     limit: int = 50,
 ):
     return get_services(request).rank_repository.list_runs(
@@ -63,7 +63,7 @@ def list_runs(
 def get_run(
     run_id: str,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("rank:read")),
 ):
     try:
         return get_services(request).rank_repository.get_run(
