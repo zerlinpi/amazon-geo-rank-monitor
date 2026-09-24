@@ -1,5 +1,5 @@
-import os
 from concurrent.futures import ThreadPoolExecutor
+import os
 
 import pytest
 from sqlalchemy import create_engine
