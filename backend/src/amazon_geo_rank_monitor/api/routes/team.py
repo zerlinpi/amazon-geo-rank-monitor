@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from amazon_geo_rank_monitor.api.dependencies import (
@@ -11,10 +13,17 @@ from amazon_geo_rank_monitor.api.schemas import (
     InvitationCreate,
     MemberRoleUpdate,
 )
-from amazon_geo_rank_monitor.auth.accounts import HumanPrincipal, ROLES
+from amazon_geo_rank_monitor.auth.accounts import ROLES, HumanPrincipal
 from amazon_geo_rank_monitor.auth.api_keys import ApiPrincipal
 
 router = APIRouter(prefix="/api/v1/team", tags=["team"])
+
+TeamReadOwner = Annotated[str, Depends(require_scope("team:read"))]
+TeamManageOwner = Annotated[str, Depends(require_scope("team:manage"))]
+TeamManagePrincipal = Annotated[
+    Principal,
+    Depends(require_scope_principal("team:manage")),
+]
 
 
 def _session_payload(services, session) -> dict:
@@ -28,7 +37,7 @@ def _session_payload(services, session) -> dict:
 @router.get("/members")
 def list_members(
     request: Request,
-    owner_id: str = Depends(require_scope("team:read")),
+    owner_id: TeamReadOwner,
 ):
     return get_services(request).account_repository.list_members(owner_id=owner_id)
 
@@ -36,7 +45,7 @@ def list_members(
 @router.get("/invitations")
 def list_invitations(
     request: Request,
-    owner_id: str = Depends(require_scope("team:manage")),
+    owner_id: TeamManageOwner,
 ):
     return get_services(request).account_repository.list_invitations(owner_id=owner_id)
 
@@ -45,7 +54,7 @@ def list_invitations(
 def create_invitation(
     body: InvitationCreate,
     request: Request,
-    principal: Principal = Depends(require_scope_principal("team:manage")),
+    principal: TeamManagePrincipal,
 ):
     if not isinstance(principal, HumanPrincipal):
         raise HTTPException(
@@ -77,7 +86,7 @@ def update_member_role(
     user_id: str,
     body: MemberRoleUpdate,
     request: Request,
-    principal: Principal = Depends(require_scope_principal("team:manage")),
+    principal: TeamManagePrincipal,
 ):
     if body.role not in ROLES:
         raise HTTPException(status_code=422, detail="unsupported workspace role")
@@ -110,7 +119,7 @@ def update_member_role(
 def remove_member(
     user_id: str,
     request: Request,
-    principal: Principal = Depends(require_scope_principal("team:manage")),
+    principal: TeamManagePrincipal,
 ):
     services = get_services(request)
     try:
@@ -141,7 +150,7 @@ def remove_member(
 def bootstrap_owner(
     body: BootstrapOwnerCreate,
     request: Request,
-    principal: Principal = Depends(require_scope_principal("team:manage")),
+    principal: TeamManagePrincipal,
 ):
     if not isinstance(principal, ApiPrincipal):
         raise HTTPException(
