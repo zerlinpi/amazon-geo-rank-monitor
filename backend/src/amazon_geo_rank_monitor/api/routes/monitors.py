@@ -2,25 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from amazon_geo_rank_monitor.api.dependencies import current_tenant, get_services
 from amazon_geo_rank_monitor.api.schemas import MonitorCreate
-from amazon_geo_rank_monitor.domain.models import RankCheckRequest
+from amazon_geo_rank_monitor.application.rank_application import enqueue_monitor
 
 router = APIRouter(prefix="/api/v1/monitors", tags=["monitors"])
-
-
-def _request_for_monitor(services, monitor: dict, owner_id: str) -> RankCheckRequest:
-    profiles = []
-    for profile_id in monitor["geo_profile_ids"]:
-        profile = services.geo_repository.get_domain(profile_id, owner_id=owner_id)
-        if profile is None:
-            raise HTTPException(status_code=404, detail="geo profile not found")
-        profiles.append(profile)
-    return RankCheckRequest(
-        marketplace=monitor["marketplace"],
-        keyword=monitor["keyword"],
-        asins=monitor["asins"],
-        geo_profiles=profiles,
-        search_depth=monitor["search_depth"],
-    )
 
 
 @router.get("")
@@ -79,10 +63,8 @@ def run_monitor(
     monitor = services.monitor_repository.get(monitor_id, owner_id=owner_id)
     if monitor is None:
         raise HTTPException(status_code=404, detail="monitor not found")
-    rank_request = _request_for_monitor(services, monitor, owner_id)
-    return services.job_repository.enqueue(
+    return enqueue_monitor(
+        services=services,
         owner_id=owner_id,
-        monitor_target_id=monitor_id,
-        provider_mode=monitor["provider_mode"],
-        request_payload=rank_request.model_dump(mode="json"),
+        monitor=monitor,
     )

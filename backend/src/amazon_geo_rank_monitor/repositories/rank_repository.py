@@ -160,3 +160,14 @@ class RankRepository:
                 for row in snapshots
             ],
         }
+
+
+    def list_runs(self, *, owner_id: str, limit: int = 50) -> list[dict]:
+        with self._sessions() as session:
+            run_ids = session.scalars(
+                select(RankRunRow.id)
+                .where(RankRunRow.owner_id == owner_id)
+                .order_by(RankRunRow.started_at.desc())
+                .limit(limit)
+            ).all()
+        return [self.get_run(run_id, owner_id=owner_id) for run_id in run_ids]
