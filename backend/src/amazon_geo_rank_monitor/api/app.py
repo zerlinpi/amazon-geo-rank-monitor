@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from .errors import (
     error_payload,
@@ -23,6 +24,7 @@ from .routes import (
     geo_profiles_router,
     monitors_router,
     rank_router,
+    system_router,
 )
 
 
@@ -38,6 +40,8 @@ class AppServices:
     billing_repository: Any | None = None
     rate_card: Any | None = None
     stripe_billing: Any | None = None
+    database_engine: Any | None = None
+    worker_status_repository: Any | None = None
 
 
 def create_app(
@@ -67,6 +71,7 @@ def create_app(
         api_key = request.headers.get("X-API-Key")
         exempt = request.method == "OPTIONS" or request.url.path in {
             "/health",
+            "/ready",
             "/api/v1/billing/webhook",
         }
         if api_key and not exempt and limiter.limit:
@@ -119,9 +124,25 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/ready")
+    def ready() -> JSONResponse | dict[str, str]:
+        engine = services.database_engine
+        if engine is None:
+            return {"status": "ok"}
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+        except Exception:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "database": "unavailable"},
+            )
+        return {"status": "ok", "database": "ok"}
+
     app.include_router(geo_profiles_router)
     app.include_router(monitors_router)
     app.include_router(rank_router)
     app.include_router(api_keys_router)
     app.include_router(billing_router)
+    app.include_router(system_router)
     return app
