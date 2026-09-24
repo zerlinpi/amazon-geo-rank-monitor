@@ -73,11 +73,13 @@ class TenantRepository:
             )
             return self._serialize_key(row) if row else None
 
-    def touch_api_key(self, key_id: str) -> None:
+    def touch_api_key(self, key_id: str, *, client_ip: str | None = None) -> None:
         with self._sessions.begin() as session:
             row = session.get(ApiKeyRow, key_id)
             if row is not None:
                 row.last_used_at = datetime.now(UTC)
+                row.last_used_ip = client_ip
+                row.usage_count += 1
 
     def revoke_api_key(self, key_id: str, *, owner_id: str) -> None:
         with self._sessions.begin() as session:
@@ -102,5 +104,7 @@ class TenantRepository:
             "scopes": list(row.scopes or ["*"]),
             "created_at": row.created_at,
             "last_used_at": row.last_used_at,
+            "last_used_ip": row.last_used_ip,
+            "usage_count": row.usage_count,
             "revoked_at": row.revoked_at,
         }
