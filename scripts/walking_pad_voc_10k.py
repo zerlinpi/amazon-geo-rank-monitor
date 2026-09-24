@@ -1,31 +1,41 @@
 #!/usr/bin/env python3
-import csv, json, os, re, hashlib, gzip, io, sys
+import csv, json, os, re, hashlib, gzip, io
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 
-TARGET = int(os.getenv("TARGET_REVIEWS", "12000"))
-MIN_VALID = int(os.getenv("MIN_VALID", "10000"))
+TARGET = int(os.getenv("TARGET_REVIEWS", "100000"))
 OUTDIR = Path(os.getenv("OUTDIR", "voc_output"))
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 META_URL = "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Sports_and_Outdoors.jsonl.gz"
 REVIEWS_URL = "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Sports_and_Outdoors.jsonl.gz"
 
-KEYWORDS = [
+CORE_TERMS = [
     "walking pad","walkingpad","under desk treadmill","under-desk treadmill",
     "desk treadmill","walking treadmill","portable treadmill","compact treadmill",
     "foldable treadmill","folding treadmill","mini treadmill","2 in 1 treadmill",
     "2-in-1 treadmill","home office treadmill","treadmill for office",
     "treadmill under desk","walking machine"
 ]
-BRANDS = [
+CORE_BRANDS = [
     "walkingpad","kingsmith","urevo","deerrun","sperax","egofit","goyouth",
-    "goplus","merach","lifespan","sunny health","toputure","maksone","wellfit",
-    "axefit","motiongrey","freepi","vitalwalk"
+    "goplus","merach","lifespan","toputure","maksone","wellfit","axefit",
+    "motiongrey","freepi","vitalwalk"
 ]
+ACCESSORY_HINTS = [
+    "treadmill mat","treadmill cover","treadmill belt replacement","replacement belt",
+    "lubricant","lubrication","silicone oil","safety key","replacement key",
+    "remote control replacement","replacement remote","treadmill motor","motor controller",
+    "treadmill desk attachment","treadmill phone holder","treadmill book holder",
+    "treadmill tablet holder","treadmill cup holder","treadmill wheel","treadmill part",
+    "treadmill accessory","treadmill accessories","treadmill maintenance kit",
+    "treadmill cleaner","treadmill brush"
+]
+NON_HUMAN_HINTS = ["dog treadmill","pet treadmill","cat treadmill","hamster treadmill","toy treadmill"]
+
 CATEGORY_PATTERNS = {
     "安全/召回": r"recall|fire|burn|smoke|unsafe|fall|fell|injur|shock|sudden stop|abrupt stop|almost fell",
     "耐久/质量": r"fail|broke|broken|stopped working|died|motor|overheat|hot|burnt|squeak|grind|lasted",
@@ -54,18 +64,32 @@ def as_text(v):
         return json.dumps(v, ensure_ascii=False)
     return str(v)
 
-def match_product(row):
-    title = as_text(row.get("title"))
-    desc = as_text(row.get("description"))
-    feats = as_text(row.get("features"))
-    cats = as_text(row.get("categories"))
-    store = as_text(row.get("store"))
-    blob = norm(" ".join([title, desc, feats, cats, store]))
-    if any(k in blob for k in KEYWORDS):
-        return True
-    if any(b in blob for b in BRANDS) and "treadmill" in blob and any(x in blob for x in ["walking","under desk","foldable","folding","compact","portable","2 in 1","2-in-1","mini"]):
-        return True
-    return False
+def classify_scope(row):
+    title = norm(as_text(row.get("title")))
+    desc = norm(as_text(row.get("description")))
+    feats = norm(as_text(row.get("features")))
+    cats = norm(as_text(row.get("categories")))
+    store = norm(as_text(row.get("store")))
+    blob = " ".join([title, desc, feats, cats, store])
+
+    if any(x in title for x in ACCESSORY_HINTS) or any(x in title for x in NON_HUMAN_HINTS):
+        return None
+
+    # Core: explicit walking-pad / under-desk / compact walking treadmill semantics.
+    if any(k in blob for k in CORE_TERMS):
+        return "Core Walking Pad"
+
+    # Core-brand + treadmill + walking/compact/foldable semantics.
+    if "treadmill" in blob and any(b in blob for b in CORE_BRANDS) and any(
+        q in blob for q in ["walking","under desk","under-desk","compact","portable","foldable","folding","mini","office"]
+    ):
+        return "Core Walking Pad"
+
+    # Adjacent: actual human treadmill product, not accessory. Used only to expand statistical support.
+    if "treadmill" in title and not any(x in title for x in ACCESSORY_HINTS + NON_HUMAN_HINTS):
+        return "Adjacent Treadmill"
+
+    return None
 
 def classify(text):
     low = norm(text)
@@ -76,8 +100,12 @@ def classify(text):
             best_cat, best_n = cat, n
     return best_cat
 
-def dedup_key(text, parent):
-    return hashlib.sha256((norm(text)+"|"+str(parent)).encode("utf-8")).hexdigest()
+def dedup_key(text, user_id):
+    identity = str(user_id or "")
+    base = norm(text)
+    if identity:
+        base = identity + "|" + base
+    return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
 def iso_date(ts):
     try:
@@ -90,8 +118,8 @@ def iso_date(ts):
 
 def iter_jsonl_gz(url, label):
     print(f"Streaming {label}: {url}", flush=True)
-    headers = {"User-Agent":"Mozilla/5.0 walking-pad-voc-research/1.0"}
-    with requests.get(url, stream=True, timeout=(30, 600), headers=headers) as r:
+    headers = {"User-Agent":"Mozilla/5.0 walking-pad-voc-research/2.0"}
+    with requests.get(url, stream=True, timeout=(30, 900), headers=headers) as r:
         r.raise_for_status()
         r.raw.decode_content = False
         with gzip.GzipFile(fileobj=r.raw, mode="rb") as gz:
@@ -105,12 +133,14 @@ def iter_jsonl_gz(url, label):
                 except json.JSONDecodeError:
                     continue
 
-# 1) Stream metadata and identify walking-pad product parent ASINs
+# 1) Scan all product metadata and tag Core vs Adjacent.
 products={}
 meta_scanned=0
+scope_products=Counter()
 for row in iter_jsonl_gz(META_URL, "Sports & Outdoors metadata"):
     meta_scanned += 1
-    if match_product(row):
+    scope=classify_scope(row)
+    if scope:
         parent=str(row.get("parent_asin") or "")
         if parent:
             products[parent]={
@@ -120,118 +150,174 @@ for row in iter_jsonl_gz(META_URL, "Sports & Outdoors metadata"):
                 "rating_number":row.get("rating_number"),
                 "average_rating":row.get("average_rating"),
                 "price":row.get("price"),
+                "scope":scope
             }
+            scope_products[scope]+=1
     if meta_scanned % 100000 == 0:
-        print(f"metadata scanned={meta_scanned:,}; matched products={len(products):,}", flush=True)
+        print(f"metadata scanned={meta_scanned:,}; products={len(products):,}; scopes={dict(scope_products)}", flush=True)
 
-print(f"Metadata complete. scanned={meta_scanned:,}; matched products={len(products):,}", flush=True)
 rating_sum=sum(int(p.get("rating_number") or 0) for p in products.values())
-print(f"matched product rating_number sum={rating_sum:,}", flush=True)
+print(f"Metadata complete: scanned={meta_scanned:,}; matched={len(products):,}; scopes={dict(scope_products)}; rating sum={rating_sum:,}", flush=True)
 
 with open(OUTDIR/"matched_products.csv","w",encoding="utf-8-sig",newline="") as f:
-    w=csv.DictWriter(f,fieldnames=["parent_asin","title","brand","rating_number","average_rating","price"])
-    w.writeheader(); w.writerows(products.values())
+    w=csv.DictWriter(f,fieldnames=["scope","parent_asin","title","brand","rating_number","average_rating","price"])
+    w.writeheader()
+    for p in products.values():
+        w.writerow({k:p[k] for k in ["scope","parent_asin","title","brand","rating_number","average_rating","price"]})
 
-if not products:
-    raise SystemExit("No matching walking-pad products found.")
-
-# 2) Stream review file and keep reviews for matched products
+# 2) Scan the full review file.
+# Keep every unique Core review up to TARGET; retain Adjacent candidates until we can fill to TARGET.
 fields=[
-    "platform","source_type","source_url","date","rating","verified_purchase","helpful_vote",
-    "brand","model","asin","parent_asin","review_title","comment","category","dedup_key"
+    "scope","platform","source_type","source_url","date","rating","verified_purchase","helpful_vote",
+    "user_id","brand","model","asin","parent_asin","review_title","comment","category","dedup_key"
 ]
-raw_path=OUTDIR/"walking_pad_reviews_raw.csv"
-dedup_path=OUTDIR/"walking_pad_reviews_10k.csv"
-seen=set(); valid=[]; cats=Counter(); raw_count=0; review_scanned=0
+seen=set()
+core=[]
+adjacent=[]
+cats_core=Counter()
+cats_adj=Counter()
+raw_matches=Counter()
+review_scanned=0
 
-with open(raw_path,"w",encoding="utf-8-sig",newline="") as f:
-    w=csv.DictWriter(f,fieldnames=fields); w.writeheader()
-    for rv in iter_jsonl_gz(REVIEWS_URL, "Sports & Outdoors reviews"):
-        review_scanned += 1
-        parent=str(rv.get("parent_asin") or "")
-        if parent not in products:
-            if review_scanned % 500000 == 0:
-                print(f"reviews scanned={review_scanned:,}; raw={raw_count:,}; dedup={len(valid):,}", flush=True)
-            continue
-        text=as_text(rv.get("text")).strip()
-        if len(text)<8:
-            continue
-        title=as_text(rv.get("title"))
-        p=products[parent]
-        dk=dedup_key(text,parent)
-        row={
-            "platform":"Amazon Reviews 2023",
-            "source_type":"historical review dataset",
-            "source_url":f"https://www.amazon.com/dp/{parent}",
-            "date":iso_date(rv.get("timestamp")),
-            "rating":rv.get("rating"),
-            "verified_purchase":rv.get("verified_purchase"),
-            "helpful_vote":rv.get("helpful_vote"),
-            "brand":p["brand"],
-            "model":p["title"],
-            "asin":as_text(rv.get("asin")),
-            "parent_asin":parent,
-            "review_title":title,
-            "comment":text,
-            "category":classify(title+" "+text),
-            "dedup_key":dk,
-        }
-        w.writerow(row); raw_count += 1
-        if dk not in seen:
-            seen.add(dk); valid.append(row); cats[row["category"]]+=1
-        if len(valid)>=TARGET:
-            print(f"Target reached at scanned={review_scanned:,}", flush=True)
-            break
-        if review_scanned % 500000 == 0:
-            print(f"reviews scanned={review_scanned:,}; raw={raw_count:,}; dedup={len(valid):,}", flush=True)
+for rv in iter_jsonl_gz(REVIEWS_URL, "Sports & Outdoors reviews"):
+    review_scanned += 1
+    parent=str(rv.get("parent_asin") or "")
+    p=products.get(parent)
+    if not p:
+        if review_scanned % 1000000 == 0:
+            print(f"reviews scanned={review_scanned:,}; core={len(core):,}; adjacent={len(adjacent):,}", flush=True)
+        continue
+    text=as_text(rv.get("text")).strip()
+    if len(text)<8:
+        continue
+    title=as_text(rv.get("title"))
+    user_id=as_text(rv.get("user_id"))
+    dk=dedup_key(text,user_id)
+    if dk in seen:
+        continue
+    seen.add(dk)
+    scope=p["scope"]
+    row={
+        "scope":scope,
+        "platform":"Amazon Reviews 2023",
+        "source_type":"historical review dataset",
+        "source_url":f"https://www.amazon.com/dp/{parent}",
+        "date":iso_date(rv.get("timestamp")),
+        "rating":rv.get("rating"),
+        "verified_purchase":rv.get("verified_purchase"),
+        "helpful_vote":rv.get("helpful_vote"),
+        "user_id":user_id,
+        "brand":p["brand"],
+        "model":p["title"],
+        "asin":as_text(rv.get("asin")),
+        "parent_asin":parent,
+        "review_title":title,
+        "comment":text,
+        "category":classify(title+" "+text),
+        "dedup_key":dk,
+    }
+    raw_matches[scope]+=1
+    if scope=="Core Walking Pad":
+        if len(core)<TARGET:
+            core.append(row)
+            cats_core[row["category"]]+=1
+    else:
+        if len(adjacent)<TARGET:
+            adjacent.append(row)
+            cats_adj[row["category"]]+=1
 
-with open(dedup_path,"w",encoding="utf-8-sig",newline="") as f:
-    w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(valid)
+    if review_scanned % 1000000 == 0:
+        print(f"reviews scanned={review_scanned:,}; core={len(core):,}; adjacent={len(adjacent):,}", flush=True)
 
-# 3) XLSX
+print(f"Review scan complete: scanned={review_scanned:,}; core={len(core):,}; adjacent candidates={len(adjacent):,}", flush=True)
+
+# Final corpus: prioritize Core completely, then fill with Adjacent to reach exactly TARGET where possible.
+if len(core)>=TARGET:
+    final=core[:TARGET]
+else:
+    need=TARGET-len(core)
+    final=core + adjacent[:need]
+
+if len(final)<TARGET:
+    raise SystemExit(f"Only {len(final):,} unique reviews available; target={TARGET:,}")
+
+final_scope=Counter(r["scope"] for r in final)
+final_cats=Counter(r["category"] for r in final)
+
+csv_path=OUTDIR/"walking_pad_reviews_100k.csv"
+with open(csv_path,"w",encoding="utf-8-sig",newline="") as f:
+    w=csv.DictWriter(f,fieldnames=fields); w.writeheader(); w.writerows(final)
+
+# 3) Excel with explicit scope so the report can use Core by default.
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
-wb=Workbook(); ws=wb.active; ws.title="评论明细_All"; ws.append(fields)
+xlsx=OUTDIR/"walking_pad_voc_100k.xlsx"
+wb=Workbook()
+ws=wb.active
+ws.title="评论明细_All"
+ws.append(fields)
 for c in ws[1]:
-    c.font=Font(bold=True,color="FFFFFF"); c.fill=PatternFill("solid",fgColor="121826"); c.alignment=Alignment(wrap_text=True)
-for r in valid:
+    c.font=Font(bold=True,color="FFFFFF")
+    c.fill=PatternFill("solid",fgColor="121826")
+    c.alignment=Alignment(wrap_text=True,vertical="center")
+for r in final:
     ws.append([r[h] for h in fields])
 ws.freeze_panes="A2"
-widths=[18,22,36,13,9,16,12,20,45,16,16,30,80,18,68]
+widths=[20,20,24,38,13,9,17,12,18,20,48,16,16,32,82,18,68]
 for i,wid in enumerate(widths,1):
     ws.column_dimensions[get_column_letter(i)].width=wid
 
-sw=wb.create_sheet("汇总"); sw.append(["指标","值"])
+sw=wb.create_sheet("汇总")
+sw.append(["指标","值"])
 metrics=[
-    ("实际去重评论",len(valid)),("原始匹配评论",raw_count),("扫描评论总数",review_scanned),
-    ("扫描商品元数据",meta_scanned),("匹配商品数",len(products)),("匹配商品rating_number合计",rating_sum),
-    ("目标",TARGET),("生成时间",datetime.now(timezone.utc).isoformat())
+    ("最终去重评论",len(final)),
+    ("Core Walking Pad",final_scope.get("Core Walking Pad",0)),
+    ("Adjacent Treadmill",final_scope.get("Adjacent Treadmill",0)),
+    ("扫描评论总数",review_scanned),
+    ("扫描商品元数据",meta_scanned),
+    ("匹配商品数",len(products)),
+    ("Core商品数",scope_products.get("Core Walking Pad",0)),
+    ("Adjacent商品数",scope_products.get("Adjacent Treadmill",0)),
+    ("匹配商品rating_number合计",rating_sum),
+    ("生成时间",datetime.now(timezone.utc).isoformat())
 ]
 for row in metrics: sw.append(list(row))
-sw.append([]); sw.append(["痛点分类","样本数"])
-for cat,n in cats.most_common(): sw.append([cat,n])
+sw.append([])
+sw.append(["痛点分类","最终样本数"])
+for cat,n in final_cats.most_common():
+    sw.append([cat,n])
+sw.append([])
+sw.append(["说明","Core Walking Pad 为报告主统计；Adjacent Treadmill 只用于补充共性耐久/电机/售后证据，不应直接替代走步机专属结论。"])
 for c in sw[1]:
     c.font=Font(bold=True,color="FFFFFF"); c.fill=PatternFill("solid",fgColor="121826")
+sw.column_dimensions["A"].width=34; sw.column_dimensions["B"].width=80
 
-pw=wb.create_sheet("匹配商品"); pw.append(["parent_asin","title","brand","rating_number","average_rating","price"])
+pw=wb.create_sheet("匹配商品")
+pw.append(["scope","parent_asin","title","brand","rating_number","average_rating","price"])
 for p in products.values():
-    pw.append([p[k] for k in ["parent_asin","title","brand","rating_number","average_rating","price"]])
+    pw.append([p[k] for k in ["scope","parent_asin","title","brand","rating_number","average_rating","price"]])
 for c in pw[1]:
     c.font=Font(bold=True,color="FFFFFF"); c.fill=PatternFill("solid",fgColor="121826")
+pw.freeze_panes="A2"
+pw.column_dimensions["A"].width=22; pw.column_dimensions["B"].width=18; pw.column_dimensions["C"].width=70; pw.column_dimensions["D"].width=28
 
-xlsx=OUTDIR/"walking_pad_voc_10k.xlsx"; wb.save(xlsx)
+wb.save(xlsx)
 
 stats={
-    "target":TARGET,"min_valid":MIN_VALID,"meta_scanned":meta_scanned,
-    "matched_products":len(products),"rating_number_sum":rating_sum,
-    "reviews_scanned":review_scanned,"raw_matches":raw_count,"dedup_valid":len(valid),
-    "categories":dict(cats)
+    "target":TARGET,
+    "meta_scanned":meta_scanned,
+    "matched_products":len(products),
+    "product_scopes":dict(scope_products),
+    "rating_number_sum":rating_sum,
+    "reviews_scanned":review_scanned,
+    "unique_core_available":len(core),
+    "unique_adjacent_available":len(adjacent),
+    "final_rows":len(final),
+    "final_scopes":dict(final_scope),
+    "final_categories":dict(final_cats)
 }
-with open(OUTDIR/"stats.json","w",encoding="utf-8") as f:
+with open(OUTDIR/"stats_100k.json","w",encoding="utf-8") as f:
     json.dump(stats,f,ensure_ascii=False,indent=2)
-
 print(json.dumps(stats,ensure_ascii=False),flush=True)
-if len(valid)<MIN_VALID:
-    print(f"WARNING: {len(valid):,} valid reviews < minimum {MIN_VALID:,}", flush=True)
