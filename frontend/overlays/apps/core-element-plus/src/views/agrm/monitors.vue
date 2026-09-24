@@ -173,7 +173,7 @@ onMounted(load)
             <el-input-number v-model="form.search_depth" :min="1" :max="500" />
           </el-form-item>
           <el-form-item label="Schedule (optional)">
-            <el-input v-model="form.schedule" placeholder="e.g. 0 */6 * * *" />
+            <el-input v-model="form.schedule" placeholder="UTC cron, e.g. 0 */6 * * *" />
           </el-form-item>
         </div>
       </el-form>
