@@ -220,6 +220,7 @@ class JobRepository:
         current = self._utc(now or datetime.now(UTC))
         retried = 0
         dead_lettered = 0
+        recovered_attempts: list[dict] = []
         with self._sessions.begin() as session:
             statement = (
                 select(RankJobRow)
@@ -234,6 +235,12 @@ class JobRepository:
                 statement = statement.with_for_update(skip_locked=True)
             rows = session.scalars(statement).all()
             for row in rows:
+                recovered_attempts.append(
+                    {
+                        "job_id": row.id,
+                        "attempt_count": row.attempt_count,
+                    }
+                )
                 row.error = self._bounded_error("worker lease expired")
                 row.claimed_at = None
                 row.claimed_by = None
@@ -247,7 +254,46 @@ class JobRepository:
                     row.available_at = current
                     row.completed_at = None
                     retried += 1
-        return {"retried": retried, "dead_lettered": dead_lettered}
+        return {
+            "retried": retried,
+            "dead_lettered": dead_lettered,
+            "recovered_attempts": recovered_attempts,
+        }
+
+    def list_dead_letters(self, *, limit: int = 50) -> list[dict]:
+        with self._sessions() as session:
+            rows = session.scalars(
+                select(RankJobRow)
+                .where(RankJobRow.status == "dead_letter")
+                .order_by(RankJobRow.completed_at.desc(), RankJobRow.id.desc())
+                .limit(min(max(limit, 1), 500))
+            ).all()
+            return [self._serialize(row) for row in rows]
+
+    def requeue_dead_letter(
+        self,
+        job_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict:
+        current = self._utc(now or datetime.now(UTC))
+        with self._sessions.begin() as session:
+            row = session.get(RankJobRow, job_id)
+            if row is None:
+                raise KeyError(f"rank job not found: {job_id}")
+            if row.status != "dead_letter":
+                raise ValueError("only dead-letter jobs can be requeued")
+            row.status = "pending"
+            row.available_at = current
+            row.claimed_at = None
+            row.claimed_by = None
+            row.lease_expires_at = None
+            row.completed_at = None
+            row.run_id = None
+            row.error = None
+            row.attempt_count = 0
+            owner_id = row.owner_id
+        return self.get(job_id, owner_id=owner_id)
 
     def complete(
         self,
