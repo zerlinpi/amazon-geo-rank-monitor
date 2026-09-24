@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
-from amazon_geo_rank_monitor.api.dependencies import current_tenant, get_services
+from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
 from amazon_geo_rank_monitor.api.schemas import CheckoutCreate
 
 router = APIRouter(prefix="/api/v1", tags=["billing"])
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/v1", tags=["billing"])
 @router.get("/credits")
 def credit_balance(
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("billing:read")),
 ):
     billing = get_services(request).billing_repository
     if billing is None:
@@ -24,7 +24,7 @@ def credit_balance(
 @router.get("/credits/ledger")
 def credit_ledger(
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("billing:read")),
     limit: int = 100,
 ):
     billing = get_services(request).billing_repository
@@ -36,7 +36,7 @@ def credit_ledger(
 @router.get("/billing/packs")
 def credit_packs(
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("billing:read")),
 ):
     del owner_id
     billing = get_services(request).billing_repository
@@ -49,7 +49,7 @@ def credit_packs(
 def create_checkout(
     body: CheckoutCreate,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("billing:write")),
 ):
     stripe_billing = get_services(request).stripe_billing
     if stripe_billing is None:

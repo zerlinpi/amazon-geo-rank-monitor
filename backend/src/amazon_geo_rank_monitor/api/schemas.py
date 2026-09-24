@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from amazon_geo_rank_monitor.auth.api_keys import normalize_scopes
 
 
 class MonitorCreate(BaseModel):
@@ -35,6 +37,12 @@ class RankCheckBody(BaseModel):
 
 class ApiKeyCreate(BaseModel):
     name: str = Field(min_length=1)
+    scopes: list[str] = Field(default_factory=lambda: ["*"], min_length=1)
+
+    @field_validator("scopes")
+    @classmethod
+    def validate_scopes(cls, value: list[str]) -> list[str]:
+        return normalize_scopes(value)
 
 
 class CheckoutCreate(BaseModel):

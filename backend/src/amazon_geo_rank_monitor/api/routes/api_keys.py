@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
-from amazon_geo_rank_monitor.api.dependencies import current_tenant, get_services
+from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
 from amazon_geo_rank_monitor.api.schemas import ApiKeyCreate
 
 router = APIRouter(prefix="/api/v1/api-keys", tags=["api-keys"])
@@ -17,7 +17,7 @@ def _public_key(row: dict) -> dict:
 @router.get("")
 def list_api_keys(
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("keys:manage")),
 ):
     rows = get_services(request).tenant_repository.list_api_keys(owner_id=owner_id)
     return [_public_key(row) for row in rows]
@@ -27,16 +27,18 @@ def list_api_keys(
 def create_api_key(
     body: ApiKeyCreate,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("keys:manage")),
 ):
     created = get_services(request).api_keys.create(
         owner_id=owner_id,
         name=body.name,
+        scopes=body.scopes,
     )
     return {
         "id": created.id,
         "prefix": created.prefix,
         "plaintext": created.plaintext,
+        "scopes": list(created.scopes),
     }
 
 
@@ -44,7 +46,7 @@ def create_api_key(
 def revoke_api_key(
     key_id: str,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("keys:manage")),
 ):
     try:
         get_services(request).api_keys.revoke(key_id, owner_id=owner_id)

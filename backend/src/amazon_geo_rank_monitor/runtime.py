@@ -28,6 +28,9 @@ from amazon_geo_rank_monitor.repositories.models import Base
 from amazon_geo_rank_monitor.repositories.monitor_repository import MonitorRepository
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
 from amazon_geo_rank_monitor.repositories.tenant_repository import TenantRepository
+from amazon_geo_rank_monitor.repositories.worker_status_repository import (
+    WorkerStatusRepository,
+)
 
 
 class UnavailableProvider:
@@ -154,6 +157,8 @@ def build_services(settings: AppSettings) -> AppServices:
             browser_verified_serp=settings.strict_serp_credit_cost,
         ),
         stripe_billing=_stripe_billing(billing, settings),
+        database_engine=engine,
+        worker_status_repository=WorkerStatusRepository(engine),
         provider_registry=ProviderRegistry(
             managed=_managed_provider(settings),
             strict=_strict_provider(settings),

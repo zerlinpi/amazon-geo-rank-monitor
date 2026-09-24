@@ -33,6 +33,7 @@ services:
       AUTO_CREATE_SCHEMA: "false"
       API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
       API_HOST: 0.0.0.0
+      API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-120}
       OXYLABS_USERNAME: ${OXYLABS_USERNAME:-}
       OXYLABS_PASSWORD: ${OXYLABS_PASSWORD:-}
       RESIDENTIAL_PROXY_USERNAME: ${RESIDENTIAL_PROXY_USERNAME:-}
@@ -43,6 +44,15 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   worker:
     build:
@@ -53,6 +63,7 @@ services:
       DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
       AUTO_CREATE_SCHEMA: "false"
       API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
+      WORKER_ID: ${WORKER_ID:-rank-worker-1}
       OXYLABS_USERNAME: ${OXYLABS_USERNAME:-}
       OXYLABS_PASSWORD: ${OXYLABS_PASSWORD:-}
       RESIDENTIAL_PROXY_USERNAME: ${RESIDENTIAL_PROXY_USERNAME:-}

@@ -124,6 +124,7 @@ export interface ApiKeyRow {
   created_at?: string | null
   last_used_at?: string | null
   revoked_at?: string | null
+  scopes: string[]
 }
 
 export interface CheckoutResult {
@@ -163,8 +164,13 @@ export const agrmApi = {
   getRuns: (limit = 50) => data<RankRun[]>(client.get('/api/v1/runs', { params: { limit } })),
   getRun: (id: string) => data<RankRun>(client.get('/api/v1/runs/' + id)),
   getApiKeys: () => data<ApiKeyRow[]>(client.get('/api/v1/api-keys')),
-  createApiKey: (name: string) => data<{ id: string, prefix: string, plaintext: string }>(
-    client.post('/api/v1/api-keys', { name }),
+  createApiKey: (name: string, scopes: string[] = ['*']) => data<{
+    id: string
+    prefix: string
+    plaintext: string
+    scopes: string[]
+  }>(
+    client.post('/api/v1/api-keys', { name, scopes }),
   ),
   revokeApiKey: (id: string) => data<void>(client.delete('/api/v1/api-keys/' + id)),
 }

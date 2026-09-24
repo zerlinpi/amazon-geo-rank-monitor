@@ -19,4 +19,10 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "rank_jobs",
         "rank_runs",
         "credit_ledger_entries",
+        "worker_heartbeats",
     } <= tables
+    inspector = inspect(create_engine(database_url))
+    api_key_columns = {
+        column["name"] for column in inspector.get_columns("api_keys")
+    }
+    assert "scopes" in api_key_columns

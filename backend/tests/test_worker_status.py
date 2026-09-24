@@ -14,6 +14,9 @@ from amazon_geo_rank_monitor.domain.models import (
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
+from amazon_geo_rank_monitor.repositories.worker_status_repository import (
+    WorkerStatusRepository,
+)
 from amazon_geo_rank_monitor.workers.rank_worker import RankWorker
 
 
@@ -68,6 +71,7 @@ async def test_worker_preserves_partial_rank_status_on_job() -> None:
     Base.metadata.create_all(engine)
     jobs = JobRepository(engine)
     ranks = RankRepository(engine)
+    workers = WorkerStatusRepository(engine)
     request = build_request()
     created = jobs.enqueue(
         owner_id="tenant-a",
@@ -81,6 +85,8 @@ async def test_worker_preserves_partial_rank_status_on_job() -> None:
             managed=PartialProvider(),
             strict=PartialProvider(),
         ),
+        worker_status_repository=workers,
+        worker_id="worker-test",
     )
 
     completed = await worker.run_once()
@@ -89,3 +95,8 @@ async def test_worker_preserves_partial_rank_status_on_job() -> None:
     assert completed["status"] == "partially_succeeded"
     run = ranks.get_run(completed["run_id"], owner_id="tenant-a")
     assert run["status"] == "partially_succeeded"
+    heartbeat = workers.list()[0]
+    assert heartbeat["worker_id"] == "worker-test"
+    assert heartbeat["status"] == "idle"
+    assert heartbeat["last_job_id"] == created["id"]
+    assert heartbeat["processed_jobs"] == 1

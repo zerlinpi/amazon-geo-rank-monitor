@@ -14,17 +14,41 @@ class RankWorker:
         provider_registry,
         billing_repository=None,
         rate_card: RateCard | None = None,
+        worker_status_repository=None,
+        worker_id: str = "rank-worker",
     ) -> None:
         self._jobs = job_repository
         self._rank_repository = rank_repository
         self._providers = provider_registry
         self._billing = billing_repository
         self._rate_card = rate_card or RateCard()
+        self._worker_status = worker_status_repository
+        self._worker_id = worker_id
+
+    def _heartbeat(
+        self,
+        *,
+        status: str,
+        last_job_id: str | None = None,
+        last_error: str | None = None,
+        processed_delta: int = 0,
+    ) -> None:
+        if self._worker_status is None:
+            return
+        self._worker_status.heartbeat(
+            worker_id=self._worker_id,
+            status=status,
+            last_job_id=last_job_id,
+            last_error=last_error,
+            processed_delta=processed_delta,
+        )
 
     async def run_once(self) -> dict | None:
+        self._heartbeat(status="idle")
         job = self._jobs.claim_one()
         if job is None:
             return None
+        self._heartbeat(status="running", last_job_id=job["id"])
 
         reservation = None
         try:
@@ -63,9 +87,22 @@ class RankWorker:
         except Exception as exc:
             if reservation is not None:
                 self._billing.release(reservation["id"])
-            return self._jobs.fail(job["id"], error=str(exc))
-        return self._jobs.complete(
+            failed = self._jobs.fail(job["id"], error=str(exc))
+            self._heartbeat(
+                status="error",
+                last_job_id=job["id"],
+                last_error=str(exc),
+                processed_delta=1,
+            )
+            return failed
+        completed = self._jobs.complete(
             job["id"],
             run_id=result.run_id,
             status=result.status,
         )
+        self._heartbeat(
+            status="idle",
+            last_job_id=job["id"],
+            processed_delta=1,
+        )
+        return completed

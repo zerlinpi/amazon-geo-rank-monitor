@@ -161,7 +161,8 @@ Implemented:
 - monitor-specific run history;
 - Alembic production schema migrations;
 - Docker Compose migration gate, API, worker and scheduler services;
-- GitHub Actions tests and Ruff checks.
+- GitHub Actions tests, Ruff checks, and PostgreSQL integration coverage;
+- least-privilege API-key scopes, database readiness, and worker heartbeats.
 
 The complete architecture is documented in `docs/superpowers/specs/2026-09-24-amazon-geo-rank-saas-design.md`.
 
@@ -226,6 +227,7 @@ The local process boundary is the tenant security boundary for stdio. Streamable
 ### REST endpoints
 
 - `GET /health`
+- `GET /ready`
 - `POST/GET /api/v1/geo-profiles`
 - `POST/GET /api/v1/monitors`
 - `GET /api/v1/monitors/{id}`
@@ -235,6 +237,7 @@ The local process boundary is the tenant security boundary for stdio. Streamable
 - `POST /api/v1/rank/check`
 - `GET /api/v1/runs/{id}`
 - `GET/POST/DELETE /api/v1/api-keys`
+- `GET /api/v1/system/workers`
 
 All tenant-owned lookups are filtered server-side. A resource owned by another tenant is returned as not found.
 
@@ -405,3 +408,53 @@ Monitor lifecycle endpoints now include:
 - `DELETE /api/v1/monitors/{id}`
 
 PATCH supports partial updates to monitor metadata, ASINs, geo profiles, provider mode, schedule, search depth, and enabled state. Tenant ownership is revalidated for all referenced geo profiles.
+
+
+## Least-privilege API keys
+
+API keys now carry explicit scopes. Existing/bootstrap keys use `*` for backward-compatible full access. New automation keys should request only what they need.
+
+Available scopes:
+
+- `geo:read`, `geo:write`
+- `monitors:read`, `monitors:write`
+- `rank:read`, `rank:write`
+- `billing:read`, `billing:write`
+- `keys:manage`
+- `system:read`
+- `*` for full access
+
+Example:
+
+```json
+{
+  "name": "rank-reporting",
+  "scopes": ["geo:read", "monitors:read", "rank:read"]
+}
+```
+
+A valid key that lacks a required scope receives HTTP 403 with error code `FORBIDDEN`.
+
+## Readiness and worker heartbeats
+
+`GET /health` is a process liveness check. `GET /ready` executes `SELECT 1` against the configured application database and returns HTTP 503 when the database cannot be reached. Docker Compose uses `/ready` for the API healthcheck.
+
+Rank workers persist heartbeat state in `worker_heartbeats`. Authorized operators can inspect it with:
+
+```http
+GET /api/v1/system/workers
+X-API-Key: <key with system:read>
+```
+
+Each heartbeat includes worker ID, status, last job ID/error, processed-job count, start time, and last-seen time. Set a unique `WORKER_ID` per worker replica.
+
+## PostgreSQL CI
+
+Backend CI starts PostgreSQL 17 and executes a real concurrent claiming test against `FOR UPDATE SKIP LOCKED`. This complements the default SQLite unit suite and protects the production multi-worker path from regressions.
+
+Schema revision `20260924_0002` adds API-key scopes and worker heartbeat state. Existing databases already stamped at `20260924_0001` should run:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
