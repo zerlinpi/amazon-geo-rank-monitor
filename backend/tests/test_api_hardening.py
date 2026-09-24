@@ -63,6 +63,7 @@ def auth_for(tenants, keys, name: str):
 
 def geo_payload(postal_code: str = "10001"):
     return {
+        "id": f"client-{postal_code}",
         "name": f"Geo {postal_code}",
         "marketplace": "amazon.com",
         "ip_country": "US",
