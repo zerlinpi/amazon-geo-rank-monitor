@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from amazon_geo_rank_monitor.api.dependencies import current_tenant, get_services
 from amazon_geo_rank_monitor.api.schemas import CheckoutCreate
+from amazon_geo_rank_monitor.billing.errors import WebhookSignatureError
 
 router = APIRouter(prefix="/api/v1", tags=["billing"])
 
@@ -97,5 +98,5 @@ async def stripe_webhook(
             payload=payload,
             signature=stripe_signature,
         )
-    except (ValueError, KeyError) as exc:
+    except (WebhookSignatureError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=400, detail="invalid Stripe webhook") from exc

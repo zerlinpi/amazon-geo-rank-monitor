@@ -51,6 +51,7 @@ async def _worker_loop(*, once: bool) -> None:
         job_repository=services.job_repository,
         rank_repository=services.rank_repository,
         provider_registry=services.provider_registry,
+        usage_meter=services.usage_meter,
     )
 
     while True:

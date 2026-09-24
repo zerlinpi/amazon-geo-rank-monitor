@@ -32,6 +32,13 @@ class AppSettings(BaseSettings):
     api_port: int = 8000
     worker_poll_seconds: float = 2.0
     mcp_tenant_id: str | None = None
+    managed_serp_credits: int = 1
+    strict_serp_credits: int = 5
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_success_url: str | None = None
+    stripe_cancel_url: str | None = None
+    credit_packs_json: str | None = None
 
 
 class GeoProfilesDocument(BaseModel):

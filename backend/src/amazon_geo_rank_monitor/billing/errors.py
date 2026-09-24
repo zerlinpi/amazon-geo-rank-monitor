@@ -9,3 +9,7 @@ class InsufficientCreditsError(BillingError):
         super().__init__(
             f"insufficient credits: available={available}, required={required}"
         )
+
+
+class WebhookSignatureError(BillingError):
+    """Raised when a Stripe webhook signature cannot be verified."""

@@ -247,3 +247,56 @@ All tenant-owned lookups are filtered server-side. A resource owned by another t
 - `get_rank_history`
 
 MCP tools call the same application services used by REST; there is no duplicate ranking implementation.
+
+
+## Prepaid credits and Stripe
+
+SaaS rank jobs are metered by **SERP probe**, not by ASIN. If one Amazon SERP is reused to locate 10 ASINs, it is still one billable probe.
+
+Default rate-card environment variables:
+
+```env
+MANAGED_SERP_CREDITS=1
+STRICT_SERP_CREDITS=5
+```
+
+For example, 3 geographic profiles in managed mode reserve 3 credits even if the monitor contains many ASINs. The worker reserves the maximum probe cost before contacting a provider, settles only successful probes, and releases unused credits.
+
+Credit state is represented by an account cache plus an append-only ledger:
+
+```text
+purchase:   available +500, reserved +0
+reserve:    available   -3, reserved +3
+settle 2:   available   +0, reserved -2
+release 1:  available   +1, reserved -1
+```
+
+If available credits are insufficient, the rank job fails before Oxylabs or Playwright is called.
+
+### Stripe credit packs
+
+Create one-time Stripe Products/Prices in Stripe, then map those server-owned price IDs to credit packs. No live Price ID is hard-coded in this repository.
+
+Example:
+
+```env
+CREDIT_PACKS_JSON=[{"id":"starter","name":"Starter","credits":500,"stripe_price_id":"price_...","display_order":1}]
+STRIPE_SECRET_KEY=sk_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_SUCCESS_URL=https://app.example.com/billing/success
+STRIPE_CANCEL_URL=https://app.example.com/billing
+```
+
+Checkout uses Stripe `mode=payment`. Clients send only a `credit_pack_id`; credit count and Stripe Price ID are reloaded from the server database.
+
+Credits are **not** granted from the Checkout success redirect. They are granted only after a Stripe-signed webhook reports a paid Checkout Session. Duplicate webhook event IDs and duplicate payment grants are idempotent.
+
+Billing endpoints:
+
+- `GET /api/v1/credits`
+- `GET /api/v1/credits/ledger`
+- `GET /api/v1/billing/packs`
+- `POST /api/v1/billing/checkout`
+- `POST /api/v1/billing/webhook`
+
+The first four customer-facing operations use tenant authentication where applicable. The webhook endpoint instead authenticates the raw request body with the `Stripe-Signature` header and the configured webhook endpoint secret.

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from stripe import StripeClient
+from stripe import SignatureVerificationError, StripeClient
 
+from amazon_geo_rank_monitor.billing.errors import WebhookSignatureError
 from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 
 
@@ -54,11 +55,14 @@ class StripeGateway:
         }
 
     def construct_event(self, payload: bytes, signature: str) -> dict:
-        event = self._client.construct_event(
-            payload,
-            signature,
-            self._webhook_secret,
-        )
+        try:
+            event = self._client.construct_event(
+                payload,
+                signature,
+                self._webhook_secret,
+            )
+        except SignatureVerificationError as exc:
+            raise WebhookSignatureError("invalid Stripe webhook signature") from exc
         if hasattr(event, "to_dict"):
             return event.to_dict(for_json=True)
         return dict(event)
