@@ -20,11 +20,13 @@ from .errors import (
 from .rate_limit import build_rate_limiter, rate_limit_identity
 from .routes import (
     api_keys_router,
+    auth_router,
     billing_router,
     geo_profiles_router,
     monitors_router,
     rank_router,
     system_router,
+    team_router,
 )
 
 
@@ -44,6 +46,10 @@ class AppServices:
     worker_status_repository: Any | None = None
     audit_repository: Any | None = None
     rate_limiter: Any | None = None
+    auth_rate_limiter: Any | None = None
+    account_repository: Any | None = None
+    accounts: Any | None = None
+    allow_public_signup: bool = True
 
 
 def create_app(
@@ -51,11 +57,16 @@ def create_app(
     *,
     cors_origins: list[str] | None = None,
     api_rate_limit_per_minute: int = 120,
+    auth_rate_limit_per_minute: int = 20,
 ) -> FastAPI:
     app = FastAPI(title="Amazon Geo Rank Monitor", version="0.1.0")
     app.state.services = services
     app.state.rate_limiter = services.rate_limiter or build_rate_limiter(
         requests_per_minute=api_rate_limit_per_minute,
+    )
+    app.state.auth_rate_limiter = services.auth_rate_limiter or build_rate_limiter(
+        requests_per_minute=auth_rate_limit_per_minute,
+        namespace="agrm:auth",
     )
     logger = logging.getLogger("amazon_geo_rank_monitor.api")
     app.add_exception_handler(HTTPException, http_exception_handler)
@@ -71,14 +82,46 @@ def create_app(
 
         limiter = request.app.state.rate_limiter
         api_key = request.headers.get("X-API-Key")
+        authorization = request.headers.get("Authorization")
+        bearer_token = None
+        if authorization:
+            scheme, _, credential = authorization.partition(" ")
+            if scheme.lower() == "bearer" and credential:
+                bearer_token = credential
+        rate_credential = api_key or bearer_token
+        public_auth = request.url.path in {
+            "/api/v1/auth/login",
+            "/api/v1/auth/register",
+        }
+        if public_auth and request.method == "POST":
+            auth_limiter = request.app.state.auth_rate_limiter
+            if auth_limiter.limit:
+                client_ip = request.client.host if request.client else "unknown"
+                allowed, _, retry_after = auth_limiter.check(
+                    rate_limit_identity(f"ip:{client_ip}")
+                )
+                if not allowed:
+                    response = JSONResponse(
+                        status_code=429,
+                        content=error_payload(
+                            request,
+                            status_code=429,
+                            detail="authentication rate limit exceeded",
+                            code="RATE_LIMITED",
+                        ),
+                        headers={"Retry-After": str(retry_after)},
+                    )
+                    response.headers["X-Request-ID"] = request_id
+                    return response
+
         exempt = request.method == "OPTIONS" or request.url.path in {
             "/health",
             "/ready",
             "/api/v1/billing/webhook",
         }
-        if api_key and not exempt and limiter.limit:
+        if rate_credential and not exempt and limiter.limit:
             allowed, remaining, retry_after = limiter.check(
-                rate_limit_identity(api_key)
+                rate_limit_identity(rate_credential)
             )
             if not allowed:
                 response = JSONResponse(
@@ -102,7 +145,7 @@ def create_app(
 
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
-        if api_key and not exempt and limiter.limit:
+        if rate_credential and not exempt and limiter.limit:
             response.headers["X-RateLimit-Limit"] = str(limiter.limit)
             response.headers["X-RateLimit-Remaining"] = str(remaining)
 
@@ -115,7 +158,9 @@ def create_app(
             try:
                 services.audit_repository.record(
                     owner_id=principal.owner_id,
-                    api_key_id=principal.key_id,
+                    api_key_id=getattr(principal, "key_id", None),
+                    user_id=getattr(principal, "user_id", None),
+                    actor_type=getattr(principal, "auth_type", "api_key"),
                     request_id=request_id,
                     method=request.method,
                     path=request.url.path,
@@ -166,6 +211,8 @@ def create_app(
             )
         return {"status": "ok", "database": "ok"}
 
+    app.include_router(auth_router)
+    app.include_router(team_router)
     app.include_router(geo_profiles_router)
     app.include_router(monitors_router)
     app.include_router(rank_router)

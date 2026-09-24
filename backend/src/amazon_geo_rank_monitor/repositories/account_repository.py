@@ -1,0 +1,410 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from uuid import uuid4
+
+from sqlalchemy import Engine, func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
+
+from .models import (
+    TenantRow,
+    UserRow,
+    UserSessionRow,
+    WorkspaceInvitationRow,
+    WorkspaceMembershipRow,
+)
+
+
+class AccountRepository:
+    def __init__(self, engine: Engine) -> None:
+        self._sessions = sessionmaker(bind=engine, expire_on_commit=False)
+
+    def create_workspace_owner(
+        self,
+        *,
+        email: str,
+        password_hash: str,
+        display_name: str,
+        workspace_name: str,
+    ) -> tuple[dict, dict]:
+        user_id = str(uuid4())
+        owner_id = str(uuid4())
+        membership_id = str(uuid4())
+        try:
+            with self._sessions.begin() as session:
+                session.add(
+                    UserRow(
+                        id=user_id,
+                        email=email,
+                        password_hash=password_hash,
+                        display_name=display_name,
+                    )
+                )
+                session.add(TenantRow(id=owner_id, name=workspace_name))
+                session.add(
+                    WorkspaceMembershipRow(
+                        id=membership_id,
+                        owner_id=owner_id,
+                        user_id=user_id,
+                        role="owner",
+                    )
+                )
+        except IntegrityError:
+            raise ValueError("an account with this email already exists") from None
+        return self.get_user(user_id), self.get_membership(
+            user_id=user_id,
+            owner_id=owner_id,
+        )
+
+    def create_user(
+        self,
+        *,
+        email: str,
+        password_hash: str,
+        display_name: str,
+    ) -> dict:
+        user_id = str(uuid4())
+        try:
+            with self._sessions.begin() as session:
+                session.add(
+                    UserRow(
+                        id=user_id,
+                        email=email,
+                        password_hash=password_hash,
+                        display_name=display_name,
+                    )
+                )
+        except IntegrityError:
+            raise ValueError("an account with this email already exists") from None
+        return self.get_user(user_id)
+
+    def create_owner_membership(
+        self,
+        *,
+        owner_id: str,
+        user_id: str,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            tenant = session.get(TenantRow, owner_id)
+            if tenant is None:
+                raise KeyError("workspace not found")
+            existing = session.scalar(
+                select(WorkspaceMembershipRow).where(
+                    WorkspaceMembershipRow.owner_id == owner_id,
+                    WorkspaceMembershipRow.user_id == user_id,
+                )
+            )
+            if existing is not None:
+                return self._serialize_membership(existing)
+            row = WorkspaceMembershipRow(
+                id=str(uuid4()),
+                owner_id=owner_id,
+                user_id=user_id,
+                role="owner",
+            )
+            session.add(row)
+            session.flush()
+            return self._serialize_membership(row)
+
+    def get_user(self, user_id: str) -> dict:
+        with self._sessions() as session:
+            row = session.get(UserRow, user_id)
+            if row is None:
+                raise KeyError("user not found")
+            return self._serialize_user(row)
+
+    def find_user_by_email(self, email: str) -> dict | None:
+        with self._sessions() as session:
+            row = session.scalar(select(UserRow).where(UserRow.email == email))
+            return self._serialize_user(row) if row else None
+
+    def list_memberships(self, *, user_id: str) -> list[dict]:
+        with self._sessions() as session:
+            rows = session.execute(
+                select(WorkspaceMembershipRow, TenantRow)
+                .join(TenantRow, TenantRow.id == WorkspaceMembershipRow.owner_id)
+                .where(WorkspaceMembershipRow.user_id == user_id)
+                .order_by(WorkspaceMembershipRow.created_at)
+            ).all()
+            return [
+                {
+                    **self._serialize_membership(membership),
+                    "workspace_name": tenant.name,
+                }
+                for membership, tenant in rows
+            ]
+
+    def get_membership(self, *, user_id: str, owner_id: str) -> dict:
+        with self._sessions() as session:
+            row = session.scalar(
+                select(WorkspaceMembershipRow).where(
+                    WorkspaceMembershipRow.user_id == user_id,
+                    WorkspaceMembershipRow.owner_id == owner_id,
+                )
+            )
+            if row is None:
+                raise KeyError("workspace membership not found")
+            return self._serialize_membership(row)
+
+    def list_members(self, *, owner_id: str) -> list[dict]:
+        with self._sessions() as session:
+            rows = session.execute(
+                select(WorkspaceMembershipRow, UserRow)
+                .join(UserRow, UserRow.id == WorkspaceMembershipRow.user_id)
+                .where(WorkspaceMembershipRow.owner_id == owner_id)
+                .order_by(WorkspaceMembershipRow.created_at, UserRow.email)
+            ).all()
+            return [
+                {
+                    **self._serialize_membership(membership),
+                    "email": user.email,
+                    "display_name": user.display_name,
+                    "disabled_at": user.disabled_at,
+                }
+                for membership, user in rows
+            ]
+
+    def update_member_role(
+        self,
+        *,
+        owner_id: str,
+        user_id: str,
+        role: str,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            row = session.scalar(
+                select(WorkspaceMembershipRow).where(
+                    WorkspaceMembershipRow.owner_id == owner_id,
+                    WorkspaceMembershipRow.user_id == user_id,
+                )
+            )
+            if row is None:
+                raise KeyError("workspace membership not found")
+            if row.role == "owner" and role != "owner":
+                owner_count = session.scalar(
+                    select(func.count(WorkspaceMembershipRow.id)).where(
+                        WorkspaceMembershipRow.owner_id == owner_id,
+                        WorkspaceMembershipRow.role == "owner",
+                    )
+                )
+                if int(owner_count or 0) <= 1:
+                    raise ValueError("workspace must keep at least one owner")
+            row.role = role
+            session.flush()
+            return self._serialize_membership(row)
+
+    def remove_member(self, *, owner_id: str, user_id: str) -> None:
+        with self._sessions.begin() as session:
+            row = session.scalar(
+                select(WorkspaceMembershipRow).where(
+                    WorkspaceMembershipRow.owner_id == owner_id,
+                    WorkspaceMembershipRow.user_id == user_id,
+                )
+            )
+            if row is None:
+                raise KeyError("workspace membership not found")
+            if row.role == "owner":
+                owner_count = session.scalar(
+                    select(func.count(WorkspaceMembershipRow.id)).where(
+                        WorkspaceMembershipRow.owner_id == owner_id,
+                        WorkspaceMembershipRow.role == "owner",
+                    )
+                )
+                if int(owner_count or 0) <= 1:
+                    raise ValueError("workspace must keep at least one owner")
+            session.delete(row)
+
+    def create_session(
+        self,
+        *,
+        user_id: str,
+        owner_id: str,
+        token_hash: str,
+        expires_at: datetime,
+    ) -> dict:
+        session_id = str(uuid4())
+        with self._sessions.begin() as session:
+            row = UserSessionRow(
+                id=session_id,
+                user_id=user_id,
+                owner_id=owner_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+            )
+            session.add(row)
+        return self.get_session_by_hash(token_hash)
+
+    def get_session_by_hash(self, token_hash: str) -> dict:
+        now = datetime.now(UTC)
+        with self._sessions() as session:
+            result = session.execute(
+                select(
+                    UserSessionRow,
+                    UserRow,
+                    WorkspaceMembershipRow,
+                    TenantRow,
+                )
+                .join(UserRow, UserRow.id == UserSessionRow.user_id)
+                .join(
+                    WorkspaceMembershipRow,
+                    (WorkspaceMembershipRow.user_id == UserSessionRow.user_id)
+                    & (WorkspaceMembershipRow.owner_id == UserSessionRow.owner_id),
+                )
+                .join(TenantRow, TenantRow.id == UserSessionRow.owner_id)
+                .where(
+                    UserSessionRow.token_hash == token_hash,
+                    UserSessionRow.revoked_at.is_(None),
+                    UserSessionRow.expires_at > now,
+                    UserRow.disabled_at.is_(None),
+                )
+            ).first()
+            if result is None:
+                raise KeyError("session not found")
+            session_row, user, membership, tenant = result
+            return {
+                "id": session_row.id,
+                "user_id": session_row.user_id,
+                "owner_id": session_row.owner_id,
+                "token_hash": session_row.token_hash,
+                "expires_at": session_row.expires_at,
+                "last_seen_at": session_row.last_seen_at,
+                "role": membership.role,
+                "email": user.email,
+                "display_name": user.display_name,
+                "workspace_name": tenant.name,
+            }
+
+    def touch_session(self, session_id: str) -> None:
+        with self._sessions.begin() as session:
+            row = session.get(UserSessionRow, session_id)
+            if row is not None:
+                row.last_seen_at = datetime.now(UTC)
+
+    def revoke_session(self, session_id: str) -> None:
+        with self._sessions.begin() as session:
+            row = session.get(UserSessionRow, session_id)
+            if row is not None and row.revoked_at is None:
+                row.revoked_at = datetime.now(UTC)
+
+    def create_invitation(
+        self,
+        *,
+        owner_id: str,
+        email: str,
+        role: str,
+        token_hash: str,
+        created_by_user_id: str | None,
+        expires_at: datetime,
+    ) -> dict:
+        invitation_id = str(uuid4())
+        with self._sessions.begin() as session:
+            row = WorkspaceInvitationRow(
+                id=invitation_id,
+                owner_id=owner_id,
+                email=email,
+                role=role,
+                token_hash=token_hash,
+                created_by_user_id=created_by_user_id,
+                expires_at=expires_at,
+            )
+            session.add(row)
+        return self.get_invitation_by_hash(token_hash)
+
+    def get_invitation_by_hash(self, token_hash: str) -> dict:
+        with self._sessions() as session:
+            result = session.execute(
+                select(WorkspaceInvitationRow, TenantRow)
+                .join(TenantRow, TenantRow.id == WorkspaceInvitationRow.owner_id)
+                .where(WorkspaceInvitationRow.token_hash == token_hash)
+            ).first()
+            if result is None:
+                raise KeyError("invitation not found")
+            row, tenant = result
+            return {
+                **self._serialize_invitation(row),
+                "workspace_name": tenant.name,
+            }
+
+    def list_invitations(self, *, owner_id: str) -> list[dict]:
+        with self._sessions() as session:
+            rows = session.scalars(
+                select(WorkspaceInvitationRow)
+                .where(WorkspaceInvitationRow.owner_id == owner_id)
+                .order_by(WorkspaceInvitationRow.created_at.desc())
+            ).all()
+            return [self._serialize_invitation(row) for row in rows]
+
+    def accept_invitation(
+        self,
+        *,
+        invitation_id: str,
+        user_id: str,
+    ) -> dict:
+        now = datetime.now(UTC)
+        with self._sessions.begin() as session:
+            invitation = session.get(WorkspaceInvitationRow, invitation_id)
+            user = session.get(UserRow, user_id)
+            if invitation is None or user is None:
+                raise KeyError("invitation not found")
+            if invitation.accepted_at is not None:
+                raise ValueError("invitation has already been accepted")
+            expires_at = invitation.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at <= now:
+                raise ValueError("invitation has expired")
+            if user.email != invitation.email:
+                raise ValueError("invitation email does not match account")
+
+            membership = session.scalar(
+                select(WorkspaceMembershipRow).where(
+                    WorkspaceMembershipRow.owner_id == invitation.owner_id,
+                    WorkspaceMembershipRow.user_id == user_id,
+                )
+            )
+            if membership is None:
+                membership = WorkspaceMembershipRow(
+                    id=str(uuid4()),
+                    owner_id=invitation.owner_id,
+                    user_id=user_id,
+                    role=invitation.role,
+                )
+                session.add(membership)
+                session.flush()
+            invitation.accepted_at = now
+            return self._serialize_membership(membership)
+
+    @staticmethod
+    def _serialize_user(row: UserRow) -> dict:
+        return {
+            "id": row.id,
+            "email": row.email,
+            "password_hash": row.password_hash,
+            "display_name": row.display_name,
+            "created_at": row.created_at,
+            "disabled_at": row.disabled_at,
+        }
+
+    @staticmethod
+    def _serialize_membership(row: WorkspaceMembershipRow) -> dict:
+        return {
+            "id": row.id,
+            "owner_id": row.owner_id,
+            "user_id": row.user_id,
+            "role": row.role,
+            "created_at": row.created_at,
+        }
+
+    @staticmethod
+    def _serialize_invitation(row: WorkspaceInvitationRow) -> dict:
+        return {
+            "id": row.id,
+            "owner_id": row.owner_id,
+            "email": row.email,
+            "role": row.role,
+            "created_by_user_id": row.created_by_user_id,
+            "created_at": row.created_at,
+            "expires_at": row.expires_at,
+            "accepted_at": row.accepted_at,
+        }

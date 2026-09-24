@@ -31,6 +31,79 @@ class TenantRow(Base):
     )
 
 
+class UserRow(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkspaceMembershipRow(Base):
+    __tablename__ = "workspace_memberships"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "user_id", name="uq_workspace_membership"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class UserSessionRow(Base):
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WorkspaceInvitationRow(Base):
+    __tablename__ = "workspace_invitations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    email: Mapped[str] = mapped_column(String(320), index=True, nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class ApiKeyRow(Base):
     __tablename__ = "api_keys"
 
@@ -57,6 +130,8 @@ class AuditEventRow(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     api_key_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    user_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    actor_type: Mapped[str] = mapped_column(String(24), nullable=False, default="api_key")
     request_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
     method: Mapped[str] = mapped_column(String(16), nullable=False)
     path: Mapped[str] = mapped_column(String(512), nullable=False)

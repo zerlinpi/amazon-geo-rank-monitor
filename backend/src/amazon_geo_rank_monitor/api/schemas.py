@@ -47,3 +47,40 @@ class ApiKeyCreate(BaseModel):
 
 class CheckoutCreate(BaseModel):
     credit_pack_id: str = Field(min_length=1)
+
+
+class AccountRegister(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=10, max_length=512)
+    display_name: str = Field(min_length=1, max_length=200)
+    workspace_name: str | None = Field(default=None, max_length=200)
+    invitation_token: str | None = Field(default=None, min_length=8)
+
+
+class AccountLogin(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=512)
+    workspace_id: str | None = None
+
+
+class WorkspaceSwitch(BaseModel):
+    workspace_id: str = Field(min_length=1)
+
+
+class InvitationAccept(BaseModel):
+    invitation_token: str = Field(min_length=8)
+
+
+class InvitationCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    role: str = Field(min_length=1)
+
+
+class MemberRoleUpdate(BaseModel):
+    role: str = Field(min_length=1)
+
+
+class BootstrapOwnerCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=10, max_length=512)
+    display_name: str = Field(min_length=1, max_length=200)

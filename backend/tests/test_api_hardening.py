@@ -86,10 +86,10 @@ def test_request_id_and_structured_auth_error() -> None:
     assert response.status_code == 401
     assert response.headers["X-Request-ID"] == "client-request-123"
     body = response.json()
-    assert body["detail"] == "API key required"
+    assert body["detail"] == "authentication required"
     assert body["error"] == {
         "code": "AUTH_REQUIRED",
-        "message": "API key required",
+        "message": "authentication required",
         "request_id": "client-request-123",
     }
 

@@ -576,3 +576,109 @@ Upgrade existing production databases with:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## SaaS human accounts and workspace RBAC
+
+The web console now uses human accounts and short-lived-by-policy session credentials instead of treating a workspace API key as a browser login.
+
+Automation remains separate:
+
+- human browser sessions use `Authorization: Bearer agrs_...`;
+- API integrations, MCP and CI continue to use `X-API-Key: agrm_...`;
+- session tokens and invitation tokens are stored only as hashes in the database;
+- passwords are hashed with Argon2;
+- membership is rechecked on every session-authenticated request, so removing a member or changing a role takes effect without waiting for the session to expire.
+
+Default session and invitation policy:
+
+```env
+ALLOW_PUBLIC_SIGNUP=true
+SESSION_TTL_HOURS=720
+INVITATION_TTL_HOURS=168
+AUTH_RATE_LIMIT_PER_MINUTE=20
+```
+
+Public login and registration are rate-limited by direct client IP. When Redis is configured, this authentication limit is shared across API replicas using a separate `agrm:auth` namespace.
+
+### Workspace roles
+
+Human membership has four roles:
+
+- **Owner** — full workspace access, including ownership and team administration.
+- **Admin** — operational administration, billing, API keys, system status and team management; admins cannot create or modify Owner/Admin peers.
+- **Analyst** — rank, monitor and geo read/write access plus billing/team visibility.
+- **Viewer** — read-only rank, monitor, geo, billing and team visibility.
+
+The last Owner cannot be demoted or removed.
+
+### Account API
+
+Public/session endpoints:
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me`
+- `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/switch-workspace`
+- `POST /api/v1/auth/accept-invitation`
+
+Team endpoints:
+
+- `GET /api/v1/team/members`
+- `GET /api/v1/team/invitations`
+- `POST /api/v1/team/invitations`
+- `PATCH /api/v1/team/members/{user_id}`
+- `DELETE /api/v1/team/members/{user_id}`
+
+Invitations return a plaintext `agri_...` token only when created. The database stores only its SHA-256 hash. The Fantastic Admin Team page turns that one-time token into a shareable `#/login?invite=...` link.
+
+### Migrating an API-key-only workspace
+
+Existing API keys continue to work. A legacy workspace can create its first human Owner with an API key that has `team:manage` (bootstrap `*` keys already qualify):
+
+```http
+POST /api/v1/team/bootstrap-owner
+X-API-Key: agrm_...
+Content-Type: application/json
+
+{
+  "email": "owner@example.com",
+  "password": "use-a-strong-password",
+  "display_name": "Workspace Owner"
+}
+```
+
+Bootstrap only creates a new account. If the email already belongs to an account, use a normal workspace invitation instead; the bootstrap endpoint will not impersonate or issue a session for an existing user.
+
+### Browser console
+
+The login page now provides:
+
+- email/password sign-in;
+- new workspace registration;
+- invitation-aware registration/joining;
+- a Legacy API Key option for migration compatibility.
+
+Workspace → **Team** provides membership roles, invitation creation, member removal and workspace switching. Workspace API Keys remain available for machine-to-machine use.
+
+### Audit identity
+
+Audit events now distinguish `session` and `api_key` actors and can store the human `user_id` for session-authenticated requests. Request bodies and plaintext credentials remain excluded.
+
+## Phase 11 migration
+
+Schema revision `20260924_0005` adds:
+
+- `users`;
+- `workspace_memberships`;
+- `user_sessions`;
+- `workspace_invitations`;
+- human actor fields on `audit_events`.
+
+Upgrade an existing database with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```

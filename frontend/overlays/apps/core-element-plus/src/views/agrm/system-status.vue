@@ -181,6 +181,11 @@ onUnmounted(() => {
             {{ row.created_at ? new Date(row.created_at).toLocaleString() : '—' }}
           </template>
         </el-table-column>
+        <el-table-column label="Actor" width="110">
+          <template #default="{ row }">
+            <el-tag size="small" type="info">{{ row.actor_type || 'api_key' }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="method" label="Method" width="90" />
         <el-table-column prop="path" label="Path" min-width="240">
           <template #default="{ row }">

@@ -8,7 +8,12 @@ const client = axios.create({
 client.interceptors.request.use((config) => {
   const key = localStorage.getItem('token')
   if (key) {
-    config.headers['X-API-Key'] = key
+    if (key.startsWith('agrs_')) {
+      config.headers.Authorization = `Bearer ${key}`
+    }
+    else {
+      config.headers['X-API-Key'] = key
+    }
   }
   return config
 })
@@ -28,6 +33,51 @@ client.interceptors.response.use(
 
 function data<T>(promise: Promise<unknown>): Promise<T> {
   return promise as Promise<T>
+}
+
+export interface WorkspaceMembership {
+  id: string
+  owner_id: string
+  user_id: string
+  role: 'owner' | 'admin' | 'analyst' | 'viewer'
+  workspace_name?: string
+  created_at: string
+}
+
+export interface AccountProfile {
+  user: {
+    id: string
+    email: string
+    display_name: string
+  }
+  workspace: {
+    id: string
+    name: string
+    role: 'owner' | 'admin' | 'analyst' | 'viewer'
+  }
+  memberships: WorkspaceMembership[]
+}
+
+export interface SessionResult extends AccountProfile {
+  session_token: string
+  expires_at: string
+}
+
+export interface TeamMember extends WorkspaceMembership {
+  email: string
+  display_name: string
+  disabled_at?: string | null
+}
+
+export interface WorkspaceInvitation {
+  id: string
+  owner_id?: string
+  email: string
+  role: string
+  invitation_token?: string
+  created_at?: string
+  expires_at: string
+  accepted_at?: string | null
 }
 
 export interface CreditBalance {
@@ -133,6 +183,8 @@ export interface AuditEvent {
   id: string
   owner_id: string
   api_key_id?: string | null
+  user_id?: string | null
+  actor_type?: 'api_key' | 'session' | string
   request_id: string
   method: string
   path: string
@@ -183,6 +235,39 @@ export interface CheckoutResult {
 }
 
 export const agrmApi = {
+  registerAccount: (payload: {
+    email: string
+    password: string
+    display_name: string
+    workspace_name?: string
+    invitation_token?: string
+  }) => data<SessionResult>(client.post('/api/v1/auth/register', payload)),
+  loginAccount: (payload: {
+    email: string
+    password: string
+    workspace_id?: string
+  }) => data<SessionResult>(client.post('/api/v1/auth/login', payload)),
+  getMe: () => data<AccountProfile>(client.get('/api/v1/auth/me')),
+  logoutAccount: () => data<void>(client.post('/api/v1/auth/logout')),
+  switchWorkspace: (workspace_id: string) => data<SessionResult>(
+    client.post('/api/v1/auth/switch-workspace', { workspace_id }),
+  ),
+  acceptInvitation: (invitation_token: string) => data<SessionResult>(
+    client.post('/api/v1/auth/accept-invitation', { invitation_token }),
+  ),
+  getTeamMembers: () => data<TeamMember[]>(client.get('/api/v1/team/members')),
+  getTeamInvitations: () => data<WorkspaceInvitation[]>(
+    client.get('/api/v1/team/invitations'),
+  ),
+  createTeamInvitation: (email: string, role: string) => data<WorkspaceInvitation>(
+    client.post('/api/v1/team/invitations', { email, role }),
+  ),
+  updateTeamMemberRole: (userId: string, role: string) => data<WorkspaceMembership>(
+    client.patch('/api/v1/team/members/' + userId, { role }),
+  ),
+  removeTeamMember: (userId: string) => data<void>(
+    client.delete('/api/v1/team/members/' + userId),
+  ),
   validateKey: () => data<CreditBalance>(client.get('/api/v1/credits')),
   getCredits: () => data<CreditBalance>(client.get('/api/v1/credits')),
   getLedger: (limit = 100) => data<LedgerEntry[]>(client.get('/api/v1/credits/ledger', { params: { limit } })),

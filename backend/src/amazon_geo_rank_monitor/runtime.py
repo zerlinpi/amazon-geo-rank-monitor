@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 from amazon_geo_rank_monitor.api.app import AppServices
 from amazon_geo_rank_monitor.api.rate_limit import build_rate_limiter
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
+from amazon_geo_rank_monitor.auth.accounts import AccountService
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.billing.stripe_service import StripeBillingService
@@ -22,6 +23,7 @@ from amazon_geo_rank_monitor.providers.playwright_amazon import (
     PlaywrightAmazonBrowserClient,
 )
 from amazon_geo_rank_monitor.providers.strict_browser import StrictBrowserRankProvider
+from amazon_geo_rank_monitor.repositories.account_repository import AccountRepository
 from amazon_geo_rank_monitor.repositories.audit_repository import AuditRepository
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
@@ -141,6 +143,7 @@ def build_services(settings: AppSettings) -> AppServices:
         Base.metadata.create_all(engine)
 
     tenants = TenantRepository(engine)
+    accounts_repository = AccountRepository(engine)
     billing = BillingRepository(engine)
     _seed_credit_packs(billing, settings)
     return AppServices(
@@ -165,9 +168,21 @@ def build_services(settings: AppSettings) -> AppServices:
         database_engine=engine,
         worker_status_repository=WorkerStatusRepository(engine),
         audit_repository=AuditRepository(engine),
+        account_repository=accounts_repository,
+        accounts=AccountService(
+            repository=accounts_repository,
+            session_ttl_hours=settings.session_ttl_hours,
+            invitation_ttl_hours=settings.invitation_ttl_hours,
+        ),
+        allow_public_signup=settings.allow_public_signup,
         rate_limiter=build_rate_limiter(
             requests_per_minute=settings.api_rate_limit_per_minute,
             redis_url=settings.redis_url,
+        ),
+        auth_rate_limiter=build_rate_limiter(
+            requests_per_minute=settings.auth_rate_limit_per_minute,
+            redis_url=settings.redis_url,
+            namespace="agrm:auth",
         ),
         provider_registry=ProviderRegistry(
             managed=_managed_provider(settings),
