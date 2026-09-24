@@ -20,6 +20,12 @@ dependencies = [
   "mcp>=2,<3",
 ]
 
+[project.scripts]
+agrm-api = "amazon_geo_rank_monitor.main:api_main"
+agrm-worker = "amazon_geo_rank_monitor.main:worker_main"
+agrm-bootstrap = "amazon_geo_rank_monitor.main:bootstrap_main"
+agrm-mcp = "amazon_geo_rank_monitor.main:mcp_main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.4,<10",
