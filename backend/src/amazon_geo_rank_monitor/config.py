@@ -33,6 +33,7 @@ class AppSettings(BaseSettings):
     api_rate_limit_per_minute: int = 120
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     worker_poll_seconds: float = 2.0
+    worker_id: str | None = None
     scheduler_poll_seconds: float = 30.0
     auto_create_schema: bool = True
     mcp_tenant_id: str | None = None
