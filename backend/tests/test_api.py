@@ -159,3 +159,63 @@ def test_api_key_creation_returns_plaintext_once_and_listing_hides_hash() -> Non
     assert listed.status_code == 200
     assert all("key_hash" not in item for item in listed.json())
     assert all("plaintext" not in item for item in listed.json())
+
+
+def test_run_list_is_tenant_scoped() -> None:
+    client, tenants, keys = setup_client()
+    _, auth_a = create_auth(tenants, keys, "A")
+    _, auth_b = create_auth(tenants, keys, "B")
+    geo = client.post("/api/v1/geo-profiles", headers=auth_a, json=geo_payload()).json()
+
+    response = client.post(
+        "/api/v1/rank/check",
+        headers=auth_a,
+        json={
+            "marketplace": "amazon.com",
+            "keyword": "walking pad",
+            "asins": ["B0TARGET01"],
+            "geo_profile_ids": [geo["id"]],
+            "search_depth": 100,
+            "provider_mode": "managed",
+        },
+    )
+    assert response.status_code == 200
+
+    runs_a = client.get("/api/v1/runs", headers=auth_a)
+    runs_b = client.get("/api/v1/runs", headers=auth_b)
+    assert runs_a.status_code == 200
+    assert len(runs_a.json()) == 1
+    assert runs_a.json()[0]["keyword"] == "walking pad"
+    assert runs_b.json() == []
+
+
+def test_configured_cors_origin_is_allowed() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    tenants = TenantRepository(engine)
+    keys = ApiKeyService(repository=tenants, pepper="test-pepper")
+    app = create_app(
+        AppServices(
+            tenant_repository=tenants,
+            geo_repository=GeoRepository(engine),
+            monitor_repository=MonitorRepository(engine),
+            job_repository=JobRepository(engine),
+            rank_repository=RankRepository(engine),
+            api_keys=keys,
+            provider_registry=ProviderRegistry(managed=FakeProvider(), strict=FakeProvider()),
+        ),
+        cors_origins=["http://localhost:5173"],
+    )
+    client = TestClient(app)
+    response = client.options(
+        "/api/v1/geo-profiles",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"

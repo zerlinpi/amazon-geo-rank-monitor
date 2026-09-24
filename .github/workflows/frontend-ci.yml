@@ -1,0 +1,33 @@
+name: Frontend CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+    paths:
+      - "frontend/**"
+      - "THIRD_PARTY_NOTICES.md"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "THIRD_PARTY_NOTICES.md"
+      - ".github/workflows/frontend-ci.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout product repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+
+      - name: Build pinned Fantastic Admin overlay
+        env:
+          VITE_AGRM_API_BASEURL: http://127.0.0.1:8000
+        run: npm --prefix frontend run build

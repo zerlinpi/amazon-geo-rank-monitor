@@ -47,6 +47,18 @@ def get_job(
         raise HTTPException(status_code=404, detail="job not found") from exc
 
 
+@router.get("/runs")
+def list_runs(
+    request: Request,
+    owner_id: str = Depends(current_tenant),
+    limit: int = 50,
+):
+    return get_services(request).rank_repository.list_runs(
+        owner_id=owner_id,
+        limit=min(max(limit, 1), 500),
+    )
+
+
 @router.get("/runs/{run_id}")
 def get_run(
     run_id: str,
