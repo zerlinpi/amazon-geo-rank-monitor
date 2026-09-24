@@ -195,7 +195,7 @@ onUnmounted(() => {
         <el-table-column prop="error" label="Error" min-width="260" show-overflow-tooltip />
         <el-table-column label="Action" width="110" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" plain size="small" @click="requeue(row)">Requeue</el-button>
+            <el-button type="primary" plain size="small" @click="requeue(row as RankJob)">Requeue</el-button>
           </template>
         </el-table-column>
       </el-table>
