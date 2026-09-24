@@ -32,6 +32,8 @@ class AppSettings(BaseSettings):
     api_port: int = 8000
     worker_poll_seconds: float = 2.0
     mcp_tenant_id: str | None = None
+    managed_serp_credit_cost: int = 1
+    strict_serp_credit_cost: int = 5
 
 
 class GeoProfilesDocument(BaseModel):

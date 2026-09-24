@@ -22,6 +22,9 @@ class AppServices:
     rank_repository: Any
     api_keys: Any
     provider_registry: Any
+    billing_repository: Any | None = None
+    rate_card: Any | None = None
+    stripe_billing: Any | None = None
 
 
 def create_app(services: AppServices) -> FastAPI:

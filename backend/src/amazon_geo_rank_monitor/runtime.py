@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
 from amazon_geo_rank_monitor.api.app import AppServices
+from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
 from amazon_geo_rank_monitor.config import (
@@ -19,6 +20,7 @@ from amazon_geo_rank_monitor.providers.playwright_amazon import (
     PlaywrightAmazonBrowserClient,
 )
 from amazon_geo_rank_monitor.providers.strict_browser import StrictBrowserRankProvider
+from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
@@ -97,6 +99,11 @@ def build_services(settings: AppSettings) -> AppServices:
         api_keys=ApiKeyService(
             repository=tenants,
             pepper=settings.api_key_pepper,
+        ),
+        billing_repository=BillingRepository(engine),
+        rate_card=RateCard(
+            managed_serp=settings.managed_serp_credit_cost,
+            browser_verified_serp=settings.strict_serp_credit_cost,
         ),
         provider_registry=ProviderRegistry(
             managed=_managed_provider(settings),
