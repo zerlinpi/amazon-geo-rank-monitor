@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "amazon-geo-rank-monitor"
+version = "0.1.0"
+description = "Amazon geographic organic rank monitoring core and SaaS backend"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "sqlalchemy>=2.0,<3",
+  "httpx>=0.28,<1",
+  "PyYAML>=6.0,<7",
+  "oxylabs>=3.0,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4,<10",
+  "pytest-asyncio>=1.0,<2",
+  "ruff>=0.12,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/amazon_geo_rank_monitor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
