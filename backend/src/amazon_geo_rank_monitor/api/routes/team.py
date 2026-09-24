@@ -1,0 +1,161 @@
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+
+from amazon_geo_rank_monitor.api.dependencies import (
+    Principal,
+    get_services,
+    require_scope,
+    require_scope_principal,
+)
+from amazon_geo_rank_monitor.api.schemas import (
+    BootstrapOwnerCreate,
+    InvitationCreate,
+    MemberRoleUpdate,
+)
+from amazon_geo_rank_monitor.auth.accounts import HumanPrincipal, ROLES
+from amazon_geo_rank_monitor.auth.api_keys import ApiPrincipal
+
+router = APIRouter(prefix="/api/v1/team", tags=["team"])
+
+
+def _session_payload(services, session) -> dict:
+    return {
+        "session_token": session.plaintext,
+        "expires_at": session.expires_at,
+        **services.accounts.profile(session.principal),
+    }
+
+
+@router.get("/members")
+def list_members(
+    request: Request,
+    owner_id: str = Depends(require_scope("team:read")),
+):
+    return get_services(request).account_repository.list_members(owner_id=owner_id)
+
+
+@router.get("/invitations")
+def list_invitations(
+    request: Request,
+    owner_id: str = Depends(require_scope("team:manage")),
+):
+    return get_services(request).account_repository.list_invitations(owner_id=owner_id)
+
+
+@router.post("/invitations", status_code=status.HTTP_201_CREATED)
+def create_invitation(
+    body: InvitationCreate,
+    request: Request,
+    principal: Principal = Depends(require_scope_principal("team:manage")),
+):
+    if not isinstance(principal, HumanPrincipal):
+        raise HTTPException(
+            status_code=403,
+            detail="human session required to create invitations",
+        )
+    services = get_services(request)
+    try:
+        invitation = services.accounts.create_invitation(
+            principal=principal,
+            email=body.email,
+            role=body.role,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "id": invitation.id,
+        "email": invitation.email,
+        "role": invitation.role,
+        "invitation_token": invitation.plaintext,
+        "expires_at": invitation.expires_at,
+    }
+
+
+@router.patch("/members/{user_id}")
+def update_member_role(
+    user_id: str,
+    body: MemberRoleUpdate,
+    request: Request,
+    principal: Principal = Depends(require_scope_principal("team:manage")),
+):
+    if body.role not in ROLES:
+        raise HTTPException(status_code=422, detail="unsupported workspace role")
+    services = get_services(request)
+    try:
+        target = services.account_repository.get_membership(
+            user_id=user_id,
+            owner_id=principal.owner_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="workspace membership not found") from exc
+
+    if isinstance(principal, HumanPrincipal) and principal.role == "admin":
+        if target["role"] in {"owner", "admin"} or body.role in {"owner", "admin"}:
+            raise HTTPException(
+                status_code=403,
+                detail="admins can only manage analyst and viewer roles",
+            )
+    try:
+        return services.account_repository.update_member_role(
+            owner_id=principal.owner_id,
+            user_id=user_id,
+            role=body.role,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete("/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_member(
+    user_id: str,
+    request: Request,
+    principal: Principal = Depends(require_scope_principal("team:manage")),
+):
+    services = get_services(request)
+    try:
+        target = services.account_repository.get_membership(
+            user_id=user_id,
+            owner_id=principal.owner_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="workspace membership not found") from exc
+
+    if isinstance(principal, HumanPrincipal) and principal.role == "admin":
+        if target["role"] in {"owner", "admin"}:
+            raise HTTPException(
+                status_code=403,
+                detail="admins cannot remove owners or admins",
+            )
+    try:
+        services.account_repository.remove_member(
+            owner_id=principal.owner_id,
+            user_id=user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/bootstrap-owner", status_code=status.HTTP_201_CREATED)
+def bootstrap_owner(
+    body: BootstrapOwnerCreate,
+    request: Request,
+    principal: Principal = Depends(require_scope_principal("team:manage")),
+):
+    if not isinstance(principal, ApiPrincipal):
+        raise HTTPException(
+            status_code=403,
+            detail="API key authentication required for owner bootstrap",
+        )
+    services = get_services(request)
+    try:
+        created = services.accounts.bootstrap_owner(
+            owner_id=principal.owner_id,
+            email=body.email,
+            password=body.password,
+            display_name=body.display_name,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _session_payload(services, created)
