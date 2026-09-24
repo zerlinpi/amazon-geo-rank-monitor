@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import sessionmaker
 
 from amazon_geo_rank_monitor.scheduling.cron import normalize_schedule
@@ -109,6 +109,131 @@ class MonitorRepository:
                 .order_by(MonitorTargetGeoRow.id)
             ).all()
             return self._serialize(row, list(asins), list(geo_ids))
+
+    def update(
+        self,
+        monitor_id: str,
+        *,
+        owner_id: str,
+        changes: dict,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            row = session.scalar(
+                select(MonitorTargetRow).where(
+                    MonitorTargetRow.id == monitor_id,
+                    MonitorTargetRow.owner_id == owner_id,
+                )
+            )
+            if row is None:
+                raise KeyError(f"monitor not found: {monitor_id}")
+
+            if "provider_mode" in changes:
+                provider_mode = changes["provider_mode"]
+                if provider_mode not in {"managed", "strict"}:
+                    raise ValueError("provider_mode must be managed or strict")
+                row.provider_mode = provider_mode
+
+            for field in ("name", "marketplace", "keyword"):
+                if field in changes:
+                    value = changes[field]
+                    if value is None or not value.strip():
+                        raise ValueError(f"{field} must not be empty")
+                    setattr(row, field, value.strip())
+
+            if "search_depth" in changes:
+                value = changes["search_depth"]
+                if value is None or value < 1:
+                    raise ValueError("search_depth must be positive")
+                row.search_depth = value
+
+            if "schedule" in changes:
+                row.schedule = normalize_schedule(changes["schedule"])
+
+            if "enabled" in changes:
+                if changes["enabled"] is None:
+                    raise ValueError("enabled must be true or false")
+                row.enabled = changes["enabled"]
+
+            if "asins" in changes:
+                normalized_asins = list(
+                    dict.fromkeys(
+                        asin.strip().upper()
+                        for asin in changes["asins"] or []
+                        if asin.strip()
+                    )
+                )
+                if not normalized_asins:
+                    raise ValueError("at least one ASIN is required")
+                session.execute(
+                    delete(MonitorTargetAsinRow).where(
+                        MonitorTargetAsinRow.monitor_target_id == monitor_id
+                    )
+                )
+                session.add_all(
+                    [
+                        MonitorTargetAsinRow(
+                            monitor_target_id=monitor_id,
+                            asin=asin,
+                        )
+                        for asin in normalized_asins
+                    ]
+                )
+
+            if "geo_profile_ids" in changes:
+                geo_profile_ids = list(dict.fromkeys(changes["geo_profile_ids"] or []))
+                if not geo_profile_ids:
+                    raise ValueError("at least one geo profile is required")
+                owned_geo_ids = set(
+                    session.scalars(
+                        select(GeoProfileRow.id).where(
+                            GeoProfileRow.owner_id == owner_id,
+                            GeoProfileRow.id.in_(geo_profile_ids),
+                        )
+                    ).all()
+                )
+                if owned_geo_ids != set(geo_profile_ids):
+                    raise KeyError("one or more geo profiles are not available to this tenant")
+                session.execute(
+                    delete(MonitorTargetGeoRow).where(
+                        MonitorTargetGeoRow.monitor_target_id == monitor_id
+                    )
+                )
+                session.add_all(
+                    [
+                        MonitorTargetGeoRow(
+                            monitor_target_id=monitor_id,
+                            geo_profile_id=geo_id,
+                        )
+                        for geo_id in geo_profile_ids
+                    ]
+                )
+
+        updated = self.get(monitor_id, owner_id=owner_id)
+        if updated is None:
+            raise KeyError(f"monitor not found: {monitor_id}")
+        return updated
+
+    def delete(self, monitor_id: str, *, owner_id: str) -> None:
+        with self._sessions.begin() as session:
+            row = session.scalar(
+                select(MonitorTargetRow).where(
+                    MonitorTargetRow.id == monitor_id,
+                    MonitorTargetRow.owner_id == owner_id,
+                )
+            )
+            if row is None:
+                raise KeyError(f"monitor not found: {monitor_id}")
+            session.execute(
+                delete(MonitorTargetAsinRow).where(
+                    MonitorTargetAsinRow.monitor_target_id == monitor_id
+                )
+            )
+            session.execute(
+                delete(MonitorTargetGeoRow).where(
+                    MonitorTargetGeoRow.monitor_target_id == monitor_id
+                )
+            )
+            session.delete(row)
 
     def list(self, *, owner_id: str) -> list[dict]:
         with self._sessions() as session:
