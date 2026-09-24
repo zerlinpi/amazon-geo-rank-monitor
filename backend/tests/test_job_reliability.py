@@ -1,10 +1,16 @@
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
+from amazon_geo_rank_monitor.domain.errors import ProviderUnavailableError
+from amazon_geo_rank_monitor.domain.models import GeoProfile, RankCheckRequest
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
+from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
+from amazon_geo_rank_monitor.workers.rank_worker import RankWorker
 
 
 def build_jobs(*, max_attempts: int = 3) -> JobRepository:
@@ -146,3 +152,62 @@ def test_queue_summary_counts_dead_letters() -> None:
 
     summary = jobs.queue_summary()
     assert summary["counts"]["dead_letter"] == 1
+
+
+class FailingProvider:
+    provider_name = "failing"
+
+    async def search(self, **kwargs):
+        raise ProviderUnavailableError("provider temporarily unavailable")
+
+
+async def test_worker_retries_total_provider_failure_then_dead_letters() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    jobs = JobRepository(engine, default_max_attempts=2)
+    request = RankCheckRequest(
+        marketplace="amazon.com",
+        keyword="walking pad",
+        asins=["B0TARGET01"],
+        geo_profiles=[
+            GeoProfile(
+                id="ny",
+                name="New York",
+                marketplace="amazon.com",
+                ip_country="US",
+                delivery_country="US",
+                delivery_postal_code="10001",
+                weight=Decimal("100"),
+            )
+        ],
+        search_depth=100,
+    )
+    created = jobs.enqueue(
+        owner_id="tenant-a",
+        provider_mode="managed",
+        request_payload=request.model_dump(mode="json"),
+    )
+    worker = RankWorker(
+        job_repository=jobs,
+        rank_repository=RankRepository(engine),
+        provider_registry=ProviderRegistry(
+            managed=FailingProvider(),
+            strict=FailingProvider(),
+        ),
+        worker_id="worker-a",
+        retry_base_seconds=0,
+        retry_max_seconds=0,
+    )
+
+    first = await worker.run_once()
+    assert first["status"] == "pending"
+    assert first["attempt_count"] == 1
+
+    second = await worker.run_once()
+    assert second["status"] == "dead_letter"
+    assert second["attempt_count"] == 2
+    assert second["id"] == created["id"]
