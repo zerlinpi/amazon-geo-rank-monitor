@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MonitorCreate(BaseModel):
@@ -23,3 +23,9 @@ class RankCheckBody(BaseModel):
 
 class ApiKeyCreate(BaseModel):
     name: str = Field(min_length=1)
+
+
+class CheckoutCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    credit_pack_id: str = Field(min_length=1)
