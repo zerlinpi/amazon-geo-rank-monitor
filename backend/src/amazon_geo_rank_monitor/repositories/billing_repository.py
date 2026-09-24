@@ -56,6 +56,10 @@ class BillingRepository:
                 )
             )
             if existing is not None:
+                if existing.owner_id != owner_id:
+                    raise ValueError("idempotency key belongs to another tenant")
+                if existing.delta_credits != credits:
+                    raise ValueError("idempotency key was used with different credits")
                 account = session.get(CreditAccountRow, owner_id)
                 return self._serialize_account(account)
 
@@ -94,6 +98,16 @@ class BillingRepository:
                 )
             )
             if existing is not None:
+                if existing.owner_id != owner_id:
+                    raise ValueError("idempotency key belongs to another tenant")
+                if (
+                    existing.amount != credits
+                    or existing.reference_type != reference_type
+                    or existing.reference_id != reference_id
+                ):
+                    raise ValueError(
+                        "idempotency key was used with different reservation parameters"
+                    )
                 return self._serialize_reservation(existing)
 
             account = self._account_for_update(session, owner_id)
