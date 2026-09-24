@@ -16,3 +16,11 @@ class RankingError(RankMonitorError):
 
 class ConfigurationError(RankMonitorError):
     """Raised when required runtime configuration is missing or invalid."""
+
+
+class UpstreamBlockedError(ProviderUnavailableError):
+    """Raised when the upstream presents a robot or CAPTCHA challenge."""
+
+
+class GeoVerificationError(RankMonitorError):
+    """Raised when requested IP or delivery geography cannot be verified."""
