@@ -24,6 +24,8 @@ const scopeOptions = [
   { label: 'API keys · manage', value: 'keys:manage' },
   { label: 'System · read', value: 'system:read' },
   { label: 'System · write', value: 'system:write' },
+  { label: 'Team · read', value: 'team:read' },
+  { label: 'Team · manage', value: 'team:manage' },
 ]
 
 async function load() {
