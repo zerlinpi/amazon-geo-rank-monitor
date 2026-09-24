@@ -11,10 +11,12 @@ from amazon_geo_rank_monitor.domain.models import (
 )
 
 
-def _index_by_asin(products: Iterable[SerpProduct]) -> dict[str, SerpProduct]:
-    indexed: dict[str, SerpProduct] = {}
-    for product in products:
-        indexed.setdefault(product.asin, product)
+def _ranked_index_by_asin(
+    products: Iterable[SerpProduct],
+) -> dict[str, tuple[int, SerpProduct]]:
+    indexed: dict[str, tuple[int, SerpProduct]] = {}
+    for rank, product in enumerate(products, start=1):
+        indexed.setdefault(product.asin, (rank, product))
     return indexed
 
 
@@ -27,10 +29,14 @@ def match_asins(
     provider: str,
     verification_level: VerificationLevel,
 ) -> list[RankObservation]:
-    """Match requested ASINs against one normalized SERP result."""
-    organic = _index_by_asin(result.organic_products)
-    sponsored = _index_by_asin(result.sponsored_products)
-    absolute = _index_by_asin(result.absolute_products)
+    """Match requested ASINs against one normalized SERP result.
+
+    Provider-reported SerpProduct.position is the mixed SERP position.
+    Organic and sponsored ranks are derived from their respective ordered
+    collections so ads never inflate the organic rank.
+    """
+    organic = _ranked_index_by_asin(result.organic_products)
+    sponsored = _ranked_index_by_asin(result.sponsored_products)
 
     normalized_asins: list[str] = []
     seen: set[str] = set()
@@ -42,11 +48,12 @@ def match_asins(
 
     observations: list[RankObservation] = []
     for asin in normalized_asins:
-        organic_product = organic.get(asin)
-        sponsored_product = sponsored.get(asin)
-        absolute_product = absolute.get(asin)
-        found = organic_product is not None
-        organic_rank = organic_product.position if organic_product else None
+        organic_match = organic.get(asin)
+        sponsored_match = sponsored.get(asin)
+        found = organic_match is not None
+        organic_rank = organic_match[0] if organic_match else None
+        organic_product = organic_match[1] if organic_match else None
+        sponsored_rank = sponsored_match[0] if sponsored_match else None
         effective_rank = organic_rank if organic_rank is not None else search_depth + 1
 
         observations.append(
@@ -60,8 +67,8 @@ def match_asins(
                 ),
                 found=found,
                 organic_rank=organic_rank,
-                absolute_rank=absolute_product.position if absolute_product else None,
-                sponsored_rank=sponsored_product.position if sponsored_product else None,
+                absolute_rank=organic_product.position if organic_product else None,
+                sponsored_rank=sponsored_rank,
                 effective_rank=effective_rank,
                 page=organic_product.page if organic_product else None,
                 raw_result_reference=result.raw_result_reference,

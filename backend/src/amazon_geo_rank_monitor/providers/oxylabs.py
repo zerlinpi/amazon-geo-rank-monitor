@@ -5,14 +5,17 @@ import math
 from collections.abc import Iterable
 from typing import Any
 
-from amazon_geo_rank_monitor.domain.errors import ProviderResponseError, ProviderUnavailableError
+from amazon_geo_rank_monitor.domain.errors import (
+    ProviderResponseError,
+    ProviderUnavailableError,
+)
 from amazon_geo_rank_monitor.domain.models import GeoProfile, SerpProduct, SerpResult
 
 
 class OxylabsRankProvider:
     """Adapter for Oxylabs managed Amazon Search results.
 
-    Managed mode uses Amazon delivery geography through ``geo_location``. The
+    Managed mode uses Amazon delivery geography through geo_location. The
     requested IP geography is preserved as metadata only; strict IP+delivery
     verification belongs to the browser provider in the next phase.
     """
@@ -64,10 +67,29 @@ class OxylabsRankProvider:
         absolute: list[SerpProduct] = []
         for content in contents:
             result_block = self._result_block(content)
-            organic.extend(self._parse_products(result_block.get("organic", []), sponsored=False))
+            page = self._page_number(content)
+            organic.extend(
+                self._parse_products(
+                    result_block.get("organic", []),
+                    sponsored=False,
+                    default_page=page,
+                )
+            )
             paid_items = result_block.get("paid", result_block.get("sponsored", []))
-            sponsored.extend(self._parse_products(paid_items, sponsored=True))
-            absolute.extend(self._parse_products(result_block.get("items", []), sponsored=None))
+            sponsored.extend(
+                self._parse_products(
+                    paid_items,
+                    sponsored=True,
+                    default_page=page,
+                )
+            )
+            absolute.extend(
+                self._parse_products(
+                    result_block.get("items", []),
+                    sponsored=None,
+                    default_page=page,
+                )
+            )
 
         return SerpResult(
             organic_products=organic,
@@ -94,8 +116,6 @@ class OxylabsRankProvider:
         normalized = marketplace.strip().lower()
         if normalized.startswith("amazon."):
             return normalized.removeprefix("amazon.")
-        if normalized == "amazon.com":
-            return "com"
         raise ProviderResponseError(f"unsupported Amazon marketplace: {marketplace}")
 
     @staticmethod
@@ -108,7 +128,20 @@ class OxylabsRankProvider:
         return results
 
     @staticmethod
-    def _parse_products(items: Iterable[Any], sponsored: bool | None) -> list[SerpProduct]:
+    def _page_number(content: Any) -> int:
+        if isinstance(content, dict):
+            page = content.get("page", 1)
+            if isinstance(page, int) and page >= 1:
+                return page
+        return 1
+
+    @staticmethod
+    def _parse_products(
+        items: Iterable[Any],
+        sponsored: bool | None,
+        *,
+        default_page: int = 1,
+    ) -> list[SerpProduct]:
         products: list[SerpProduct] = []
         for item in items:
             if not isinstance(item, dict):
@@ -117,15 +150,16 @@ class OxylabsRankProvider:
             position = item.get("pos", item.get("position"))
             if not asin or not isinstance(position, int) or position < 1:
                 continue
-            if sponsored is None:
-                is_sponsored = bool(item.get("is_sponsored", False))
-            else:
-                is_sponsored = sponsored
+            is_sponsored = (
+                bool(item.get("is_sponsored", False))
+                if sponsored is None
+                else sponsored
+            )
             products.append(
                 SerpProduct(
                     asin=str(asin),
                     position=position,
-                    page=int(item.get("page", 1) or 1),
+                    page=int(item.get("page", default_page) or default_page),
                     sponsored=is_sponsored,
                     title=item.get("title"),
                 )

@@ -28,10 +28,15 @@ class RecordingProvider:
             "la": {"B0AAA11111": 4, "B0BBB22222": 6},
             "tx": {"B0AAA11111": 6, "B0BBB22222": 4},
         }
-        products = [
-            SerpProduct(asin=asin, position=rank, page=1)
-            for asin, rank in ranks[geo_profile.id].items()
-        ]
+        geo_ranks = ranks[geo_profile.id]
+        max_rank = max(geo_ranks.values())
+        by_rank = {rank: asin for asin, rank in geo_ranks.items()}
+        products = []
+        for natural_rank in range(1, max_rank + 1):
+            asin = by_rank.get(natural_rank, f"FILLER-{geo_profile.id}-{natural_rank}")
+            products.append(
+                SerpProduct(asin=asin, position=natural_rank + 2, page=1)
+            )
         return SerpResult(organic_products=products)
 
 

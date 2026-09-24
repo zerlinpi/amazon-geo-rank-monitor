@@ -3,7 +3,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from amazon_geo_rank_monitor.domain.errors import ProviderResponseError, ProviderUnavailableError
+from amazon_geo_rank_monitor.domain.errors import (
+    ProviderResponseError,
+    ProviderUnavailableError,
+)
 from amazon_geo_rank_monitor.domain.models import GeoProfile
 from amazon_geo_rank_monitor.providers.oxylabs import OxylabsRankProvider
 
@@ -113,3 +116,32 @@ async def test_client_failure_is_not_converted_to_empty_serp() -> None:
             device="desktop",
             search_depth=50,
         )
+
+
+@pytest.mark.asyncio
+async def test_preserves_page_number_from_each_oxylabs_payload() -> None:
+    response = SimpleNamespace(
+        results=[
+            SimpleNamespace(
+                content={
+                    "page": 1,
+                    "results": {"organic": [{"asin": "B0PAGE00001", "pos": 4}]},
+                }
+            ),
+            SimpleNamespace(
+                content={
+                    "page": 2,
+                    "results": {"organic": [{"asin": "B0PAGE00002", "pos": 3}]},
+                }
+            ),
+        ]
+    )
+    provider = OxylabsRankProvider(client=FakeClient(FakeAmazonClient(response=response)))
+    result = await provider.search(
+        marketplace="amazon.com",
+        keyword="walking pad",
+        geo_profile=geo(),
+        device="desktop",
+        search_depth=100,
+    )
+    assert [p.page for p in result.organic_products] == [1, 2]
