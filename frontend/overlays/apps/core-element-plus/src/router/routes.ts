@@ -9,7 +9,7 @@ const constantRoutes: RouteRecordRaw[] = [
     path: '/login',
     name: 'login',
     component: () => import('@/views/login.vue'),
-    meta: { title: 'Connect workspace' },
+    meta: { title: 'Sign in' },
   },
   {
     path: '/:all(.*)*',
