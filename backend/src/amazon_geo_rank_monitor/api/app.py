@@ -125,7 +125,7 @@ def create_app(
         return {"status": "ok"}
 
     @app.get("/ready")
-    def ready() -> JSONResponse | dict[str, str]:
+    def ready():
         engine = services.database_engine
         if engine is None:
             return {"status": "ok"}
