@@ -145,7 +145,10 @@ def build_services(settings: AppSettings) -> AppServices:
         tenant_repository=tenants,
         geo_repository=GeoRepository(engine),
         monitor_repository=MonitorRepository(engine),
-        job_repository=JobRepository(engine),
+        job_repository=JobRepository(
+            engine,
+            default_max_attempts=settings.job_max_attempts,
+        ),
         rank_repository=RankRepository(engine),
         api_keys=ApiKeyService(
             repository=tenants,
