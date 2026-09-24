@@ -35,6 +35,9 @@ class AppSettings(BaseSettings):
     allow_public_signup: bool = True
     session_ttl_hours: int = 720
     invitation_ttl_hours: int = 168
+    allow_public_signup: bool = True
+    session_ttl_hours: int = 720
+    invitation_ttl_hours: int = 168
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     worker_poll_seconds: float = 2.0
     worker_id: str | None = None
