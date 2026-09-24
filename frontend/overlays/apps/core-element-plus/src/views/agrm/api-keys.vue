@@ -23,6 +23,7 @@ const scopeOptions = [
   { label: 'Billing · write', value: 'billing:write' },
   { label: 'API keys · manage', value: 'keys:manage' },
   { label: 'System · read', value: 'system:read' },
+  { label: 'System · write', value: 'system:write' },
 ]
 
 async function load() {
