@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from amazon_geo_rank_monitor.api.dependencies import (
     HumanPrincipalDependency,
