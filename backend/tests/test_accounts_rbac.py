@@ -24,7 +24,7 @@ class FakeProvider:
         return SerpResult()
 
 
-def build_client():
+def build_client(*, auth_rate_limit: int = 20):
     engine = create_engine(
         "sqlite+pysqlite://",
         connect_args={"check_same_thread": False},
@@ -55,7 +55,15 @@ def build_client():
         accounts=accounts,
         allow_public_signup=True,
     )
-    return TestClient(create_app(services)), services
+    return (
+        TestClient(
+            create_app(
+                services,
+                auth_rate_limit_per_minute=auth_rate_limit,
+            )
+        ),
+        services,
+    )
 
 
 def bearer(token: str) -> dict[str, str]:
@@ -243,3 +251,52 @@ def test_existing_api_key_workspace_can_bootstrap_first_human_owner() -> None:
         "/api/v1/auth/me",
         headers=bearer(session_token),
     ).status_code == 200
+
+
+def test_public_login_is_rate_limited_by_client_ip() -> None:
+    client, _ = build_client(auth_rate_limit=2)
+
+    for _ in range(2):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "missing@example.com",
+                "password": "not-the-password",
+            },
+        )
+        assert response.status_code == 401
+
+    limited = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "missing@example.com",
+            "password": "not-the-password",
+        },
+    )
+    assert limited.status_code == 429
+    assert limited.json()["error"]["code"] == "RATE_LIMITED"
+    assert int(limited.headers["Retry-After"]) >= 1
+
+
+def test_human_session_requests_are_audited_as_user_actor() -> None:
+    client, services = build_client()
+    registered = register_owner(client)
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={
+            **bearer(registered["session_token"]),
+            "X-Request-ID": "human-audit-1",
+        },
+    )
+    assert response.status_code == 200
+
+    events = services.audit_repository.list(
+        owner_id=registered["workspace"]["id"],
+    )
+    event = next(
+        item for item in events if item["request_id"] == "human-audit-1"
+    )
+    assert event["actor_type"] == "session"
+    assert event["user_id"] == registered["user"]["id"]
+    assert event["api_key_id"] is None
