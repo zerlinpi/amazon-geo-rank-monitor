@@ -34,15 +34,18 @@ def current_principal(
     return principal
 
 
+PrincipalDependency = Annotated[ApiPrincipal, Depends(current_principal)]
+
+
 def current_tenant(
-    principal: ApiPrincipal = Depends(current_principal),
+    principal: PrincipalDependency,
 ) -> str:
     return principal.owner_id
 
 
 def require_scope(scope: str) -> Callable[..., str]:
     def dependency(
-        principal: ApiPrincipal = Depends(current_principal),
+        principal: PrincipalDependency,
     ) -> str:
         if not principal.allows(scope):
             raise HTTPException(
