@@ -33,8 +33,8 @@ class AuditRepository:
             method=method[:16],
             path=path[:512],
             status_code=status_code,
-            client_ip=(client_ip or None),
-            user_agent=(user_agent or None),
+            client_ip=client_ip[:64] if client_ip else None,
+            user_agent=user_agent[:512] if user_agent else None,
             created_at=datetime.now(UTC),
         )
         with self._sessions.begin() as session:
