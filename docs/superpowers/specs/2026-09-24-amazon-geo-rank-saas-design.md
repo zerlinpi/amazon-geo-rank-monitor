@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-24  
 **Repository:** `zerlinpi/amazon-geo-rank-monitor`  
-**Status:** Approved architecture baseline; implementation pending plan approval
+**Status:** Conversational architecture approved; written specification pending user review
 
 ## 1. Product Purpose
 
