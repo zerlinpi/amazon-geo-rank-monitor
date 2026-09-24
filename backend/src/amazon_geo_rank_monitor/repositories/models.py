@@ -199,3 +199,22 @@ class RankSnapshotRow(Base):
     )
 
     run: Mapped[RankRunRow] = relationship(back_populates="snapshots")
+
+
+class RankJobRow(Base):
+    __tablename__ = "rank_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    monitor_target_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    provider_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    request_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
