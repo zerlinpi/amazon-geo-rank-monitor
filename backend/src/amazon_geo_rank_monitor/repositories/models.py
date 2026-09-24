@@ -46,7 +46,26 @@ class ApiKeyRow(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuditEventRow(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    api_key_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    request_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
+    path: Mapped[str] = mapped_column(String(512), nullable=False)
+    status_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    client_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), index=True
+    )
 
 
 class GeoProfileRow(Base):
