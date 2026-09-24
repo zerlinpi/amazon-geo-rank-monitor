@@ -17,7 +17,10 @@ from amazon_geo_rank_monitor.workers.rank_worker import RankWorker
 
 def api_main() -> None:
     settings = AppSettings()
-    app = create_app(build_services(settings))
+    app = create_app(
+        build_services(settings),
+        cors_origins=settings.cors_origin_list,
+    )
     uvicorn.run(
         app,
         host=settings.api_host,

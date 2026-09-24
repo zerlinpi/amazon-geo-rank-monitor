@@ -30,6 +30,7 @@ class AppSettings(BaseSettings):
     api_key_pepper: str | None = None
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     worker_poll_seconds: float = 2.0
     mcp_tenant_id: str | None = None
     managed_serp_credit_cost: int = 1
@@ -45,6 +46,14 @@ class AppSettings(BaseSettings):
     credit_pack_growth_amount_minor: int = 0
     credit_pack_scale_credits: int = 10000
     credit_pack_scale_amount_minor: int = 0
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [
+            item.strip()
+            for item in self.cors_origins.split(",")
+            if item.strip()
+        ]
 
 
 class GeoProfilesDocument(BaseModel):

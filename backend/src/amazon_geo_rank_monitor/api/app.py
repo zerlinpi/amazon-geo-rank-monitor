@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .routes import (
     api_keys_router,
@@ -28,9 +29,21 @@ class AppServices:
     stripe_billing: Any | None = None
 
 
-def create_app(services: AppServices) -> FastAPI:
+def create_app(
+    services: AppServices,
+    *,
+    cors_origins: list[str] | None = None,
+) -> FastAPI:
     app = FastAPI(title="Amazon Geo Rank Monitor", version="0.1.0")
     app.state.services = services
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
