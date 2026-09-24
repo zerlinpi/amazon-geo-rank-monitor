@@ -31,6 +31,7 @@ class AppSettings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_rate_limit_per_minute: int = 120
+    redis_url: str | None = None
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     worker_poll_seconds: float = 2.0
     worker_id: str | None = None
