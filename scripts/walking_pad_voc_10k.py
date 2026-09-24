@@ -11,8 +11,8 @@ MIN_VALID = int(os.getenv("MIN_VALID", "10000"))
 OUTDIR = Path(os.getenv("OUTDIR", "voc_output"))
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
-META_URL = "https://datarepo.eng.ucsd.edu/mcauley_group/data/amazon_2023/raw/meta_categories/meta_Sports_and_Outdoors.jsonl.gz"
-REVIEWS_URL = "https://datarepo.eng.ucsd.edu/mcauley_group/data/amazon_2023/raw/review_categories/Sports_and_Outdoors.jsonl.gz"
+META_URL = "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Sports_and_Outdoors.jsonl.gz"
+REVIEWS_URL = "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Sports_and_Outdoors.jsonl.gz"
 
 KEYWORDS = [
     "walking pad","walkingpad","under desk treadmill","under-desk treadmill",
