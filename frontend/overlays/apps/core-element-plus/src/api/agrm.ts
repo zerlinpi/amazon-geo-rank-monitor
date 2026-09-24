@@ -18,8 +18,8 @@ client.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
-      if (!location.pathname.endsWith('/login')) {
-        location.href = location.origin + location.pathname.replace(/\/$/, '') + '/login'
+      if (location.hash !== '#/login') {
+        location.hash = '#/login'
       }
     }
     return Promise.reject(error)
