@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from .routes import (
     api_keys_router,
+    billing_router,
     geo_profiles_router,
     monitors_router,
     rank_router,
@@ -39,4 +40,5 @@ def create_app(services: AppServices) -> FastAPI:
     app.include_router(monitors_router)
     app.include_router(rank_router)
     app.include_router(api_keys_router)
+    app.include_router(billing_router)
     return app

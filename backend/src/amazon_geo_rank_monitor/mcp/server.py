@@ -75,6 +75,11 @@ def _register_tools(
         """Get recent rank runs for the current tenant."""
         return tools_factory().get_rank_history(limit=limit)
 
+    @server.tool()
+    def get_credit_balance() -> dict:
+        """Get prepaid credit balance for the current tenant."""
+        return tools_factory().get_credit_balance()
+
 
 def build_local_mcp_server(tools: RankMcpTools) -> MCPServer:
     server = MCPServer("Amazon Geo Rank Monitor")

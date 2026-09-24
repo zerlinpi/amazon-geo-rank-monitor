@@ -38,6 +38,13 @@ class AppSettings(BaseSettings):
     stripe_webhook_secret: str | None = None
     stripe_success_url: str = "http://localhost:5173/billing/success"
     stripe_cancel_url: str = "http://localhost:5173/billing"
+    billing_currency: str = "usd"
+    credit_pack_starter_credits: int = 500
+    credit_pack_starter_amount_minor: int = 0
+    credit_pack_growth_credits: int = 2000
+    credit_pack_growth_amount_minor: int = 0
+    credit_pack_scale_credits: int = 10000
+    credit_pack_scale_amount_minor: int = 0
 
 
 class GeoProfilesDocument(BaseModel):

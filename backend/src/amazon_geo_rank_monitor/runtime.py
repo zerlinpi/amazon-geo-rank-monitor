@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from amazon_geo_rank_monitor.api.app import AppServices
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
+from amazon_geo_rank_monitor.billing.stripe_service import StripeBillingService
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
 from amazon_geo_rank_monitor.config import (
@@ -83,6 +84,50 @@ def _strict_provider(settings: AppSettings):
     )
 
 
+def _seed_credit_packs(repository: BillingRepository, settings: AppSettings) -> None:
+    packs = [
+        (
+            "starter",
+            "Starter Credits",
+            settings.credit_pack_starter_credits,
+            settings.credit_pack_starter_amount_minor,
+        ),
+        (
+            "growth",
+            "Growth Credits",
+            settings.credit_pack_growth_credits,
+            settings.credit_pack_growth_amount_minor,
+        ),
+        (
+            "scale",
+            "Scale Credits",
+            settings.credit_pack_scale_credits,
+            settings.credit_pack_scale_amount_minor,
+        ),
+    ]
+    for pack_id, name, credits, amount_minor in packs:
+        if amount_minor > 0:
+            repository.upsert_credit_pack(
+                pack_id=pack_id,
+                name=name,
+                credits=credits,
+                amount_minor=amount_minor,
+                currency=settings.billing_currency,
+            )
+
+
+def _stripe_billing(repository: BillingRepository, settings: AppSettings):
+    if not settings.stripe_secret_key or not settings.stripe_webhook_secret:
+        return None
+    return StripeBillingService(
+        repository=repository,
+        secret_key=settings.stripe_secret_key,
+        webhook_secret=settings.stripe_webhook_secret,
+        success_url=settings.stripe_success_url,
+        cancel_url=settings.stripe_cancel_url,
+    )
+
+
 def build_services(settings: AppSettings) -> AppServices:
     if not settings.api_key_pepper:
         raise ConfigurationError("API_KEY_PEPPER is required")
@@ -90,6 +135,8 @@ def build_services(settings: AppSettings) -> AppServices:
     Base.metadata.create_all(engine)
 
     tenants = TenantRepository(engine)
+    billing = BillingRepository(engine)
+    _seed_credit_packs(billing, settings)
     return AppServices(
         tenant_repository=tenants,
         geo_repository=GeoRepository(engine),
@@ -100,11 +147,12 @@ def build_services(settings: AppSettings) -> AppServices:
             repository=tenants,
             pepper=settings.api_key_pepper,
         ),
-        billing_repository=BillingRepository(engine),
+        billing_repository=billing,
         rate_card=RateCard(
             managed_serp=settings.managed_serp_credit_cost,
             browser_verified_serp=settings.strict_serp_credit_cost,
         ),
+        stripe_billing=_stripe_billing(billing, settings),
         provider_registry=ProviderRegistry(
             managed=_managed_provider(settings),
             strict=_strict_provider(settings),

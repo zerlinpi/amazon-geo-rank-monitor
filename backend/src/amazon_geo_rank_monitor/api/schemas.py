@@ -23,3 +23,7 @@ class RankCheckBody(BaseModel):
 
 class ApiKeyCreate(BaseModel):
     name: str = Field(min_length=1)
+
+
+class CheckoutCreate(BaseModel):
+    credit_pack_id: str = Field(min_length=1)
