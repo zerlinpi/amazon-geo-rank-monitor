@@ -32,7 +32,13 @@ class MonitorRepository:
     ) -> dict:
         if provider_mode not in {"managed", "strict"}:
             raise ValueError("provider_mode must be managed or strict")
-        normalized_asins = list(\n            dict.fromkeys(asin.strip().upper() for asin in asins if asin.strip())\n        )
+        normalized_asins = list(
+            dict.fromkeys(
+                asin.strip().upper()
+                for asin in asins
+                if asin.strip()
+            )
+        )
         if not normalized_asins:
             raise ValueError("at least one ASIN is required")
         if not geo_profile_ids:
