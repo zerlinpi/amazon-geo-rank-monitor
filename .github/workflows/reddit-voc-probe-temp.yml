@@ -1,0 +1,20 @@
+name: Reddit VOC API Probe Temp
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/reddit-voc-probe-temp.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/walking-pad-voc-10k
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - run: python scripts/test_reddit_voc_api.py
