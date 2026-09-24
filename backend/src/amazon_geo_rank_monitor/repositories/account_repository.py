@@ -349,7 +349,10 @@ class AccountRepository:
                 raise KeyError("invitation not found")
             if invitation.accepted_at is not None:
                 raise ValueError("invitation has already been accepted")
-            if invitation.expires_at <= now:
+            expires_at = invitation.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at <= now:
                 raise ValueError("invitation has expired")
             if user.email != invitation.email:
                 raise ValueError("invitation email does not match account")
