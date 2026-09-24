@@ -112,6 +112,12 @@ onMounted(load)
             </div>
           </template>
         </el-table-column>
+        <el-table-column prop="usage_count" label="Requests" width="110" />
+        <el-table-column label="Last IP" min-width="150">
+          <template #default="{ row }">
+            <span class="font-mono text-xs">{{ row.last_used_ip || '—' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="Created" min-width="170">
           <template #default="{ row }">{{ row.created_at ? new Date(row.created_at).toLocaleString() : '-' }}</template>
         </el-table-column>

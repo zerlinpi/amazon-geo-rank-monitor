@@ -13,6 +13,15 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   migrate:
     build:
       context: .
@@ -34,6 +43,7 @@ services:
       API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
       API_HOST: 0.0.0.0
       API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-120}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       OXYLABS_USERNAME: ${OXYLABS_USERNAME:-}
       OXYLABS_PASSWORD: ${OXYLABS_PASSWORD:-}
       RESIDENTIAL_PROXY_USERNAME: ${RESIDENTIAL_PROXY_USERNAME:-}
@@ -44,6 +54,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { QueueSummary, RankJob, WorkerStatus } from '@/api/agrm'
+import type { AuditEvent, QueueSummary, RankJob, WorkerStatus } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
 
@@ -9,6 +9,7 @@ const loading = ref(false)
 const queue = ref<QueueSummary>({ counts: {} })
 const workers = ref<WorkerStatus[]>([])
 const deadLetters = ref<RankJob[]>([])
+const auditEvents = ref<AuditEvent[]>([])
 let timer: ReturnType<typeof setInterval> | undefined
 
 const pending = computed(() => queue.value.counts.pending || 0)
@@ -50,14 +51,16 @@ async function load(showLoading = true) {
     loading.value = true
   }
   try {
-    const [queueResult, workerResult, deadLetterResult] = await Promise.all([
+    const [queueResult, workerResult, deadLetterResult, auditResult] = await Promise.all([
       agrmApi.getQueueSummary(),
       agrmApi.getSystemWorkers(),
       agrmApi.getDeadLetters(100),
+      agrmApi.getAuditEvents(100),
     ])
     queue.value = queueResult
     workers.value = workerResult
     deadLetters.value = deadLetterResult
+    auditEvents.value = auditResult
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Failed to load system status')
@@ -163,6 +166,42 @@ onUnmounted(() => {
         <el-table-column label="Last error" min-width="220">
           <template #default="{ row }">
             <span class="text-sm">{{ row.last_error || '—' }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <el-card shadow="never">
+      <template #header>
+        <div class="font-medium">Recent audit events</div>
+      </template>
+      <el-table :data="auditEvents" empty-text="No audit events yet">
+        <el-table-column label="Time" min-width="170">
+          <template #default="{ row }">
+            {{ row.created_at ? new Date(row.created_at).toLocaleString() : '—' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="method" label="Method" width="90" />
+        <el-table-column prop="path" label="Path" min-width="240">
+          <template #default="{ row }">
+            <span class="font-mono text-xs">{{ row.path }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="Status" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.status_code >= 400 ? 'danger' : 'success'" size="small">
+              {{ row.status_code }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="Client IP" min-width="140">
+          <template #default="{ row }">
+            <span class="font-mono text-xs">{{ row.client_ip || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="Request ID" min-width="180">
+          <template #default="{ row }">
+            <span class="font-mono text-xs">{{ row.request_id }}</span>
           </template>
         </el-table-column>
       </el-table>

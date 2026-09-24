@@ -17,7 +17,7 @@ from .errors import (
     http_exception_handler,
     validation_exception_handler,
 )
-from .rate_limit import FixedWindowRateLimiter
+from .rate_limit import build_rate_limiter, rate_limit_identity
 from .routes import (
     api_keys_router,
     billing_router,
@@ -42,6 +42,8 @@ class AppServices:
     stripe_billing: Any | None = None
     database_engine: Any | None = None
     worker_status_repository: Any | None = None
+    audit_repository: Any | None = None
+    rate_limiter: Any | None = None
 
 
 def create_app(
@@ -52,7 +54,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Amazon Geo Rank Monitor", version="0.1.0")
     app.state.services = services
-    app.state.rate_limiter = FixedWindowRateLimiter(
+    app.state.rate_limiter = services.rate_limiter or build_rate_limiter(
         requests_per_minute=api_rate_limit_per_minute,
     )
     logger = logging.getLogger("amazon_geo_rank_monitor.api")
@@ -75,7 +77,9 @@ def create_app(
             "/api/v1/billing/webhook",
         }
         if api_key and not exempt and limiter.limit:
-            allowed, remaining, retry_after = limiter.check(api_key)
+            allowed, remaining, retry_after = limiter.check(
+                rate_limit_identity(api_key)
+            )
             if not allowed:
                 response = JSONResponse(
                     status_code=429,
@@ -101,6 +105,29 @@ def create_app(
         if api_key and not exempt and limiter.limit:
             response.headers["X-RateLimit-Limit"] = str(limiter.limit)
             response.headers["X-RateLimit-Remaining"] = str(remaining)
+
+        principal = getattr(request.state, "api_principal", None)
+        if (
+            principal is not None
+            and services.audit_repository is not None
+            and request.url.path.startswith("/api/v1/")
+        ):
+            try:
+                services.audit_repository.record(
+                    owner_id=principal.owner_id,
+                    api_key_id=principal.key_id,
+                    request_id=request_id,
+                    method=request.method,
+                    path=request.url.path,
+                    status_code=response.status_code,
+                    client_ip=request.client.host if request.client else None,
+                    user_agent=request.headers.get("User-Agent"),
+                )
+            except Exception:
+                logger.exception(
+                    "audit_record_failed request_id=%s",
+                    request_id,
+                )
 
         logger.info(
             "api_request method=%s path=%s status=%s request_id=%s duration_ms=%.2f",

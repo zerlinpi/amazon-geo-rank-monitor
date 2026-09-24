@@ -65,6 +65,23 @@ def requeue_dead_letter(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.get("/audit")
+def list_audit_events(
+    request: Request,
+    owner_id: str = Depends(require_scope("system:read")),
+    limit: int = 100,
+    api_key_id: str | None = None,
+):
+    repository = get_services(request).audit_repository
+    if repository is None:
+        raise HTTPException(status_code=503, detail="audit log is unavailable")
+    return repository.list(
+        owner_id=owner_id,
+        limit=limit,
+        api_key_id=api_key_id,
+    )
+
+
 @router.get("/metrics")
 def prometheus_metrics(
     request: Request,

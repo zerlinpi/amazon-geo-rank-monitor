@@ -22,6 +22,7 @@ dependencies = [
   "stripe>=15.6,<16",
   "alembic>=1.16,<2",
   "croniter>=6.0,<7",
+  "redis>=6.0,<7",
 ]
 
 [project.scripts]

@@ -24,7 +24,11 @@ def current_principal(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key required",
         )
-    principal = get_services(request).api_keys.authenticate_principal(x_api_key)
+    client_ip = request.client.host if request.client else None
+    principal = get_services(request).api_keys.authenticate_principal(
+        x_api_key,
+        client_ip=client_ip,
+    )
     if principal is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
