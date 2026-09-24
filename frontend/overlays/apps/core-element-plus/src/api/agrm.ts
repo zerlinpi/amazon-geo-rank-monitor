@@ -123,8 +123,23 @@ export interface ApiKeyRow {
   prefix: string
   created_at?: string | null
   last_used_at?: string | null
+  last_used_ip?: string | null
+  usage_count: number
   revoked_at?: string | null
   scopes: string[]
+}
+
+export interface AuditEvent {
+  id: string
+  owner_id: string
+  api_key_id?: string | null
+  request_id: string
+  method: string
+  path: string
+  status_code: number
+  client_ip?: string | null
+  user_agent?: string | null
+  created_at: string
 }
 
 export interface WorkerStatus {
@@ -214,6 +229,9 @@ export const agrmApi = {
   ),
   requeueDeadLetter: (id: string) => data<RankJob>(
     client.post('/api/v1/system/dead-letters/' + id + '/requeue'),
+  ),
+  getAuditEvents: (limit = 100, api_key_id?: string) => data<AuditEvent[]>(
+    client.get('/api/v1/system/audit', { params: { limit, api_key_id } }),
   ),
 }
 
