@@ -9,7 +9,7 @@ This repository is intentionally focused on Amazon rank monitoring. Amazon Ads b
 The architecture uses a Hybrid provider model:
 
 - **Managed monitoring:** Oxylabs Amazon Search for routine, structured SERP collection.
-- **Strict verification:** a later phase adds browser + residential proxy verification where the requested IP geography and Amazon Deliver-to location are independently verified.
+- **Strict verification:** Playwright + residential proxy verification where the requested IP geography and Amazon Deliver-to location are independently confirmed before the SERP result is accepted.
 
 Managed mode must not be described as strict IP verification. The Oxylabs adapter records the requested IP geography as metadata while using the delivery postal code for the managed Amazon search geography.
 
@@ -18,8 +18,10 @@ Managed mode must not be described as strict IP verification. The Oxylabs adapte
 The system keeps three concepts separate:
 
 - `organic_rank`: position among organic products only; this drives the weighted score.
-- `absolute_rank`: observed overall product position when the provider exposes a combined sequence.
-- `sponsored_rank`: position in sponsored results when present.
+- `absolute_rank`: observed mixed product-card position including sponsored placements.
+- `sponsored_rank`: position among sponsored results when present.
+
+For Oxylabs managed results, provider `pos` is retained as an observed mixed SERP position; organic rank is derived from the ordered organic result collection so sponsored placements do not inflate the organic rank.
 
 If an ASIN is not found within `search_depth`, the stored values are:
 
@@ -33,7 +35,7 @@ A provider failure is an error, not an ASIN-not-found result.
 
 ## One SERP, many ASINs
 
-The billable/data-collection unit is a SERP probe, not an ASIN. A single query for:
+The data-collection unit is a SERP probe, not an ASIN. A single query for:
 
 ```text
 marketplace + keyword + geo profile + device + search depth
@@ -49,7 +51,63 @@ For successful observations:
 weighted_rank = sum(effective_rank_i * weight_i) / sum(weight_i)
 ```
 
-Weights are normalized mathematically and do not need to sum to 1 or 100. The raw regional observations are always retained alongside the weighted score.
+Weights are normalized mathematically and do not need to sum to 1 or 100. The raw regional observations are always retained alongside the weighted score. Confidence currently represents the share of configured geographic weight covered by successful probes.
+
+## Managed monitoring
+
+The default `OxylabsRankProvider` uses Oxylabs Amazon Search parsed results.
+
+Managed mode is optimized for routine monitoring and bulk collection. It records:
+
+- requested IP geography from the GeoProfile as intent;
+- Amazon delivery postal code used for the managed request;
+- `ip_geography_verified = false`.
+
+This distinction is deliberate: managed results must not be presented as proof that the exit IP postal code was independently verified.
+
+## Strict geographic verification
+
+Strict mode is implemented by `StrictBrowserRankProvider` and `PlaywrightAmazonBrowserClient`.
+
+Current strict flow:
+
+```text
+GeoProfile
+   |
+   v
+Residential proxy with sticky session
+   |
+   v
+Verify observed exit-IP geography
+   |
+   v
+Same isolated Playwright BrowserContext
+   |
+   v
+Open Amazon and set Deliver-to ZIP
+   |
+   v
+Confirm requested ZIP is displayed
+   |
+   v
+Search keyword and collect SERP cards
+   |
+   v
+Organic / sponsored separation
+```
+
+A strict result is accepted only when both the requested IP geography and requested Amazon delivery ZIP are confirmed.
+
+Current strict constraints:
+
+- `amazon.com` only;
+- US ZIP-level residential proxy targeting only;
+- desktop browser only;
+- one isolated BrowserContext per strict probe;
+- CAPTCHA / robot-check pages produce an explicit blocked error;
+- the implementation does not solve CAPTCHA, use stealth plugins, spoof fingerprints, or attempt to bypass anti-bot controls.
+
+Strict verification is intended for manual checks, anomalies, and high-confidence validation. Routine scheduled monitoring should use managed mode.
 
 ## Local development
 
@@ -60,22 +118,49 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e '.[dev]'
-cp ../.env.example ../.env
+cp ../.env.example .env
 PYTHONPATH=src python -m pytest -q
 ruff check src tests
 ```
 
 Configure geographic profiles from `config/geo_profiles.example.yaml`.
 
-For real Oxylabs calls set:
+For real managed Oxylabs calls:
 
 ```env
 OXYLABS_USERNAME=...
 OXYLABS_PASSWORD=...
 ```
 
-No provider credentials are required to import the package or run the offline unit tests.
+For strict residential-proxy verification:
+
+```env
+RESIDENTIAL_PROXY_USERNAME=...
+RESIDENTIAL_PROXY_PASSWORD=...
+RESIDENTIAL_PROXY_SERVER=http://pr.oxylabs.io:7777
+```
+
+Install a Chromium runtime before executing real strict checks:
+
+```bash
+playwright install chromium
+```
+
+Provider credentials are not required to import the package or run the offline unit tests.
 
 ## Current implementation phase
 
-The current phase contains the provider-neutral rank core, Oxylabs managed adapter, weighted-rank logic, SQLite-compatible persistence, and orchestration. Strict browser verification, REST/MCP exposure, prepaid credits/Stripe, and the Fantastic Admin SaaS UI are implemented in later isolated phases described in `docs/superpowers/specs/2026-09-24-amazon-geo-rank-saas-design.md`.
+Implemented:
+
+- provider-neutral rank core;
+- separate IP and Amazon delivery geographies;
+- Oxylabs managed adapter;
+- strict Playwright + residential proxy verification;
+- organic/sponsored separation;
+- multi-ASIN matching from one SERP;
+- Decimal weighted-rank calculation;
+- SQLite-compatible SQLAlchemy persistence;
+- rank-run orchestration and partial-failure semantics;
+- GitHub Actions tests and Ruff checks.
+
+Next isolated phases are REST/API-key/worker/MCP exposure, prepaid credits/Stripe, and the Fantastic Admin Basic SaaS UI. The complete architecture is documented in `docs/superpowers/specs/2026-09-24-amazon-geo-rank-saas-design.md`.
