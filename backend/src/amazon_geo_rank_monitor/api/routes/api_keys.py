@@ -27,7 +27,7 @@ def list_api_keys(
 def create_api_key(
     body: ApiKeyCreate,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("keys:manage")),
 ):
     created = get_services(request).api_keys.create(
         owner_id=owner_id,
@@ -46,7 +46,7 @@ def create_api_key(
 def revoke_api_key(
     key_id: str,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("keys:manage")),
 ):
     try:
         get_services(request).api_keys.revoke(key_id, owner_id=owner_id)
