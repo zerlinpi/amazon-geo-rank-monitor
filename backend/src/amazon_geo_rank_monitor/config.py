@@ -32,6 +32,8 @@ class AppSettings(BaseSettings):
     api_port: int = 8000
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     worker_poll_seconds: float = 2.0
+    scheduler_poll_seconds: float = 30.0
+    auto_create_schema: bool = True
     mcp_tenant_id: str | None = None
     managed_serp_credit_cost: int = 1
     strict_serp_credit_cost: int = 5
