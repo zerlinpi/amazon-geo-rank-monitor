@@ -100,6 +100,26 @@ class JobRepository:
                 raise KeyError(f"rank job not found: {job_id}")
             return self._serialize(row)
 
+    def list(
+        self,
+        *,
+        owner_id: str,
+        monitor_target_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        with self._sessions() as session:
+            statement = select(RankJobRow).where(
+                RankJobRow.owner_id == owner_id
+            )
+            if monitor_target_id is not None:
+                statement = statement.where(
+                    RankJobRow.monitor_target_id == monitor_target_id
+                )
+            rows = session.scalars(
+                statement.order_by(RankJobRow.created_at.desc()).limit(limit)
+            ).all()
+            return [self._serialize(row) for row in rows]
+
     @staticmethod
     def _serialize(row: RankJobRow) -> dict:
         return {

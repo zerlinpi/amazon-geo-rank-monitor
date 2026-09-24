@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from amazon_geo_rank_monitor.api.dependencies import current_tenant, get_services
 from amazon_geo_rank_monitor.api.schemas import RankCheckBody
@@ -35,6 +35,18 @@ async def check_rank(
     return serialize_execution_result(result)
 
 
+@router.get("/jobs")
+def list_jobs(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    owner_id: str = Depends(current_tenant),
+):
+    return get_services(request).job_repository.list(
+        owner_id=owner_id,
+        limit=limit,
+    )
+
+
 @router.get("/jobs/{job_id}")
 def get_job(
     job_id: str,
@@ -45,6 +57,18 @@ def get_job(
         return get_services(request).job_repository.get(job_id, owner_id=owner_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="job not found") from exc
+
+
+@router.get("/runs")
+def list_runs(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    owner_id: str = Depends(current_tenant),
+):
+    return get_services(request).rank_repository.list_runs(
+        owner_id=owner_id,
+        limit=limit,
+    )
 
 
 @router.get("/runs/{run_id}")
