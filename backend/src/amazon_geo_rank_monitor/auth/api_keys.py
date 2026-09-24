@@ -92,7 +92,12 @@ class ApiKeyService:
             scopes=tuple(row["scopes"]),
         )
 
-    def authenticate_principal(self, plaintext: str) -> ApiPrincipal | None:
+    def authenticate_principal(
+        self,
+        plaintext: str,
+        *,
+        client_ip: str | None = None,
+    ) -> ApiPrincipal | None:
         if not plaintext.startswith("agrm_"):
             return None
         prefix = plaintext[:16]
@@ -101,7 +106,7 @@ class ApiKeyService:
             return None
         if not hmac.compare_digest(row["key_hash"], self._hash(plaintext)):
             return None
-        self._repository.touch_api_key(row["id"])
+        self._repository.touch_api_key(row["id"], client_ip=client_ip)
         return ApiPrincipal(
             owner_id=row["owner_id"],
             key_id=row["id"],
