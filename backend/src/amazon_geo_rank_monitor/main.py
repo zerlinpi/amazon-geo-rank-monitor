@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import socket
 
 import uvicorn
 
@@ -58,6 +59,8 @@ async def _worker_loop(*, once: bool) -> None:
         provider_registry=services.provider_registry,
         billing_repository=services.billing_repository,
         rate_card=services.rate_card,
+        worker_status_repository=services.worker_status_repository,
+        worker_id=settings.worker_id or socket.gethostname(),
     )
 
     while True:
