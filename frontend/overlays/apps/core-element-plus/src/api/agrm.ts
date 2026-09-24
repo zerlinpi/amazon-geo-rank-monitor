@@ -147,6 +147,10 @@ export const agrmApi = {
   getMonitors: () => data<Monitor[]>(client.get('/api/v1/monitors')),
   getMonitor: (id: string) => data<Monitor>(client.get('/api/v1/monitors/' + id)),
   createMonitor: (payload: Partial<Monitor>) => data<Monitor>(client.post('/api/v1/monitors', payload)),
+  updateMonitor: (id: string, payload: Partial<Monitor>) => data<Monitor>(
+    client.patch('/api/v1/monitors/' + id, payload),
+  ),
+  deleteMonitor: (id: string) => data<void>(client.delete('/api/v1/monitors/' + id)),
   runMonitor: (id: string) => data<any>(client.post('/api/v1/monitors/' + id + '/run')),
   checkRank: (payload: {
     marketplace: string
