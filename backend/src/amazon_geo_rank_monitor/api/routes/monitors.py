@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from amazon_geo_rank_monitor.api.dependencies import current_tenant, get_services
+from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
 from amazon_geo_rank_monitor.api.schemas import MonitorCreate, MonitorUpdate
 from amazon_geo_rank_monitor.application.rank_application import enqueue_monitor
 
@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/v1/monitors", tags=["monitors"])
 @router.get("")
 def list_monitors(
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("monitors:read")),
 ):
     return get_services(request).monitor_repository.list(owner_id=owner_id)
 
@@ -19,7 +19,7 @@ def list_monitors(
 def create_monitor(
     body: MonitorCreate,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("monitors:write")),
 ):
     services = get_services(request)
     try:
@@ -44,7 +44,7 @@ def create_monitor(
 def get_monitor(
     monitor_id: str,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("monitors:read")),
 ):
     monitor = get_services(request).monitor_repository.get(
         monitor_id,
@@ -60,7 +60,7 @@ def update_monitor(
     monitor_id: str,
     body: MonitorUpdate,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("monitors:write")),
 ):
     services = get_services(request)
     try:
@@ -79,7 +79,7 @@ def update_monitor(
 def delete_monitor(
     monitor_id: str,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("monitors:write")),
 ):
     try:
         get_services(request).monitor_repository.delete(
@@ -94,7 +94,7 @@ def delete_monitor(
 def get_monitor_history(
     monitor_id: str,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("monitors:read")),
     limit: int = 50,
 ):
     services = get_services(request)
@@ -126,7 +126,7 @@ def get_monitor_history(
 def run_monitor(
     monitor_id: str,
     request: Request,
-    owner_id: str = Depends(current_tenant),
+    owner_id: str = Depends(require_scope("monitors:write")),
 ):
     services = get_services(request)
     monitor = services.monitor_repository.get(monitor_id, owner_id=owner_id)
