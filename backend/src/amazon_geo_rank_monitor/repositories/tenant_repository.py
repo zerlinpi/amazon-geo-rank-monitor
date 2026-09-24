@@ -27,6 +27,7 @@ class TenantRepository:
         name: str,
         prefix: str,
         key_hash: str,
+        scopes: list[str],
     ) -> dict:
         key_id = str(uuid4())
         with self._sessions.begin() as session:
@@ -36,6 +37,7 @@ class TenantRepository:
                 name=name.strip(),
                 prefix=prefix,
                 key_hash=key_hash,
+                scopes=scopes,
             )
             session.add(row)
         return self.get_api_key(key_id, owner_id=owner_id)
@@ -97,6 +99,7 @@ class TenantRepository:
             "name": row.name,
             "prefix": row.prefix,
             "key_hash": row.key_hash,
+            "scopes": list(row.scopes or ["*"]),
             "created_at": row.created_at,
             "last_used_at": row.last_used_at,
             "revoked_at": row.revoked_at,
