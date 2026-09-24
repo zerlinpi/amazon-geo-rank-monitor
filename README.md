@@ -152,18 +152,18 @@ Provider credentials are not required to import the package or run the offline u
 
 Implemented:
 
-- provider-neutral rank core;
-- separate IP and Amazon delivery geographies;
-- Oxylabs managed adapter;
-- strict Playwright + residential proxy verification;
-- organic/sponsored separation;
-- multi-ASIN matching from one SERP;
-- Decimal weighted-rank calculation;
-- SQLite-compatible SQLAlchemy persistence;
-- rank-run orchestration and partial-failure semantics;
+- provider-neutral rank core and strict geographic verification;
+- tenant-scoped REST, API keys, database worker and MCP runtime;
+- prepaid credits, reserve/settle accounting and Stripe Checkout/webhooks;
+- Fantastic Admin Basic SaaS console;
+- cron-based monitor scheduling with idempotent time-slot dispatch;
+- PostgreSQL-safe worker claiming with `FOR UPDATE SKIP LOCKED`;
+- monitor-specific run history;
+- Alembic production schema migrations;
+- Docker Compose migration gate, API, worker and scheduler services;
 - GitHub Actions tests and Ruff checks.
 
-Next isolated phases are REST/API-key/worker/MCP exposure, prepaid credits/Stripe, and the Fantastic Admin Basic SaaS UI. The complete architecture is documented in `docs/superpowers/specs/2026-09-24-amazon-geo-rank-saas-design.md`.
+The complete architecture is documented in `docs/superpowers/specs/2026-09-24-amazon-geo-rank-saas-design.md`.
 
 
 ## API, worker, and MCP runtime
@@ -229,6 +229,7 @@ The local process boundary is the tenant security boundary for stdio. Streamable
 - `POST/GET /api/v1/geo-profiles`
 - `POST/GET /api/v1/monitors`
 - `GET /api/v1/monitors/{id}`
+- `GET /api/v1/monitors/{id}/history`
 - `POST /api/v1/monitors/{id}/run`
 - `GET /api/v1/jobs/{id}`
 - `POST /api/v1/rank/check`
@@ -324,3 +325,50 @@ Main console pages:
 - Credits & Billing
 - API Keys
 - MCP Setup
+
+
+## Scheduled monitors
+
+A monitor may include a standard 5-field cron expression. Schedules are interpreted in UTC.
+
+Example:
+
+```text
+0 */6 * * *
+```
+
+Run the scheduler once:
+
+```bash
+agrm-scheduler --once
+```
+
+Or run it continuously:
+
+```bash
+agrm-scheduler
+```
+
+The scheduler dispatches only the latest due cron slot. It does not backfill every missed slot after downtime. Each slot receives a deterministic job UUID derived from the monitor ID and scheduled UTC minute, so repeated scheduler scans and multiple scheduler instances do not intentionally create duplicate jobs for the same slot.
+
+## Database migrations
+
+Local development keeps `AUTO_CREATE_SCHEMA=true` by default for fast SQLite setup. Production should run Alembic and set `AUTO_CREATE_SCHEMA=false`.
+
+For a new database:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
+
+The included Docker Compose stack runs a one-shot `migrate` service before the API, worker and scheduler start.
+
+For an existing database created by an earlier Phase 1-5 build, take a backup and verify that its schema matches the current SQLAlchemy models before stamping the baseline revision:
+
+```bash
+cd backend
+alembic -c alembic.ini stamp 20260924_0001
+```
+
+Do not run the baseline `upgrade` against an already-populated schema that was created with `Base.metadata.create_all()`; stamp it only after verification.
