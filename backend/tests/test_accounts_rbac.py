@@ -252,6 +252,17 @@ def test_existing_api_key_workspace_can_bootstrap_first_human_owner() -> None:
         headers=bearer(session_token),
     ).status_code == 200
 
+    member = services.account_repository.list_members(
+        owner_id=tenant["id"]
+    )[0]
+    machine_mutation = client.patch(
+        f"/api/v1/team/members/{member['user_id']}",
+        headers={"X-API-Key": key.plaintext},
+        json={"role": "viewer"},
+    )
+    assert machine_mutation.status_code == 403
+    assert "human session required" in machine_mutation.json()["detail"]
+
 
 def test_public_login_is_rate_limited_by_client_ip() -> None:
     client, _ = build_client(auth_rate_limit=2)
