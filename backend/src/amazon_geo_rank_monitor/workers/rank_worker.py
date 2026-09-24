@@ -64,4 +64,8 @@ class RankWorker:
             if reservation is not None:
                 self._billing.release(reservation["id"])
             return self._jobs.fail(job["id"], error=str(exc))
-        return self._jobs.complete(job["id"], run_id=result.run_id)
+        return self._jobs.complete(
+            job["id"],
+            run_id=result.run_id,
+            status=result.status,
+        )
