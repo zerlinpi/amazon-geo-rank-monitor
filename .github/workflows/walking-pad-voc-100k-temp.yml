@@ -1,4 +1,4 @@
-name: Walking Pad VOC 100K Temp Trigger
+name: Walking Pad VOC 100K Temp
 
 on:
   push:
@@ -11,28 +11,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
-      - name: Checkout temporary collector branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: tmp/walking-pad-voc-10k
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install openpyxl requests
-      - name: Collect 100K walking pad/treadmill reviews
+      - name: Install
+        run: pip install requests
+      - name: Collect 100K+ VOC
         env:
-          TARGET_REVIEWS: "100000"
+          TARGET_REVIEWS: "105000"
+          MIN_VALID: "100000"
           OUTDIR: "voc_output"
         run: python scripts/walking_pad_voc_10k.py
-      - name: Show stats
+      - name: Stats
         if: always()
         run: |
           find voc_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
-          cat voc_output/stats_100k.json || true
-      - name: Upload VOC artifact
+          cat voc_output/stats.json || true
+      - name: Upload artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -40,6 +38,3 @@ jobs:
           path: voc_output/
           if-no-files-found: warn
           retention-days: 7
-
-# rerun-extra-categories
-\n# optimized-rerun\n
