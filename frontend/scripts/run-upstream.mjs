@@ -7,21 +7,23 @@ const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
 const vendor = join(root, '.vendor', 'fantastic-admin')
 const mode = process.argv[2] ?? 'build'
-const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-
 execFileSync(process.execPath, [join(here, 'sync-upstream.mjs')], { stdio: 'inherit' })
 execFileSync('corepack', ['prepare', 'pnpm@11.24.0', '--activate'], { stdio: 'inherit' })
 
+function runPnpm(args, options = {}) {
+  execFileSync('corepack', ['pnpm', ...args], options)
+}
+
 if (mode === 'dev') {
-  execFileSync(pnpm, ['--filter', '@fantastic-admin/core-element-plus', 'dev'], {
+  runPnpm(['--filter', '@fantastic-admin/core-element-plus', 'dev'], {
     cwd: vendor,
     stdio: 'inherit',
     env: process.env,
   })
 }
 else {
-  execFileSync(pnpm, ['install', '--frozen-lockfile'], { cwd: vendor, stdio: 'inherit' })
-  execFileSync(pnpm, ['--filter', '@fantastic-admin/core-element-plus', 'build'], {
+  runPnpm(['install', '--frozen-lockfile'], { cwd: vendor, stdio: 'inherit' })
+  runPnpm(['--filter', '@fantastic-admin/core-element-plus', 'build'], {
     cwd: vendor,
     stdio: 'inherit',
     env: process.env,
