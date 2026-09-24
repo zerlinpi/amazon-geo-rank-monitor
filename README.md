@@ -372,3 +372,36 @@ alembic -c alembic.ini stamp 20260924_0001
 ```
 
 Do not run the baseline `upgrade` against an already-populated schema that was created with `Base.metadata.create_all()`; stamp it only after verification.
+
+
+## Production API boundary
+
+Authenticated `/api/v1/*` requests support a per-process API-key rate limit configured with:
+
+```env
+API_RATE_LIMIT_PER_MINUTE=120
+```
+
+Responses include `X-Request-ID`. Clients may provide their own `X-Request-ID` up to 128 characters; otherwise the API generates one.
+
+HTTP and validation failures keep the existing `detail` field for compatibility and also return a machine-readable envelope:
+
+```json
+{
+  "detail": "API key required",
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "API key required",
+    "request_id": "..."
+  }
+}
+```
+
+The built-in limiter is intentionally process-local. Multi-replica deployments should also enforce a shared rate limit at the API gateway or replace the limiter with a shared store.
+
+Monitor lifecycle endpoints now include:
+
+- `PATCH /api/v1/monitors/{id}`
+- `DELETE /api/v1/monitors/{id}`
+
+PATCH supports partial updates to monitor metadata, ASINs, geo profiles, provider mode, schedule, search depth, and enabled state. Tenant ownership is revalidated for all referenced geo profiles.
