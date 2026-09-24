@@ -132,7 +132,8 @@ def build_services(settings: AppSettings) -> AppServices:
     if not settings.api_key_pepper:
         raise ConfigurationError("API_KEY_PEPPER is required")
     engine = _engine(settings)
-    Base.metadata.create_all(engine)
+    if settings.auto_create_schema:
+        Base.metadata.create_all(engine)
 
     tenants = TenantRepository(engine)
     billing = BillingRepository(engine)
