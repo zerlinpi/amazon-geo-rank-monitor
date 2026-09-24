@@ -283,3 +283,44 @@ Billing REST endpoints:
 - `POST /api/v1/billing/webhook`
 
 MCP exposes `get_credit_balance` as read-only; it does not expose ledger mutation or Stripe operations.
+
+
+## SaaS frontend
+
+The SaaS console uses Fantastic Admin Basic `core-element-plus` as its only UI foundation. The upstream source is pinned rather than copied wholesale into this repository:
+
+- upstream: `fantastic-admin/basic`
+- version: `v6.4.0`
+- revision: `4cf1d0f92c3c7a8651bc41c6c3b65aabbde30af1`
+- license attribution: `THIRD_PARTY_NOTICES.md`
+
+Product-specific files live under `frontend/overlays/`. The sync script clones the exact pinned upstream revision into the ignored `frontend/.vendor/fantastic-admin` directory and overlays the Amazon Geo Rank Monitor pages before running the upstream build.
+
+Requirements: Node.js 24.15+ and Git.
+
+```bash
+cp frontend/.env.example frontend/.env
+npm --prefix frontend run sync
+npm --prefix frontend run dev
+```
+
+Production build:
+
+```bash
+VITE_AGRM_API_BASEURL=https://api.example.com npm --prefix frontend run build
+```
+
+The generated static bundle is copied to `frontend/dist`.
+
+The current authentication surface uses a Workspace API Key because the backend deliberately has no password-user model yet. Fantastic Admin route authentication is enabled, the key is sent as `X-API-Key`, and provider/Stripe secrets are never exposed to the browser.
+
+Main console pages:
+
+- Dashboard
+- Rank Explorer
+- Monitors
+- Geo Profiles
+- Run History
+- Credits & Billing
+- API Keys
+- MCP Setup
