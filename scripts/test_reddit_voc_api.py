@@ -1,13 +1,14 @@
 import requests, json
-urls = [
-  "https://api.pullpush.io/reddit/search/comment/?q=walking%20pad&size=3",
-  "https://api.pullpush.io/comment?q=walking%20pad&size=3",
-  "https://arctic-shift.photon-reddit.com/api/posts/search?query=walking%20pad&limit=3&sort=desc"
+UA={"User-Agent":"walking-pad-voc/1.0"}
+tests=[
+("posts","https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=WalkingPads&limit=3&sort=desc"),
+("postsq","https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=treadmills&query=walking%20pad&limit=3&sort=desc"),
+("tree","https://arctic-shift.photon-reddit.com/api/comments/tree?link_id=t3_1vv6j5k&limit=100")
 ]
-for u in urls:
+for name,u in tests:
     try:
-        r=requests.get(u,timeout=30,headers={"User-Agent":"walking-pad-voc/1.0"})
-        print("URL",u,"STATUS",r.status_code,"LEN",len(r.content))
-        print(r.text[:1000].replace("\n"," "))
+        r=requests.get(u,timeout=30,headers=UA)
+        print("TEST",name,"STATUS",r.status_code,"LEN",len(r.content))
+        print(r.text[:3000].replace("\n"," "))
     except Exception as e:
-        print("ERR",u,repr(e))
+        print("ERR",name,repr(e))
