@@ -44,6 +44,21 @@ const systemRoutes: RouteRecordRaw[] = [
   },
 ]
 
-const asyncRoutes: RouteRecordMainRaw[] = [Ranking, Workspace]
+const asyncRoutes: RouteRecordMainRaw[] = [
+  {
+    meta: {
+      title: 'Rank Monitoring',
+      icon: 'i-lucide:chart-no-axes-column-increasing',
+    },
+    children: [Ranking],
+  },
+  {
+    meta: {
+      title: 'Workspace',
+      icon: 'i-lucide:settings-2',
+    },
+    children: [Workspace],
+  },
+]
 
 export { asyncRoutes, constantRoutes, systemRoutes }

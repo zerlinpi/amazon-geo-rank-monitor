@@ -82,9 +82,10 @@ async function create() {
   }
 }
 
-async function run(row: Monitor) {
+async function run(row: any) {
   try {
-    const job: any = await agrmApi.runMonitor(row.id)
+    const monitor = row as Monitor
+    const job: any = await agrmApi.runMonitor(monitor.id)
     ElMessage.success('Run queued: ' + job.id)
   }
   catch (error: any) {

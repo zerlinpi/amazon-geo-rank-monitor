@@ -26,6 +26,34 @@ client.interceptors.response.use(
   },
 )
 
+function data<T>(promise: Promise<unknown>): Promise<T> {
+  return promise as Promise<T>
+}
+
+export interface CreditBalance {
+  balance: number
+  reserved: number
+  available: number
+}
+
+export interface CreditPack {
+  id: string
+  name: string
+  credits: number
+  amount_minor: number
+  currency: string
+}
+
+export interface LedgerEntry {
+  id: string
+  entry_type: string
+  delta_credits: number
+  balance_after: number
+  reference_type?: string | null
+  reference_id?: string | null
+  created_at: string
+}
+
 export interface GeoProfile {
   id: string
   name: string
@@ -89,18 +117,37 @@ export interface RankRun {
   snapshots: RankSnapshot[]
 }
 
+export interface ApiKeyRow {
+  id: string
+  name: string
+  prefix: string
+  created_at?: string | null
+  last_used_at?: string | null
+  revoked_at?: string | null
+}
+
+export interface CheckoutResult {
+  payment_id: string
+  checkout_session_id: string
+  checkout_url: string
+}
+
 export const agrmApi = {
-  validateKey: () => client.get('/api/v1/credits'),
-  getCredits: () => client.get('/api/v1/credits'),
-  getLedger: (limit = 100) => client.get('/api/v1/credits/ledger', { params: { limit } }),
-  getCreditPacks: () => client.get('/api/v1/billing/packs'),
-  createCheckout: (credit_pack_id: string) => client.post('/api/v1/billing/checkout', { credit_pack_id }),
-  getGeoProfiles: () => client.get('/api/v1/geo-profiles') as Promise<GeoProfile[]>,
-  createGeoProfile: (payload: Omit<GeoProfile, 'id'>) => client.post('/api/v1/geo-profiles', payload),
-  getMonitors: () => client.get('/api/v1/monitors') as Promise<Monitor[]>,
-  getMonitor: (id: string) => client.get('/api/v1/monitors/' + id),
-  createMonitor: (payload: Partial<Monitor>) => client.post('/api/v1/monitors', payload),
-  runMonitor: (id: string) => client.post('/api/v1/monitors/' + id + '/run'),
+  validateKey: () => data<CreditBalance>(client.get('/api/v1/credits')),
+  getCredits: () => data<CreditBalance>(client.get('/api/v1/credits')),
+  getLedger: (limit = 100) => data<LedgerEntry[]>(client.get('/api/v1/credits/ledger', { params: { limit } })),
+  getCreditPacks: () => data<CreditPack[]>(client.get('/api/v1/billing/packs')),
+  createCheckout: (credit_pack_id: string) => data<CheckoutResult>(
+    client.post('/api/v1/billing/checkout', { credit_pack_id }),
+  ),
+  getGeoProfiles: () => data<GeoProfile[]>(client.get('/api/v1/geo-profiles')),
+  createGeoProfile: (payload: Omit<GeoProfile, 'id'>) => data<GeoProfile>(
+    client.post('/api/v1/geo-profiles', payload),
+  ),
+  getMonitors: () => data<Monitor[]>(client.get('/api/v1/monitors')),
+  getMonitor: (id: string) => data<Monitor>(client.get('/api/v1/monitors/' + id)),
+  createMonitor: (payload: Partial<Monitor>) => data<Monitor>(client.post('/api/v1/monitors', payload)),
+  runMonitor: (id: string) => data<any>(client.post('/api/v1/monitors/' + id + '/run')),
   checkRank: (payload: {
     marketplace: string
     keyword: string
@@ -108,12 +155,14 @@ export const agrmApi = {
     geo_profile_ids: string[]
     search_depth: number
     provider_mode: 'managed' | 'strict'
-  }) => client.post('/api/v1/rank/check', payload),
-  getRuns: (limit = 50) => client.get('/api/v1/runs', { params: { limit } }) as Promise<RankRun[]>,
-  getRun: (id: string) => client.get('/api/v1/runs/' + id) as Promise<RankRun>,
-  getApiKeys: () => client.get('/api/v1/api-keys'),
-  createApiKey: (name: string) => client.post('/api/v1/api-keys', { name }),
-  revokeApiKey: (id: string) => client.delete('/api/v1/api-keys/' + id),
+  }) => data<any>(client.post('/api/v1/rank/check', payload)),
+  getRuns: (limit = 50) => data<RankRun[]>(client.get('/api/v1/runs', { params: { limit } })),
+  getRun: (id: string) => data<RankRun>(client.get('/api/v1/runs/' + id)),
+  getApiKeys: () => data<ApiKeyRow[]>(client.get('/api/v1/api-keys')),
+  createApiKey: (name: string) => data<{ id: string, prefix: string, plaintext: string }>(
+    client.post('/api/v1/api-keys', { name }),
+  ),
+  revokeApiKey: (id: string) => data<void>(client.delete('/api/v1/api-keys/' + id)),
 }
 
 export default client

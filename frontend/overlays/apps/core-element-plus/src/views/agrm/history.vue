@@ -18,8 +18,9 @@ async function load() {
   }
 }
 
-function view(row: RankRun) {
-  selected.value = row
+function view(row: any) {
+  const run = row as RankRun
+  selected.value = run
   dialog.value = true
 }
 

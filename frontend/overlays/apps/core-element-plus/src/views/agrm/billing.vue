@@ -17,9 +17,9 @@ async function load() {
       agrmApi.getCreditPacks(),
       agrmApi.getLedger(100),
     ])
-    credits.value = creditData as any
-    packs.value = packData as any[]
-    ledger.value = ledgerData as any[]
+    credits.value = creditData
+    packs.value = packData
+    ledger.value = ledgerData
   }
   finally {
     loading.value = false

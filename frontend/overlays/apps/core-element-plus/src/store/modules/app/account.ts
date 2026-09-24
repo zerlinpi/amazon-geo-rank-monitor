@@ -66,7 +66,7 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     permissions.value = ['*']
   }
 
-  async function editPassword() {
+  async function editPassword(_data: { password: string, newPassword: string }) {
     throw new Error('Password authentication is not enabled for this deployment')
   }
 

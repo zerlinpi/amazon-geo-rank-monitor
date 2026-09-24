@@ -14,7 +14,7 @@ const createdKey = ref('')
 async function load() {
   loading.value = true
   try {
-    rows.value = await agrmApi.getApiKeys() as any[]
+    rows.value = await agrmApi.getApiKeys()
   }
   finally {
     loading.value = false
