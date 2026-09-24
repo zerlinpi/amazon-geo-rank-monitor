@@ -247,3 +247,27 @@ async def test_strict_zip_verification_rejects_non_us_marketplace() -> None:
             device="desktop",
             search_depth=100,
         )
+
+
+@pytest.mark.asyncio
+async def test_strict_provider_rejects_mobile_until_mobile_context_is_supported() -> None:
+    client = FakeBrowserClient(
+        location=ProxyLocation(country="US", postal_code="10001"),
+        confirmed_zip="10001",
+    )
+    provider = StrictBrowserRankProvider(
+        proxy_factory=OxylabsResidentialProxyFactory(
+            username="user",
+            password="secret",
+        ),
+        browser_client_factory=BrowserFactory(client),
+        session_id_factory=lambda: "session123",
+    )
+    with pytest.raises(GeoVerificationError):
+        await provider.search(
+            marketplace="amazon.com",
+            keyword="walking pad",
+            geo_profile=geo(),
+            device="mobile",
+            search_depth=100,
+        )

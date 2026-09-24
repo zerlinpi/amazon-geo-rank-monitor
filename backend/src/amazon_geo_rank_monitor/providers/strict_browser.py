@@ -9,6 +9,7 @@ from amazon_geo_rank_monitor.domain.models import (
     GeoVerificationResult,
     ProxyLocation,
     SerpResult,
+    VerificationLevel,
 )
 from amazon_geo_rank_monitor.providers.browser_client import AmazonBrowserClient
 from amazon_geo_rank_monitor.providers.residential_proxy import (
@@ -21,6 +22,7 @@ BrowserClientFactory = Callable[[BrowserProxyConfig], AmazonBrowserClient]
 
 class StrictBrowserRankProvider:
     provider_name = "strict_browser"
+    verification_level = VerificationLevel.STRICT
 
     def __init__(
         self,
@@ -42,6 +44,10 @@ class StrictBrowserRankProvider:
         device: str,
         search_depth: int,
     ) -> SerpResult:
+        if device != "desktop":
+            raise GeoVerificationError(
+                "strict browser verification currently supports desktop only"
+            )
         if marketplace.strip().lower() != "amazon.com":
             raise GeoVerificationError(
                 "strict delivery ZIP verification currently supports amazon.com only"

@@ -9,7 +9,12 @@ from amazon_geo_rank_monitor.domain.errors import (
     ProviderResponseError,
     ProviderUnavailableError,
 )
-from amazon_geo_rank_monitor.domain.models import GeoProfile, SerpProduct, SerpResult
+from amazon_geo_rank_monitor.domain.models import (
+    GeoProfile,
+    SerpProduct,
+    SerpResult,
+    VerificationLevel,
+)
 
 
 class OxylabsRankProvider:
@@ -21,6 +26,7 @@ class OxylabsRankProvider:
     """
 
     provider_name = "oxylabs"
+    verification_level = VerificationLevel.MANAGED
 
     def __init__(self, client: Any, *, estimated_results_per_page: int = 48) -> None:
         self._client = client

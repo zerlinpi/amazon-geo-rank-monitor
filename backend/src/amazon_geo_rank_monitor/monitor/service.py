@@ -51,13 +51,18 @@ class RankMonitorService:
                 "provider_name",
                 self._provider.__class__.__name__,
             )
+            verification_level = getattr(
+                self._provider,
+                "verification_level",
+                VerificationLevel.MANAGED,
+            )
             geo_observations = match_asins(
                 result,
                 request.asins,
                 search_depth=request.search_depth,
                 geo_profile_id=geo_profile.id,
                 provider=provider_name,
-                verification_level=VerificationLevel.MANAGED,
+                verification_level=verification_level,
             )
             self._repository.save_observations(run_id, geo_observations)
             observations.extend(geo_observations)

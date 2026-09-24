@@ -8,6 +8,7 @@ from amazon_geo_rank_monitor.domain.models import (
     RankCheckRequest,
     SerpProduct,
     SerpResult,
+    VerificationLevel,
 )
 from amazon_geo_rank_monitor.monitor.service import RankMonitorService
 
@@ -120,3 +121,22 @@ async def test_provider_failure_is_partial_not_not_found() -> None:
     assert repository.completed["settled_probe_count"] == 2
     assert "la" in repository.completed["error_summary"]
     assert all(snapshot.confidence == Decimal("0.60") for snapshot in snapshots)
+
+
+class StrictRecordingProvider(RecordingProvider):
+    verification_level = VerificationLevel.STRICT
+
+
+@pytest.mark.asyncio
+async def test_service_preserves_provider_verification_level() -> None:
+    provider = StrictRecordingProvider()
+    repository = RecordingRepository()
+    service = RankMonitorService(provider=provider, repository=repository)
+
+    await service.check(request())
+
+    assert repository.observations
+    assert all(
+        observation.verification_level == VerificationLevel.STRICT
+        for observation in repository.observations
+    )
