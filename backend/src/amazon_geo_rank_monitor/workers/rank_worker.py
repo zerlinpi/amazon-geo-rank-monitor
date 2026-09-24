@@ -66,6 +66,12 @@ class RankWorker:
 
     async def run_once(self) -> dict | None:
         recovery = self._jobs.recover_stale()
+        if self._billing is not None:
+            for attempt in recovery["recovered_attempts"]:
+                self._billing.release_by_idempotency_key(
+                    "rank_job:"
+                    f"{attempt['job_id']}:attempt:{attempt['attempt_count']}"
+                )
         if recovery["dead_lettered"]:
             self._heartbeat(
                 status="warning",
@@ -122,6 +128,26 @@ class RankWorker:
                         job["provider_mode"], successful_geos
                     ),
                 )
+
+            if result.status == "failed":
+                message = "; ".join(str(item) for item in result.errors)
+                outcome = self._jobs.retry_or_dead_letter(
+                    job["id"],
+                    error=message or "rank execution failed",
+                    base_delay_seconds=self._retry_base_seconds,
+                    max_delay_seconds=self._retry_max_seconds,
+                )
+                self._heartbeat(
+                    status=(
+                        "dead_letter"
+                        if outcome["status"] == "dead_letter"
+                        else "retry_wait"
+                    ),
+                    last_job_id=job["id"],
+                    last_error=message or "rank execution failed",
+                    processed_delta=1,
+                )
+                return outcome
         except Exception as exc:
             if reservation is not None:
                 self._billing.release(reservation["id"])
