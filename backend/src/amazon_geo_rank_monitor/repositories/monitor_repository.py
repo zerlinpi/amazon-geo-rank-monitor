@@ -5,6 +5,8 @@ from uuid import uuid4
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import sessionmaker
 
+from amazon_geo_rank_monitor.scheduling.cron import normalize_schedule
+
 from .models import (
     GeoProfileRow,
     MonitorTargetAsinRow,
@@ -32,12 +34,9 @@ class MonitorRepository:
     ) -> dict:
         if provider_mode not in {"managed", "strict"}:
             raise ValueError("provider_mode must be managed or strict")
+        normalized_schedule = normalize_schedule(schedule)
         normalized_asins = list(
-            dict.fromkeys(
-                asin.strip().upper()
-                for asin in asins
-                if asin.strip()
-            )
+            dict.fromkeys(asin.strip().upper() for asin in asins if asin.strip())
         )
         if not normalized_asins:
             raise ValueError("at least one ASIN is required")
@@ -66,7 +65,7 @@ class MonitorRepository:
                     keyword=keyword.strip(),
                     search_depth=search_depth,
                     provider_mode=provider_mode,
-                    schedule=schedule,
+                    schedule=normalized_schedule,
                 )
             )
             session.add_all(
@@ -120,8 +119,33 @@ class MonitorRepository:
             ).all()
         return [item for item in (self.get(i, owner_id=owner_id) for i in ids) if item]
 
+    def list_scheduled(self) -> list[dict]:
+        with self._sessions() as session:
+            rows = session.scalars(
+                select(MonitorTargetRow)
+                .where(
+                    MonitorTargetRow.enabled.is_(True),
+                    MonitorTargetRow.schedule.is_not(None),
+                )
+                .order_by(MonitorTargetRow.created_at, MonitorTargetRow.id)
+            ).all()
+            pairs = [
+                (row.id, row.owner_id)
+                for row in rows
+                if row.schedule and row.schedule.strip()
+            ]
+        return [
+            item
+            for monitor_id, owner_id in pairs
+            if (item := self.get(monitor_id, owner_id=owner_id)) is not None
+        ]
+
     @staticmethod
-    def _serialize(row: MonitorTargetRow, asins: list[str], geo_ids: list[str]) -> dict:
+    def _serialize(
+        row: MonitorTargetRow,
+        asins: list[str],
+        geo_ids: list[str],
+    ) -> dict:
         return {
             "id": row.id,
             "owner_id": row.owner_id,
