@@ -31,6 +31,7 @@ class AppSettings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_rate_limit_per_minute: int = 120
+    auth_rate_limit_per_minute: int = 20
     redis_url: str | None = None
     allow_public_signup: bool = True
     session_ttl_hours: int = 720
