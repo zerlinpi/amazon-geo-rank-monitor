@@ -137,6 +137,13 @@ services:
       DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
       AUTO_CREATE_SCHEMA: "false"
       API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
+      REPORT_ENCRYPTION_KEY: ${REPORT_ENCRYPTION_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
       SCHEDULER_POLL_SECONDS: ${SCHEDULER_POLL_SECONDS:-30}
       SCHEDULER_ID: ${SCHEDULER_ID:-scheduler-1}
     depends_on:
