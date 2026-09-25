@@ -122,14 +122,20 @@ def update_sso_enforcement(
     request: Request,
     principal: TeamManagePrincipal,
 ):
-    if not isinstance(principal, HumanPrincipal) or principal.role != "owner":
+    services = get_services(request)
+    if services.sso is None:
+        raise HTTPException(status_code=503, detail="SSO is unavailable")
+    if isinstance(principal, ApiPrincipal):
+        if body.enforce_sso:
+            raise HTTPException(
+                status_code=403,
+                detail="API keys may only disable SSO enforcement",
+            )
+    elif not isinstance(principal, HumanPrincipal) or principal.role != "owner":
         raise HTTPException(
             status_code=403,
             detail="workspace owner required to manage SSO",
         )
-    services = get_services(request)
-    if services.sso is None:
-        raise HTTPException(status_code=503, detail="SSO is unavailable")
     try:
         return services.sso.set_enforcement(
             owner_id=principal.owner_id,
