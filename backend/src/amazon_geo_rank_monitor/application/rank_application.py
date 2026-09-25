@@ -57,6 +57,8 @@ async def execute_rank_check(
     service = RankMonitorService(
         provider=provider,
         repository=services.rank_repository,
+        probe_cache=getattr(services, "probe_cache", None),
+        provider_mode=provider_mode,
     )
 
     billing = getattr(services, "billing_repository", None)
@@ -80,10 +82,12 @@ async def execute_rank_check(
         raise
 
     if reservation is not None:
-        successful_geos = len({item.geo_profile_id for item in result.observations})
         billing.settle(
             reservation["id"],
-            credits_used=rate_card.quote(provider_mode, successful_geos),
+            credits_used=rate_card.quote(
+                provider_mode,
+                result.upstream_probe_count,
+            ),
         )
     return result
 
@@ -118,6 +122,12 @@ def serialize_execution_result(result) -> dict:
         "run_id": result.run_id,
         "status": result.status,
         "errors": result.errors,
+        "usage": {
+            "requested_probe_count": result.requested_probe_count,
+            "upstream_probe_count": result.upstream_probe_count,
+            "cache_hit_count": result.cache_hit_count,
+            "billable_probe_count": result.upstream_probe_count,
+        },
         "observations": [
             item.model_dump(mode="json") for item in result.observations
         ],
