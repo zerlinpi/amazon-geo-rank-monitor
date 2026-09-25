@@ -61,6 +61,8 @@ export interface AccountProfile {
     id: string
     email: string
     display_name: string
+    email_verified: boolean
+    email_verified_at?: string | null
   }
   workspace: {
     id: string
@@ -72,6 +74,18 @@ export interface AccountProfile {
 
 export interface SessionResult extends AccountProfile {
   expires_at: string
+}
+
+export interface AuthSecurityEvent {
+  id: string
+  user_id?: string | null
+  email: string
+  event_type: string
+  success: boolean
+  client_ip?: string | null
+  user_agent?: string | null
+  details?: Record<string, any> | null
+  created_at: string
 }
 
 export interface UserSession {
@@ -271,6 +285,24 @@ export const agrmApi = {
     workspace_id?: string
   }) => data<SessionResult>(client.post('/api/v1/auth/login', payload)),
   getMe: () => data<AccountProfile>(client.get('/api/v1/auth/me')),
+  forgotPassword: (email: string) => data<{ accepted: boolean, message: string }>(
+    client.post('/api/v1/auth/forgot-password', { email }),
+  ),
+  resetPassword: (token: string, new_password: string) => data<{
+    reset: boolean
+    revoked_sessions: number
+  }>(client.post('/api/v1/auth/reset-password', { token, new_password })),
+  verifyEmail: (token: string) => data<{
+    verified: boolean
+    email: string
+    email_verified_at: string
+  }>(client.post('/api/v1/auth/verify-email', { token })),
+  resendVerification: () => data<{ sent: boolean }>(
+    client.post('/api/v1/auth/resend-verification'),
+  ),
+  getSecurityEvents: (limit = 100) => data<AuthSecurityEvent[]>(
+    client.get('/api/v1/auth/security-events', { params: { limit } }),
+  ),
   logoutAccount: () => data<void>(client.post('/api/v1/auth/logout')),
   logoutAll: () => data<void>(client.post('/api/v1/auth/logout-all')),
   getSessions: () => data<UserSession[]>(client.get('/api/v1/auth/sessions')),
