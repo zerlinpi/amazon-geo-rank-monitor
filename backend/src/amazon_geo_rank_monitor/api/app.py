@@ -40,6 +40,8 @@ class AppServices:
     job_repository: Any
     rank_repository: Any
     api_keys: Any
+    alert_repository: Any | None = None
+    alerts: Any | None = None
     provider_registry: Any
     billing_repository: Any | None = None
     rate_card: Any | None = None
