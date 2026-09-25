@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import hmac
 from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Request, status
@@ -27,22 +28,51 @@ def current_principal(
     services = get_services(request)
     principal: Principal | None = None
 
+    accounts = getattr(services, "accounts", None)
+    client_ip = request.client.host if request.client else None
+
     if authorization:
         scheme, _, credential = authorization.partition(" ")
-        if scheme.lower() == "bearer" and credential:
-            accounts = getattr(services, "accounts", None)
-            if accounts is not None:
-                principal = accounts.authenticate_session(credential)
+        if scheme.lower() == "bearer" and credential and accounts is not None:
+            principal = accounts.authenticate_session(
+                credential,
+                client_ip=client_ip,
+            )
+
+    cookie_credential = request.cookies.get(
+        getattr(services, "session_cookie_name", "agrm_session")
+    )
+    if principal is None and cookie_credential and accounts is not None:
+        principal = accounts.authenticate_session(
+            cookie_credential,
+            client_ip=client_ip,
+        )
+        if principal is not None:
+            request.state.auth_transport = "cookie"
+            if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+                csrf_cookie = request.cookies.get(
+                    getattr(services, "csrf_cookie_name", "agrm_csrf")
+                )
+                csrf_header = request.headers.get("X-CSRF-Token")
+                if (
+                    not csrf_cookie
+                    or not csrf_header
+                    or not hmac.compare_digest(csrf_cookie, csrf_header)
+                    or not accounts.verify_csrf(principal, csrf_header)
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="valid CSRF token required",
+                    )
 
     if principal is None and x_api_key:
-        client_ip = request.client.host if request.client else None
         principal = services.api_keys.authenticate_principal(
             x_api_key,
             client_ip=client_ip,
         )
 
     if principal is None:
-        if not authorization and not x_api_key:
+        if not authorization and not x_api_key and not cookie_credential:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="authentication required",
