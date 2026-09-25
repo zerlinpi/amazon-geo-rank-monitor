@@ -187,6 +187,16 @@ class AccountService:
                 invitation_id=invitation["id"],
                 user_id=user["id"],
             )
+            self._repository.mark_email_verified(user_id=user["id"])
+            self._repository.record_auth_event(
+                email=normalized_email,
+                event_type="account_registered",
+                success=True,
+                user_id=user["id"],
+                client_ip=client_ip,
+                user_agent=user_agent,
+                details={"verified_by": "workspace_invitation"},
+            )
             return self._issue_session(
                 user_id=user["id"],
                 owner_id=membership["owner_id"],
@@ -203,6 +213,15 @@ class AccountService:
             display_name=name,
             workspace_name=workspace,
         )
+        self._repository.record_auth_event(
+            email=normalized_email,
+            event_type="account_registered",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        self._send_verification(user)
         return self._issue_session(
             user_id=user["id"],
             owner_id=membership["owner_id"],
@@ -239,6 +258,7 @@ class AccountService:
             owner_id=owner_id,
             user_id=user["id"],
         )
+        self._send_verification(user)
         return self._issue_session(
             user_id=user["id"],
             owner_id=membership["owner_id"],
