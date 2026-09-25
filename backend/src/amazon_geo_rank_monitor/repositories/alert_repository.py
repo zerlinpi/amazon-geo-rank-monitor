@@ -18,6 +18,7 @@ from .models import (
 class AlertRepository:
     def __init__(self, engine: Engine) -> None:
         self._sessions = sessionmaker(bind=engine, expire_on_commit=False)
+        self._dialect_name = engine.dialect.name
 
     def create_rule(
         self,
@@ -191,6 +192,76 @@ class AlertRepository:
         )
         try:
             with self._sessions.begin() as session:
+                session.add(row)
+                session.flush()
+                return self._serialize_event(row)
+        except IntegrityError:
+            return None
+
+    def create_event_if_not_cooling(
+        self,
+        *,
+        owner_id: str,
+        rule_id: str,
+        monitor_target_id: str,
+        run_id: str,
+        asin: str,
+        geo_profile_id: str | None,
+        event_type: str,
+        fingerprint: str,
+        previous_value: Decimal | None,
+        current_value: Decimal | None,
+        details: dict,
+        cooldown_minutes: int,
+    ) -> dict | None:
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(minutes=max(cooldown_minutes, 0))
+        try:
+            with self._sessions.begin() as session:
+                rule_statement = select(RankAlertRuleRow.id).where(
+                    RankAlertRuleRow.id == rule_id,
+                    RankAlertRuleRow.owner_id == owner_id,
+                    RankAlertRuleRow.enabled.is_(True),
+                    RankAlertRuleRow.deleted_at.is_(None),
+                )
+                if self._dialect_name == "postgresql":
+                    rule_statement = rule_statement.with_for_update()
+                if session.scalar(rule_statement) is None:
+                    return None
+
+                if cooldown_minutes > 0:
+                    recent_statement = select(RankAlertEventRow.id).where(
+                        RankAlertEventRow.rule_id == rule_id,
+                        RankAlertEventRow.asin == asin,
+                        RankAlertEventRow.event_type == event_type,
+                        RankAlertEventRow.created_at >= cutoff,
+                    )
+                    if geo_profile_id is None:
+                        recent_statement = recent_statement.where(
+                            RankAlertEventRow.geo_profile_id.is_(None)
+                        )
+                    else:
+                        recent_statement = recent_statement.where(
+                            RankAlertEventRow.geo_profile_id == geo_profile_id
+                        )
+                    if session.scalar(recent_statement.limit(1)) is not None:
+                        return None
+
+                row = RankAlertEventRow(
+                    id=str(uuid4()),
+                    owner_id=owner_id,
+                    rule_id=rule_id,
+                    monitor_target_id=monitor_target_id,
+                    run_id=run_id,
+                    asin=asin,
+                    geo_profile_id=geo_profile_id,
+                    event_type=event_type,
+                    fingerprint=fingerprint,
+                    previous_value=previous_value,
+                    current_value=current_value,
+                    details=details,
+                    created_at=now,
+                )
                 session.add(row)
                 session.flush()
                 return self._serialize_event(row)
