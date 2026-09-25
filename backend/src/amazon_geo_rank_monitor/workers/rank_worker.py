@@ -18,6 +18,7 @@ class RankWorker:
         billing_repository=None,
         rate_card: RateCard | None = None,
         worker_status_repository=None,
+        alert_service=None,
         worker_id: str = "rank-worker",
         lease_seconds: float = 900.0,
         retry_base_seconds: float = 30.0,
@@ -29,6 +30,7 @@ class RankWorker:
         self._billing = billing_repository
         self._rate_card = rate_card or RateCard()
         self._worker_status = worker_status_repository
+        self._alerts = alert_service
         self._worker_id = worker_id
         self._lease_seconds = lease_seconds
         self._retry_base_seconds = retry_base_seconds
@@ -178,6 +180,20 @@ class RankWorker:
             run_id=result.run_id,
             status=result.status,
         )
+        if (
+            self._alerts is not None
+            and job.get("monitor_target_id")
+            and result.status in {"succeeded", "partially_succeeded"}
+        ):
+            try:
+                self._alerts.evaluate_run(
+                    owner_id=job["owner_id"],
+                    monitor_target_id=job["monitor_target_id"],
+                    run_id=result.run_id,
+                )
+            except Exception:
+                # Notification failures must never roll a completed rank job back.
+                pass
         self._heartbeat(
             status="idle",
             last_job_id=job["id"],
