@@ -13,6 +13,8 @@ from amazon_geo_rank_monitor.api.schemas import (
     InvitationCreate,
     MemberRoleUpdate,
     WorkspaceMfaPolicyUpdate,
+    WorkspaceSsoConfigUpdate,
+    WorkspaceSsoEnforcementUpdate,
 )
 from amazon_geo_rank_monitor.api.session_cookies import session_payload, set_session_cookies
 from amazon_geo_rank_monitor.auth.accounts import ROLES, HumanPrincipal
@@ -65,6 +67,81 @@ def update_security_policy(
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/sso-config")
+def get_sso_config(
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    if not isinstance(principal, HumanPrincipal) or principal.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="workspace owner required to manage SSO",
+        )
+    services = get_services(request)
+    if services.sso is None:
+        raise HTTPException(status_code=503, detail="SSO is unavailable")
+    return services.sso.get_config(owner_id=principal.owner_id)
+
+
+@router.put("/sso-config")
+def update_sso_config(
+    body: WorkspaceSsoConfigUpdate,
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    if not isinstance(principal, HumanPrincipal) or principal.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="workspace owner required to manage SSO",
+        )
+    services = get_services(request)
+    if services.sso is None:
+        raise HTTPException(status_code=503, detail="SSO is unavailable")
+    try:
+        return services.sso.configure(
+            owner_id=principal.owner_id,
+            provider_type=body.provider_type,
+            display_name=body.display_name,
+            issuer_url=body.issuer_url,
+            client_id=body.client_id,
+            client_secret=body.client_secret,
+            email_domains=body.email_domains,
+            auto_join=body.auto_join,
+            enabled=body.enabled,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.patch("/sso-config/enforcement")
+def update_sso_enforcement(
+    body: WorkspaceSsoEnforcementUpdate,
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    services = get_services(request)
+    if services.sso is None:
+        raise HTTPException(status_code=503, detail="SSO is unavailable")
+    if isinstance(principal, ApiPrincipal):
+        if body.enforce_sso:
+            raise HTTPException(
+                status_code=403,
+                detail="API keys may only disable SSO enforcement",
+            )
+    elif not isinstance(principal, HumanPrincipal) or principal.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="workspace owner required to manage SSO",
+        )
+    try:
+        return services.sso.set_enforcement(
+            owner_id=principal.owner_id,
+            enforce_sso=body.enforce_sso,
+        )
+    except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 

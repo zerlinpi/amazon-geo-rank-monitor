@@ -29,6 +29,9 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "auth_events",
         "mfa_recovery_codes",
         "trusted_devices",
+        "workspace_sso_configs",
+        "sso_login_transactions",
+        "sso_identities",
     } <= tables
     inspector = inspect(create_engine(database_url))
     api_key_columns = {
@@ -61,6 +64,8 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "last_seen_ip",
         "user_agent",
         "mfa_authenticated_at",
+        "auth_method",
+        "sso_owner_id",
     } <= session_columns
     tenant_columns = {
         column["name"] for column in inspector.get_columns("tenants")

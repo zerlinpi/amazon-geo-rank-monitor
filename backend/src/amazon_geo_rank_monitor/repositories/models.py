@@ -32,6 +32,77 @@ class TenantRow(Base):
     )
 
 
+class WorkspaceSsoConfigRow(Base):
+    __tablename__ = "workspace_sso_configs"
+
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    provider_type: Mapped[str] = mapped_column(String(32), nullable=False, default="oidc")
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False, default="Enterprise SSO")
+    issuer_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    client_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    client_secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    email_domains: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    auto_join: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    enforce_sso: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class SsoLoginTransactionRow(Base):
+    __tablename__ = "sso_login_transactions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    nonce_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    code_verifier_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    email_hint: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SsoIdentityRow(Base):
+    __tablename__ = "sso_identities"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id", "issuer", "subject", name="uq_sso_identity_subject"
+        ),
+        UniqueConstraint(
+            "owner_id", "user_id", name="uq_sso_identity_workspace_user"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    issuer: Mapped[str] = mapped_column(String(512), nullable=False)
+    subject: Mapped[str] = mapped_column(String(512), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    last_login_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
 class UserRow(Base):
     __tablename__ = "users"
 
@@ -161,6 +232,8 @@ class UserSessionRow(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     mfa_authenticated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    auth_method: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    sso_owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

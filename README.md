@@ -920,3 +920,168 @@ Upgrade with:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## Enterprise SSO with OpenID Connect
+
+Phase 15 adds workspace-scoped Enterprise SSO for Google Workspace, Microsoft Entra ID and standards-compatible RS256 OpenID Connect providers.
+
+The browser uses Authorization Code + PKCE. SSO state and nonce values are single-use and short-lived. The backend performs the code exchange, validates the signed ID token, and only then creates the normal HttpOnly application session.
+
+The web frontend never receives the OIDC client secret, PKCE verifier, application session token, or raw ID token.
+
+### OIDC validation
+
+The backend validates:
+
+- discovery issuer equality;
+- HTTPS provider endpoints;
+- RS256 signature against the provider JWKS;
+- `kid`, issuer and audience;
+- `azp` when an ID token contains multiple audiences;
+- expiration, not-before and issued-at timestamps;
+- the per-login nonce;
+- a stable OIDC subject (`sub`);
+- allowed workspace email domains;
+- explicit `email_verified=false` rejection.
+
+Workspace identity bindings are stored by `workspace + issuer + subject`. Email is used for the controlled first bind/JIT decision, not as the permanent external identity key.
+
+### Provider configuration
+
+Workspace Owners configure SSO under **Workspace → Team → Enterprise SSO**.
+
+Google Workspace normally uses:
+
+```text
+Provider: Google Workspace
+Issuer: https://accounts.google.com
+```
+
+Microsoft Entra ID should use the tenant-specific v2.0 issuer rather than a multi-tenant `common` issuer:
+
+```text
+https://login.microsoftonline.com/<tenant-id>/v2.0
+```
+
+Generic OIDC providers must expose standard discovery at:
+
+```text
+<issuer>/.well-known/openid-configuration
+```
+
+and currently must sign ID tokens with RS256.
+
+Register the application redirect URI at the identity provider exactly as configured by:
+
+```env
+SSO_CALLBACK_URL=https://api.example.com/api/v1/auth/sso/callback
+```
+
+The frontend URL is configured separately through `PUBLIC_WEB_URL`; successful callbacks return to `/#/sso-complete`, where the frontend hydrates the already-created HttpOnly application session.
+
+### SSO secret encryption
+
+Recommended production configuration:
+
+```env
+SSO_ENCRYPTION_KEY=<stable high-entropy secret>
+SSO_CALLBACK_URL=https://api.example.com/api/v1/auth/sso/callback
+SSO_TRANSACTION_MINUTES=5
+PUBLIC_WEB_URL=https://app.example.com
+SESSION_COOKIE_SECURE=true
+```
+
+OIDC client secrets and PKCE verifiers are encrypted with Fernet before being stored. If `SSO_ENCRYPTION_KEY` is omitted, the service falls back to `MFA_ENCRYPTION_KEY` and then `API_KEY_PEPPER` for deployment compatibility. Production should use a dedicated stable SSO key.
+
+Do not rotate `SSO_ENCRYPTION_KEY` without a migration/reconfiguration plan; existing encrypted client secrets cannot be decrypted with a different key.
+
+### Safe SSO rollout
+
+SSO rollout intentionally has two stages:
+
+1. save and enable the OIDC connection;
+2. use **Test SSO** as a Workspace Owner.
+
+A connection is marked `verified_at` only after a real successful Owner SSO callback. `enforce_sso=true` is rejected until the connection is both enabled and verified.
+
+Changing the issuer, client ID or client secret clears verification and automatically disables enforcement. Changing allowed email domains also disables enforcement so the new access boundary must be reviewed before it is required. Disabling the connection also disables enforcement.
+
+This prevents a mistyped issuer or client credential from immediately locking the workspace out.
+
+### SSO enforcement
+
+When Enterprise SSO is enforced:
+
+- local email/password login is rejected for that workspace;
+- an existing local session cannot switch into the workspace;
+- every scoped human API request verifies that the current session was issued by that exact workspace's SSO connection;
+- an SSO session from Workspace A cannot satisfy Workspace B's SSO requirement;
+- API keys, MCP and CI automation remain independent from the human SSO policy.
+
+Existing sessions read the current workspace SSO policy on every authenticated request, so enabling enforcement also protects sessions created before the policy change.
+
+A `team:manage` API key has one deliberately narrow break-glass capability: it may set SSO enforcement to `false`. API keys cannot enable enforcement or change the issuer/client configuration.
+
+### Domain controls and JIT
+
+Each SSO connection has one or more allowed email domains.
+
+With JIT disabled, the OIDC identity must resolve to an existing user who is already a member of the workspace.
+
+With JIT enabled:
+
+- an existing account with an allowed email may be added to the workspace as Viewer;
+- an unknown allowed-domain user may be created and joined as Viewer;
+- a newly JIT-created SSO user receives an unguessable random local password hash and does not receive a reusable default password.
+
+After first binding, future logins use OIDC issuer + subject rather than relying on the email string.
+
+### SSO and MFA
+
+SSO does not automatically imply MFA.
+
+If the ID token `amr` claim explicitly includes an MFA/OTP/hardware/software-key signal, the application session is marked MFA-authenticated. Otherwise a workspace with `require_mfa=true` requires the user to complete local TOTP/recovery-code verification in **Account Security** before scoped workspace APIs are available.
+
+This allows Workspace Owners to combine:
+
+- IdP-only SSO;
+- SSO + local TOTP;
+- or IdP-asserted MFA.
+
+### Enterprise SSO API
+
+Public authentication flow:
+
+- `GET /api/v1/auth/sso/discover?email=...`
+- `POST /api/v1/auth/sso/start`
+- `GET /api/v1/auth/sso/callback`
+
+Authenticated current-session MFA:
+
+- `POST /api/v1/auth/mfa/session-verify`
+
+Workspace Owner controls:
+
+- `GET /api/v1/team/sso-config`
+- `PUT /api/v1/team/sso-config`
+- `PATCH /api/v1/team/sso-config/enforcement`
+
+Public SSO discovery/start are protected by the authentication IP rate limiter.
+
+## Phase 15 migration
+
+Schema revision `20260925_0009` adds:
+
+- `workspace_sso_configs`;
+- `sso_login_transactions`;
+- `sso_identities`;
+- `user_sessions.auth_method`;
+- `user_sessions.sso_owner_id`.
+
+Upgrade with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```

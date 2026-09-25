@@ -49,6 +49,8 @@ class AppServices:
     auth_rate_limiter: Any | None = None
     account_repository: Any | None = None
     accounts: Any | None = None
+    sso_repository: Any | None = None
+    sso: Any | None = None
     allow_public_signup: bool = True
     session_cookie_name: str = "agrm_session"
     csrf_cookie_name: str = "agrm_csrf"
@@ -103,8 +105,10 @@ def create_app(
             "/api/v1/auth/reset-password",
             "/api/v1/auth/verify-email",
             "/api/v1/auth/mfa/complete",
+            "/api/v1/auth/sso/start",
+            "/api/v1/auth/sso/discover",
         }
-        if public_auth and request.method == "POST":
+        if public_auth and request.method in {"GET", "POST"}:
             auth_limiter = request.app.state.auth_rate_limiter
             if auth_limiter.limit:
                 client_ip = request.client.host if request.client else "unknown"

@@ -118,6 +118,18 @@ HumanPrincipalDependency = Annotated[
 ]
 
 
+def _enforce_workspace_sso(principal: Principal) -> None:
+    if (
+        isinstance(principal, HumanPrincipal)
+        and principal.workspace_enforce_sso
+        and principal.sso_owner_id != principal.owner_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="SSO required by workspace policy",
+        )
+
+
 def _enforce_workspace_mfa(principal: Principal) -> None:
     if (
         isinstance(principal, HumanPrincipal)
@@ -134,6 +146,7 @@ def require_scope(scope: str) -> Callable[..., str]:
     def dependency(
         principal: PrincipalDependency,
     ) -> str:
+        _enforce_workspace_sso(principal)
         _enforce_workspace_mfa(principal)
         if not principal.allows(scope):
             raise HTTPException(

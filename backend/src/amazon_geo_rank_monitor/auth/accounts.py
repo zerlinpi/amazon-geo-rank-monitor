@@ -28,6 +28,10 @@ class AccountLockedError(ValueError):
     pass
 
 
+class SsoRequiredError(ValueError):
+    pass
+
+
 ROLE_SCOPES: dict[str, frozenset[str]] = {
     "owner": frozenset({"*"}),
     "admin": frozenset(
@@ -86,6 +90,9 @@ class HumanPrincipal:
     mfa_enabled_at: datetime | None
     mfa_authenticated_at: datetime | None
     workspace_require_mfa: bool
+    workspace_enforce_sso: bool
+    auth_method: str
+    sso_owner_id: str | None
     auth_type: str = "session"
     key_id: None = None
 
@@ -135,6 +142,7 @@ class AccountService:
         mfa_issuer: str = "Amazon Geo Rank Monitor",
         mfa_challenge_minutes: int = 5,
         trusted_device_days: int = 30,
+        sso_repository=None,
     ) -> None:
         if session_ttl_hours < 1:
             raise ValueError("session_ttl_hours must be at least 1")
@@ -168,6 +176,7 @@ class AccountService:
         )
         self._mfa_challenge_ttl = timedelta(minutes=mfa_challenge_minutes)
         self._trusted_device_ttl = timedelta(days=trusted_device_days)
+        self._sso_repository = sso_repository
 
     @staticmethod
     def normalize_email(email: str) -> str:
@@ -374,6 +383,22 @@ class AccountService:
         if membership is None:
             raise ValueError("workspace membership not found")
 
+        if self._sso_repository is not None:
+            sso_config = self._sso_repository.get_config(
+                owner_id=membership["owner_id"]
+            )
+            if sso_config and sso_config["enabled"] and sso_config["enforce_sso"]:
+                self._repository.record_auth_event(
+                    email=normalized_email,
+                    event_type="password_login_blocked_by_sso",
+                    success=False,
+                    user_id=user["id"],
+                    client_ip=client_ip,
+                    user_agent=user_agent,
+                    details={"owner_id": membership["owner_id"]},
+                )
+                raise SsoRequiredError("SSO is required for this workspace")
+
         self._repository.record_login_success(
             user_id=user["id"],
             client_ip=client_ip,
@@ -509,6 +534,55 @@ class AccountService:
             trusted_device_expires_at=trusted_expires_at,
         )
 
+    def create_sso_account(
+        self,
+        *,
+        owner_id: str,
+        email: str,
+        display_name: str,
+    ) -> tuple[dict, dict]:
+        normalized_email = self.normalize_email(email)
+        user = self._repository.find_user_by_email(normalized_email)
+        if user is None:
+            user = self._repository.create_user(
+                email=normalized_email,
+                password_hash=self._passwords.hash(secrets.token_urlsafe(48)),
+                display_name=display_name.strip() or normalized_email.split("@", 1)[0],
+            )
+            self._repository.mark_email_verified(user_id=user["id"])
+            user = self._repository.get_user(user["id"])
+        try:
+            membership = self._repository.get_membership(
+                user_id=user["id"],
+                owner_id=owner_id,
+            )
+        except KeyError:
+            membership = self._repository.create_membership(
+                owner_id=owner_id,
+                user_id=user["id"],
+                role="viewer",
+            )
+        return user, membership
+
+    def issue_sso_session(
+        self,
+        *,
+        user_id: str,
+        owner_id: str,
+        mfa_authenticated: bool,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> SessionCreation:
+        return self._issue_session(
+            user_id=user_id,
+            owner_id=owner_id,
+            client_ip=client_ip,
+            user_agent=user_agent,
+            mfa_authenticated=mfa_authenticated,
+            auth_method="sso",
+            sso_owner_id=owner_id,
+        )
+
     def authenticate_session(
         self,
         plaintext: str,
@@ -536,6 +610,15 @@ class AccountService:
         user_agent: str | None = None,
     ) -> SessionCreation:
         self._repository.get_membership(user_id=principal.user_id, owner_id=owner_id)
+        if self._sso_repository is not None:
+            target_sso = self._sso_repository.get_config(owner_id=owner_id)
+            if (
+                target_sso
+                and target_sso["enabled"]
+                and target_sso["enforce_sso"]
+                and principal.sso_owner_id != owner_id
+            ):
+                raise SsoRequiredError("SSO is required for this workspace")
         self._repository.revoke_session(principal.session_id)
         return self._issue_session(
             user_id=principal.user_id,
@@ -543,6 +626,8 @@ class AccountService:
             client_ip=client_ip,
             user_agent=user_agent,
             mfa_authenticated=principal.mfa_authenticated_at is not None,
+            auth_method=principal.auth_method,
+            sso_owner_id=principal.sso_owner_id,
         )
 
     def profile(self, principal: HumanPrincipal) -> dict:
@@ -567,6 +652,15 @@ class AccountService:
                 "mfa_setup_required": (
                     principal.workspace_require_mfa
                     and principal.mfa_enabled_at is None
+                ),
+                "mfa_session_verification_required": (
+                    principal.workspace_require_mfa
+                    and principal.mfa_enabled_at is not None
+                    and principal.mfa_authenticated_at is None
+                ),
+                "enforce_sso": principal.workspace_enforce_sso,
+                "sso_authenticated": (
+                    principal.sso_owner_id == principal.owner_id
                 ),
             },
             "memberships": self._repository.list_memberships(
@@ -633,6 +727,38 @@ class AccountService:
             user_agent=user_agent,
         )
         return recovery_codes
+
+    def verify_current_session_mfa(
+        self,
+        *,
+        principal: HumanPrincipal,
+        code: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        user = self._repository.get_user(principal.user_id)
+        if user["mfa_enabled_at"] is None or not self._verify_mfa_code(user, code):
+            self._repository.record_auth_event(
+                email=user["email"],
+                event_type="mfa_session_verification_failed",
+                success=False,
+                user_id=user["id"],
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
+            raise ValueError("valid MFA code required")
+        self._repository.mark_mfa_verified(user_id=user["id"])
+        self._repository.mark_session_mfa_authenticated(
+            session_id=principal.session_id
+        )
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="mfa_session_verified",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
 
     def regenerate_recovery_codes(
         self,
@@ -780,6 +906,8 @@ class AccountService:
             client_ip=client_ip,
             user_agent=user_agent,
             mfa_authenticated=principal.mfa_authenticated_at is not None,
+            auth_method=principal.auth_method,
+            sso_owner_id=principal.sso_owner_id,
         )
 
     def resend_verification(
@@ -981,6 +1109,8 @@ class AccountService:
             client_ip=client_ip,
             user_agent=user_agent,
             mfa_authenticated=principal.mfa_authenticated_at is not None,
+            auth_method=principal.auth_method,
+            sso_owner_id=principal.sso_owner_id,
         )
 
     def _verify_mfa_code(self, user: dict, code: str) -> bool:
@@ -1074,6 +1204,8 @@ class AccountService:
         client_ip: str | None = None,
         user_agent: str | None = None,
         mfa_authenticated: bool = False,
+        auth_method: str = "local",
+        sso_owner_id: str | None = None,
     ) -> SessionCreation:
         plaintext = f"agrs_{secrets.token_urlsafe(32)}"
         csrf_token = f"agrc_{secrets.token_urlsafe(24)}"
@@ -1087,6 +1219,8 @@ class AccountService:
             client_ip=client_ip,
             user_agent=user_agent,
             mfa_authenticated=mfa_authenticated,
+            auth_method=auth_method,
+            sso_owner_id=sso_owner_id,
         )
         return SessionCreation(
             plaintext=plaintext,
@@ -1114,4 +1248,7 @@ class AccountService:
             mfa_enabled_at=row["mfa_enabled_at"],
             mfa_authenticated_at=row["mfa_authenticated_at"],
             workspace_require_mfa=bool(row["workspace_require_mfa"]),
+            workspace_enforce_sso=bool(row["workspace_enforce_sso"]),
+            auth_method=row["auth_method"],
+            sso_owner_id=row["sso_owner_id"],
         )

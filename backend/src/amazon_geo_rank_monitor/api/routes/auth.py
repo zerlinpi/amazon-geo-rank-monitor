@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 
 from amazon_geo_rank_monitor.api.dependencies import (
     HumanPrincipalDependency,
@@ -15,6 +16,7 @@ from amazon_geo_rank_monitor.api.schemas import (
     MfaDisableRequest,
     PasswordChange,
     PasswordResetRequest,
+    SsoStartRequest,
     WorkspaceSwitch,
 )
 from amazon_geo_rank_monitor.api.session_cookies import (
@@ -24,7 +26,11 @@ from amazon_geo_rank_monitor.api.session_cookies import (
     set_session_cookies,
     set_trusted_device_cookie,
 )
-from amazon_geo_rank_monitor.auth.accounts import AccountLockedError, MfaChallenge
+from amazon_geo_rank_monitor.auth.accounts import (
+    AccountLockedError,
+    MfaChallenge,
+    SsoRequiredError,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -77,6 +83,8 @@ def login(body: AccountLogin, request: Request, response: Response):
         )
     except AccountLockedError as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
+    except SsoRequiredError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     if isinstance(created, MfaChallenge):
@@ -153,6 +161,23 @@ def confirm_mfa_enrollment(
     return {"enabled": True, "recovery_codes": recovery_codes}
 
 
+@router.post("/mfa/session-verify")
+def verify_session_mfa(
+    body: MfaCodeRequest,
+    request: Request,
+    principal: HumanPrincipalDependency,
+):
+    try:
+        get_services(request).accounts.verify_current_session_mfa(
+            principal=principal,
+            code=body.code,
+            **_client_context(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"verified": True}
+
+
 @router.post("/mfa/recovery-codes/regenerate")
 def regenerate_recovery_codes(
     body: MfaCodeRequest,
@@ -188,6 +213,72 @@ def disable_mfa(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     clear_trusted_device_cookie(response, services)
     return {"enabled": False}
+
+
+@router.get("/sso/discover")
+def discover_sso(email: str, request: Request):
+    services = get_services(request)
+    if services.sso is None:
+        return []
+    try:
+        return services.sso.discover(email=email)
+    except ValueError:
+        return []
+
+
+@router.post("/sso/start")
+def start_sso(body: SsoStartRequest, request: Request):
+    services = get_services(request)
+    if services.sso is None:
+        raise HTTPException(status_code=503, detail="SSO is unavailable")
+    try:
+        started = services.sso.start_login(
+            owner_id=body.workspace_id,
+            email_hint=body.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "authorization_url": started.authorization_url,
+        "expires_at": started.expires_at,
+    }
+
+
+@router.get("/sso/callback")
+def sso_callback(
+    request: Request,
+    state: str | None = None,
+    code: str | None = None,
+    error: str | None = None,
+):
+    services = get_services(request)
+    if services.sso is None:
+        return RedirectResponse(
+            "http://localhost:5173/#/login?sso=failed",
+            status_code=302,
+        )
+    if error or not state or not code:
+        return RedirectResponse(
+            services.sso.failure_redirect_url(),
+            status_code=302,
+        )
+    try:
+        completed = services.sso.complete_login(
+            state=state,
+            code=code,
+            **_client_context(request),
+        )
+    except ValueError:
+        return RedirectResponse(
+            services.sso.failure_redirect_url(),
+            status_code=302,
+        )
+    response = RedirectResponse(
+        services.sso.success_redirect_url(),
+        status_code=302,
+    )
+    set_session_cookies(response, services, completed.session)
+    return response
 
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
@@ -373,6 +464,8 @@ def switch_workspace(
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="workspace membership not found") from exc
+    except SsoRequiredError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     set_session_cookies(response, services, created)
     return session_payload(services, created)
 

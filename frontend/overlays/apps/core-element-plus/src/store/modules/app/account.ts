@@ -1,4 +1,4 @@
-import type { LoginResult, SessionResult } from '@/api/agrm'
+import type { AccountProfile, LoginResult, SessionResult } from '@/api/agrm'
 import { agrmApi } from '@/api/agrm'
 import router from '@/router'
 
@@ -20,7 +20,7 @@ export const useAppAccountStore = defineStore('appAccount', () => {
   const permissions = ref<string[]>(['*'])
   const isLogin = computed(() => authMode.value === 'session' || Boolean(token.value))
 
-  function applySession(result: SessionResult) {
+  function applyProfile(result: AccountProfile) {
     localStorage.removeItem('token')
     token.value = ''
     authMode.value = 'session'
@@ -28,6 +28,10 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     account.value = result.user.display_name || result.user.email
     localStorage.setItem('account', account.value)
     permissions.value = [result.workspace.role]
+  }
+
+  function applySession(result: SessionResult) {
+    applyProfile(result)
   }
 
   async function closeExistingHumanSession() {
@@ -143,11 +147,24 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     }
     try {
       const profile = await agrmApi.getMe()
-      account.value = profile.user.display_name || profile.user.email
-      localStorage.setItem('account', account.value)
-      permissions.value = [profile.workspace.role]
+      if (profile.workspace.enforce_sso && !profile.workspace.sso_authenticated) {
+        await agrmApi.logoutAccount().catch(() => undefined)
+        clearAuth()
+        void router.replace({
+          name: 'login',
+          query: {
+            sso: 'required',
+            email: profile.user.email,
+          },
+        })
+        return
+      }
+      applyProfile(profile)
       if (
-        profile.workspace.mfa_setup_required
+        (
+          profile.workspace.mfa_setup_required
+          || profile.workspace.mfa_session_verification_required
+        )
         && router.currentRoute.value.path !== '/workspace/security'
       ) {
         void router.replace('/workspace/security')
@@ -178,6 +195,7 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     registerAccount,
     completeMfa,
     loginWithApiKey,
+    applyProfile,
     applySession,
     logout,
     requestLogout,
