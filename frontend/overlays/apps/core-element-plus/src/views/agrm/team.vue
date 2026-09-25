@@ -56,19 +56,20 @@ async function load() {
   }
 }
 
-async function updateMfaPolicy(value: boolean) {
+async function updateMfaPolicy(value: string | number | boolean) {
   if (currentRole.value !== 'owner') {
     return
   }
+  const enabled = value === true
   updatingPolicy.value = true
   try {
-    const result = await agrmApi.updateWorkspaceSecurityPolicy(value)
+    const result = await agrmApi.updateWorkspaceSecurityPolicy(enabled)
     requireMfa.value = result.require_mfa
     ElMessage.success(result.require_mfa ? 'Workspace now requires MFA' : 'Workspace MFA requirement disabled')
     await load()
   }
   catch (error: any) {
-    requireMfa.value = !value
+    requireMfa.value = !enabled
     ElMessage.error(error.response?.data?.detail || 'Failed to update MFA policy')
   }
   finally {
@@ -233,7 +234,7 @@ onMounted(load)
             v-if="currentRole === 'owner'"
             :model-value="requireMfa"
             :loading="updatingPolicy"
-            @change="(value: boolean) => updateMfaPolicy(value)"
+            @change="updateMfaPolicy"
           />
         </div>
       </div>
