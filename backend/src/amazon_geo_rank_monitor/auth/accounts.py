@@ -497,6 +497,133 @@ class AccountService:
             user_agent=user_agent,
         )
 
+    def resend_verification(
+        self,
+        *,
+        principal: HumanPrincipal,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> bool:
+        user = self._repository.get_user(principal.user_id)
+        if user["email_verified_at"] is not None:
+            return False
+        self._send_verification(user)
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="verification_resent",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        return True
+
+    def verify_email(
+        self,
+        *,
+        token: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> dict:
+        if not token.startswith("agrv_"):
+            raise ValueError("invalid or expired verification token")
+        try:
+            stored = self._repository.get_account_token(
+                token_type="email_verification",
+                token_hash=self._token_hash(token),
+            )
+            self._repository.consume_account_token(stored["id"])
+        except KeyError:
+            raise ValueError("invalid or expired verification token") from None
+        user = self._repository.mark_email_verified(user_id=stored["user_id"])
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="email_verified",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        return user
+
+    def forgot_password(
+        self,
+        *,
+        email: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        normalized_email = self.normalize_email(email)
+        user = self._repository.find_user_by_email(normalized_email)
+        if user is None or user["disabled_at"] is not None:
+            self._repository.record_auth_event(
+                email=normalized_email,
+                event_type="password_reset_requested",
+                success=False,
+                user_id=user["id"] if user else None,
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
+            return
+        self._send_password_reset(user)
+        self._repository.record_auth_event(
+            email=normalized_email,
+            event_type="password_reset_requested",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+
+    def reset_password(
+        self,
+        *,
+        token: str,
+        new_password: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> int:
+        self.validate_password(new_password)
+        if not token.startswith("agrr_"):
+            raise ValueError("invalid or expired reset token")
+        try:
+            stored = self._repository.get_account_token(
+                token_type="password_reset",
+                token_hash=self._token_hash(token),
+            )
+            self._repository.consume_account_token(stored["id"])
+        except KeyError:
+            raise ValueError("invalid or expired reset token") from None
+
+        user = self._repository.get_user(stored["user_id"])
+        self._repository.update_password(
+            user_id=user["id"],
+            password_hash=self._passwords.hash(new_password),
+        )
+        self._repository.reset_login_security(user_id=user["id"])
+        revoked = self._repository.revoke_all_sessions(user_id=user["id"])
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="password_reset_completed",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+            details={"revoked_sessions": revoked},
+        )
+        return revoked
+
+    def list_auth_events(
+        self,
+        *,
+        principal: HumanPrincipal,
+        limit: int = 100,
+    ) -> list[dict]:
+        return self._repository.list_auth_events(
+            user_id=principal.user_id,
+            limit=limit,
+        )
+
     def verify_csrf(self, principal: HumanPrincipal, csrf_token: str) -> bool:
         if not csrf_token:
             return False
@@ -567,6 +694,55 @@ class AccountService:
             user_agent=user_agent,
         )
 
+    def _send_verification(self, user: dict) -> None:
+        if user["email_verified_at"] is not None:
+            return
+        plaintext = f"agrv_{secrets.token_urlsafe(32)}"
+        expires_at = datetime.now(UTC) + self._verification_ttl
+        self._repository.create_account_token(
+            user_id=user["id"],
+            token_type="email_verification",
+            token_hash=self._token_hash(plaintext),
+            expires_at=expires_at,
+        )
+        self._safe_send(
+            to=user["email"],
+            subject="Verify your Geo Rank Monitor email",
+            text=(
+                "Verify your email address to secure your account.\n\n"
+                f"Open: {self._public_web_url}/#/verify-email?token={plaintext}\n\n"
+                f"This link expires at {expires_at.isoformat()}."
+            ),
+        )
+
+    def _send_password_reset(self, user: dict) -> None:
+        plaintext = f"agrr_{secrets.token_urlsafe(32)}"
+        expires_at = datetime.now(UTC) + self._password_reset_ttl
+        self._repository.create_account_token(
+            user_id=user["id"],
+            token_type="password_reset",
+            token_hash=self._token_hash(plaintext),
+            expires_at=expires_at,
+        )
+        self._safe_send(
+            to=user["email"],
+            subject="Reset your Geo Rank Monitor password",
+            text=(
+                "A password reset was requested for your account.\n\n"
+                f"Open: {self._public_web_url}/#/reset-password?token={plaintext}\n\n"
+                f"This link expires at {expires_at.isoformat()}. "
+                "If you did not request this, ignore this email."
+            ),
+        )
+
+    def _safe_send(self, *, to: str, subject: str, text: str) -> None:
+        if self._email_sender is None:
+            return
+        try:
+            self._email_sender.send(to=to, subject=subject, text=text)
+        except Exception:
+            logger.exception("account_email_delivery_failed to=%s subject=%s", to, subject)
+
     def _load_invitation(self, plaintext: str) -> dict:
         if not plaintext.startswith("agri_"):
             raise ValueError("invalid invitation")
@@ -628,4 +804,5 @@ class AccountService:
             display_name=row["display_name"],
             workspace_name=row["workspace_name"],
             csrf_hash=row["csrf_hash"],
+            email_verified_at=row["email_verified_at"],
         )
