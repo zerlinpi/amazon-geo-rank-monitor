@@ -105,6 +105,8 @@ class AccountRepository:
                 )
             )
             if existing is not None:
+                if existing.suspended_at is not None:
+                    raise PermissionError("workspace membership is suspended")
                 return self._serialize_membership(existing)
             row = WorkspaceMembershipRow(
                 id=str(uuid4()),
@@ -161,7 +163,10 @@ class AccountRepository:
             rows = session.execute(
                 select(WorkspaceMembershipRow, TenantRow)
                 .join(TenantRow, TenantRow.id == WorkspaceMembershipRow.owner_id)
-                .where(WorkspaceMembershipRow.user_id == user_id)
+                .where(
+                    WorkspaceMembershipRow.user_id == user_id,
+                    WorkspaceMembershipRow.suspended_at.is_(None),
+                )
                 .order_by(WorkspaceMembershipRow.created_at)
             ).all()
             return [
@@ -173,13 +178,22 @@ class AccountRepository:
                 for membership, tenant in rows
             ]
 
-    def get_membership(self, *, user_id: str, owner_id: str) -> dict:
+    def get_membership(
+        self,
+        *,
+        user_id: str,
+        owner_id: str,
+        include_suspended: bool = False,
+    ) -> dict:
         with self._sessions() as session:
+            conditions = [
+                WorkspaceMembershipRow.user_id == user_id,
+                WorkspaceMembershipRow.owner_id == owner_id,
+            ]
+            if not include_suspended:
+                conditions.append(WorkspaceMembershipRow.suspended_at.is_(None))
             row = session.scalar(
-                select(WorkspaceMembershipRow).where(
-                    WorkspaceMembershipRow.user_id == user_id,
-                    WorkspaceMembershipRow.owner_id == owner_id,
-                )
+                select(WorkspaceMembershipRow).where(*conditions)
             )
             if row is None:
                 raise KeyError("workspace membership not found")
@@ -316,6 +330,7 @@ class AccountRepository:
                     UserSessionRow.revoked_at.is_(None),
                     UserSessionRow.expires_at > now,
                     UserRow.disabled_at.is_(None),
+                    WorkspaceMembershipRow.suspended_at.is_(None),
                 )
             ).first()
             if result is None:
@@ -436,6 +451,25 @@ class AccountRepository:
             rows = session.scalars(
                 select(UserSessionRow).where(
                     UserSessionRow.user_id == user_id,
+                    UserSessionRow.revoked_at.is_(None),
+                )
+            ).all()
+            now = datetime.now(UTC)
+            for row in rows:
+                row.revoked_at = now
+            return len(rows)
+
+    def revoke_workspace_sessions(
+        self,
+        *,
+        user_id: str,
+        owner_id: str,
+    ) -> int:
+        with self._sessions.begin() as session:
+            rows = session.scalars(
+                select(UserSessionRow).where(
+                    UserSessionRow.user_id == user_id,
+                    UserSessionRow.owner_id == owner_id,
                     UserSessionRow.revoked_at.is_(None),
                 )
             ).all()
@@ -946,7 +980,11 @@ class AccountRepository:
             "owner_id": row.owner_id,
             "user_id": row.user_id,
             "role": row.role,
+            "suspended_at": row.suspended_at,
+            "scim_managed": row.scim_managed,
+            "scim_external_id": row.scim_external_id,
             "created_at": row.created_at,
+            "updated_at": row.updated_at,
         }
 
     @staticmethod
