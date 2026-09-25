@@ -15,6 +15,7 @@ from amazon_geo_rank_monitor.api.schemas import (
 )
 from amazon_geo_rank_monitor.auth.accounts import ROLES, HumanPrincipal
 from amazon_geo_rank_monitor.auth.api_keys import ApiPrincipal
+from amazon_geo_rank_monitor.api.session_cookies import session_payload, set_session_cookies
 
 router = APIRouter(prefix="/api/v1/team", tags=["team"])
 
@@ -24,14 +25,6 @@ TeamManagePrincipal = Annotated[
     Principal,
     Depends(require_scope_principal("team:manage")),
 ]
-
-
-def _session_payload(services, session) -> dict:
-    return {
-        "session_token": session.plaintext,
-        "expires_at": session.expires_at,
-        **services.accounts.profile(session.principal),
-    }
 
 
 @router.get("/members")
@@ -160,6 +153,7 @@ def remove_member(
 def bootstrap_owner(
     body: BootstrapOwnerCreate,
     request: Request,
+    response: Response,
     principal: TeamManagePrincipal,
 ):
     if not isinstance(principal, ApiPrincipal):
@@ -174,7 +168,10 @@ def bootstrap_owner(
             email=body.email,
             password=body.password,
             display_name=body.display_name,
+            client_ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("User-Agent"),
         )
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _session_payload(services, created)
+    set_session_cookies(response, services, created)
+    return session_payload(services, created)
