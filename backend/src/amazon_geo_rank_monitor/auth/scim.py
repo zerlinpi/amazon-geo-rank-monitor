@@ -210,7 +210,7 @@ class ScimService:
             owner_id=owner_id,
             membership_id=membership_id,
             display_name=self._display_name(payload, existing["email"]),
-            external_id=self._optional_string(payload.get("externalId")),
+            external_id=str(payload.get("externalId") or ""),
             active=bool(payload.get("active", True)),
             role=role,
         )
@@ -266,7 +266,7 @@ class ScimService:
             elif normalized_path == "displayname":
                 display_name = "" if op == "remove" else str(value or "")
             elif normalized_path == "externalid":
-                external_id = None if op == "remove" else self._optional_string(value)
+                external_id = "" if op == "remove" else self._optional_string(value)
             elif normalized_path == "username":
                 if op == "remove":
                     raise ValueError("SCIM userName cannot be removed")
@@ -353,7 +353,7 @@ class ScimService:
         row = self._repository.create_group(
             owner_id=owner_id,
             display_name=display_name,
-            external_id=self._optional_string(payload.get("externalId")),
+            external_id=str(payload.get("externalId") or ""),
             membership_ids=self._member_ids(payload.get("members")),
         )
         return self.serialize_group(row)
