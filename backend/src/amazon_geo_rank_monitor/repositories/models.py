@@ -74,6 +74,10 @@ class UserSessionRow(Base):
         ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
     )
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    csrf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_seen_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

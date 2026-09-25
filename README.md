@@ -682,3 +682,62 @@ Upgrade an existing database with:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## Secure browser sessions
+
+Human browser authentication now uses a host-only HttpOnly session cookie instead of persisting the `agrs_...` session token in `localStorage`.
+
+The browser receives two cookies:
+
+- `agrm_session` — HttpOnly session credential; JavaScript cannot read it.
+- `agrm_csrf` — per-session CSRF token; the web client mirrors it into `X-CSRF-Token` on unsafe requests.
+
+The CSRF token is also bound to the server-side session by a SHA-256 hash. Cookie-authenticated `POST`, `PUT`, `PATCH`, and `DELETE` requests are rejected unless the cookie, header, and stored session hash all agree.
+
+Bearer sessions remain accepted for non-browser compatibility, and API keys continue to use `X-API-Key`. CSRF enforcement applies only to cookie-authenticated human sessions.
+
+Recommended production settings:
+
+```env
+SESSION_COOKIE_NAME=agrm_session
+CSRF_COOKIE_NAME=agrm_csrf
+SESSION_COOKIE_SECURE=true
+SESSION_COOKIE_SAMESITE=lax
+```
+
+Use HTTPS whenever `SESSION_COOKIE_SECURE=true`. Local HTTP development keeps the default `false`. The default frontend API base URL is now `http://localhost:8000` so the Vite frontend at `http://localhost:5173` remains same-site for development cookies.
+
+Credentialed CORS is enabled only for configured `CORS_ORIGINS`; do not use wildcard origins with cookie sessions.
+
+### Session management
+
+Human users can inspect and control active sessions:
+
+- `GET /api/v1/auth/sessions`
+- `DELETE /api/v1/auth/sessions/{session_id}`
+- `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/logout-all`
+- `POST /api/v1/auth/change-password`
+
+Session metadata includes creation time, last-seen time, direct client IP and user agent. Password changes keep the current session and revoke every other active session.
+
+The Fantastic Admin console exposes these controls under **Workspace → Account Security**.
+
+## Phase 12 migration
+
+Schema revision `20260925_0006` adds per-session CSRF hashes and device metadata:
+
+- `user_sessions.csrf_hash`
+- `user_sessions.created_ip`
+- `user_sessions.last_seen_ip`
+- `user_sessions.user_agent`
+
+Upgrade existing deployments with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
+
+Existing Phase 11 browser sessions should sign in again after deployment so the browser receives the new HttpOnly session and CSRF cookies.

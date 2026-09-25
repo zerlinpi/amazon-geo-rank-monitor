@@ -36,6 +36,10 @@ class AppSettings(BaseSettings):
     allow_public_signup: bool = True
     session_ttl_hours: int = 720
     invitation_ttl_hours: int = 168
+    session_cookie_name: str = "agrm_session"
+    csrf_cookie_name: str = "agrm_csrf"
+    session_cookie_secure: bool = False
+    session_cookie_samesite: str = "lax"
     allow_public_signup: bool = True
     session_ttl_hours: int = 720
     invitation_ttl_hours: int = 168

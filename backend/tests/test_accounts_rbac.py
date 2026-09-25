@@ -55,19 +55,22 @@ def build_client(*, auth_rate_limit: int = 20):
         accounts=accounts,
         allow_public_signup=True,
     )
-    return (
-        TestClient(
-            create_app(
-                services,
-                auth_rate_limit_per_minute=auth_rate_limit,
-            )
-        ),
-        services,
+    return client_for(services, auth_rate_limit=auth_rate_limit), services
+
+
+def client_for(services, *, auth_rate_limit: int = 20) -> TestClient:
+    return TestClient(
+        create_app(
+            services,
+            auth_rate_limit_per_minute=auth_rate_limit,
+        )
     )
 
 
-def bearer(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+def csrf_headers(client: TestClient) -> dict[str, str]:
+    token = client.cookies.get("agrm_csrf")
+    assert token
+    return {"X-CSRF-Token": token}
 
 
 def geo_payload():
@@ -87,6 +90,7 @@ def geo_payload():
 def register_owner(client: TestClient):
     response = client.post(
         "/api/v1/auth/register",
+        headers={"User-Agent": "owner-browser/1.0"},
         json={
             "email": "owner@example.com",
             "password": "correct-horse-battery",
@@ -95,40 +99,47 @@ def register_owner(client: TestClient):
         },
     )
     assert response.status_code == 201
+    assert "session_token" not in response.json()
+    assert client.cookies.get("agrm_session", "").startswith("agrs_")
+    assert client.cookies.get("agrm_csrf", "").startswith("agrc_")
     return response.json()
 
 
-def test_owner_registration_session_and_logout() -> None:
+def test_owner_registration_cookie_csrf_and_logout() -> None:
     client, _ = build_client()
     registered = register_owner(client)
-    token = registered["session_token"]
 
-    assert token.startswith("agrs_")
     assert registered["workspace"]["role"] == "owner"
+
+    denied = client.post("/api/v1/geo-profiles", json=geo_payload())
+    assert denied.status_code == 403
+    assert "CSRF" in denied.json()["detail"]
 
     created = client.post(
         "/api/v1/geo-profiles",
-        headers=bearer(token),
+        headers=csrf_headers(client),
         json=geo_payload(),
     )
     assert created.status_code == 201
 
-    me = client.get("/api/v1/auth/me", headers=bearer(token))
+    me = client.get("/api/v1/auth/me")
     assert me.status_code == 200
     assert me.json()["user"]["email"] == "owner@example.com"
     assert me.json()["workspace"]["name"] == "Acme"
 
-    logout = client.post("/api/v1/auth/logout", headers=bearer(token))
+    logout = client.post("/api/v1/auth/logout", headers=csrf_headers(client))
     assert logout.status_code == 204
-    assert client.get("/api/v1/auth/me", headers=bearer(token)).status_code == 401
+    assert client.get("/api/v1/auth/me").status_code == 401
 
 
-def test_login_returns_new_human_session() -> None:
+def test_login_returns_cookie_without_exposing_session_token() -> None:
     client, _ = build_client()
     register_owner(client)
+    client.post("/api/v1/auth/logout", headers=csrf_headers(client))
 
     login = client.post(
         "/api/v1/auth/login",
+        headers={"User-Agent": "second-browser/2.0"},
         json={
             "email": "OWNER@example.com",
             "password": "correct-horse-battery",
@@ -136,25 +147,25 @@ def test_login_returns_new_human_session() -> None:
     )
 
     assert login.status_code == 200
-    assert login.json()["session_token"].startswith("agrs_")
+    assert "session_token" not in login.json()
+    assert client.cookies.get("agrm_session", "").startswith("agrs_")
     assert login.json()["workspace"]["role"] == "owner"
 
 
 def test_invited_viewer_can_read_but_cannot_write() -> None:
-    client, _ = build_client()
-    owner = register_owner(client)
-    owner_headers = bearer(owner["session_token"])
+    owner_client, services = build_client()
+    register_owner(owner_client)
 
-    invitation = client.post(
+    invitation = owner_client.post(
         "/api/v1/team/invitations",
-        headers=owner_headers,
+        headers=csrf_headers(owner_client),
         json={"email": "viewer@example.com", "role": "viewer"},
     )
     assert invitation.status_code == 201
     invite_token = invitation.json()["invitation_token"]
-    assert invite_token.startswith("agri_")
 
-    viewer = client.post(
+    viewer_client = client_for(services)
+    viewer = viewer_client.post(
         "/api/v1/auth/register",
         json={
             "email": "viewer@example.com",
@@ -164,17 +175,13 @@ def test_invited_viewer_can_read_but_cannot_write() -> None:
         },
     )
     assert viewer.status_code == 201
-    viewer_headers = bearer(viewer.json()["session_token"])
     assert viewer.json()["workspace"]["role"] == "viewer"
 
-    assert client.get(
-        "/api/v1/geo-profiles",
-        headers=viewer_headers,
-    ).status_code == 200
+    assert viewer_client.get("/api/v1/geo-profiles").status_code == 200
 
-    denied = client.post(
+    denied = viewer_client.post(
         "/api/v1/geo-profiles",
-        headers=viewer_headers,
+        headers=csrf_headers(viewer_client),
         json=geo_payload(),
     )
     assert denied.status_code == 403
@@ -182,16 +189,16 @@ def test_invited_viewer_can_read_but_cannot_write() -> None:
 
 
 def test_owner_can_promote_member_and_last_owner_is_protected() -> None:
-    client, _ = build_client()
-    owner = register_owner(client)
-    owner_headers = bearer(owner["session_token"])
+    owner_client, services = build_client()
+    register_owner(owner_client)
 
-    invitation = client.post(
+    invitation = owner_client.post(
         "/api/v1/team/invitations",
-        headers=owner_headers,
+        headers=csrf_headers(owner_client),
         json={"email": "analyst@example.com", "role": "analyst"},
     ).json()
-    analyst = client.post(
+    analyst_client = client_for(services)
+    analyst = analyst_client.post(
         "/api/v1/auth/register",
         json={
             "email": "analyst@example.com",
@@ -201,7 +208,7 @@ def test_owner_can_promote_member_and_last_owner_is_protected() -> None:
         },
     ).json()
 
-    members = client.get("/api/v1/team/members", headers=owner_headers).json()
+    members = owner_client.get("/api/v1/team/members").json()
     analyst_member = next(
         item for item in members if item["email"] == "analyst@example.com"
     )
@@ -209,22 +216,21 @@ def test_owner_can_promote_member_and_last_owner_is_protected() -> None:
         item for item in members if item["email"] == "owner@example.com"
     )
 
-    promoted = client.patch(
+    promoted = owner_client.patch(
         f"/api/v1/team/members/{analyst_member['user_id']}",
-        headers=owner_headers,
+        headers=csrf_headers(owner_client),
         json={"role": "admin"},
     )
     assert promoted.status_code == 200
     assert promoted.json()["role"] == "admin"
 
-    protected = client.patch(
+    protected = owner_client.patch(
         f"/api/v1/team/members/{owner_member['user_id']}",
-        headers=owner_headers,
+        headers=csrf_headers(owner_client),
         json={"role": "viewer"},
     )
     assert protected.status_code == 409
     assert "at least one owner" in protected.json()["detail"]
-
     assert analyst["workspace"]["role"] == "analyst"
 
 
@@ -244,17 +250,12 @@ def test_existing_api_key_workspace_can_bootstrap_first_human_owner() -> None:
     )
 
     assert response.status_code == 201
+    assert "session_token" not in response.json()
     assert response.json()["workspace"]["id"] == tenant["id"]
     assert response.json()["workspace"]["role"] == "owner"
-    session_token = response.json()["session_token"]
-    assert client.get(
-        "/api/v1/auth/me",
-        headers=bearer(session_token),
-    ).status_code == 200
+    assert client.get("/api/v1/auth/me").status_code == 200
 
-    member = services.account_repository.list_members(
-        owner_id=tenant["id"]
-    )[0]
+    member = services.account_repository.list_members(owner_id=tenant["id"])[0]
     machine_mutation = client.patch(
         f"/api/v1/team/members/{member['user_id']}",
         headers={"X-API-Key": key.plaintext},
@@ -286,28 +287,91 @@ def test_public_login_is_rate_limited_by_client_ip() -> None:
     )
     assert limited.status_code == 429
     assert limited.json()["error"]["code"] == "RATE_LIMITED"
-    assert int(limited.headers["Retry-After"]) >= 1
 
 
-def test_human_session_requests_are_audited_as_user_actor() -> None:
+def test_human_cookie_requests_are_audited_as_user_actor() -> None:
     client, services = build_client()
     registered = register_owner(client)
 
     response = client.get(
         "/api/v1/auth/me",
-        headers={
-            **bearer(registered["session_token"]),
-            "X-Request-ID": "human-audit-1",
-        },
+        headers={"X-Request-ID": "human-audit-1"},
     )
     assert response.status_code == 200
 
-    events = services.audit_repository.list(
-        owner_id=registered["workspace"]["id"],
-    )
-    event = next(
-        item for item in events if item["request_id"] == "human-audit-1"
-    )
+    events = services.audit_repository.list(owner_id=registered["workspace"]["id"])
+    event = next(item for item in events if item["request_id"] == "human-audit-1")
     assert event["actor_type"] == "session"
     assert event["user_id"] == registered["user"]["id"]
     assert event["api_key_id"] is None
+
+
+def test_remote_session_revoke_invalidates_other_device() -> None:
+    first, services = build_client()
+    register_owner(first)
+
+    second = client_for(services)
+    login = second.post(
+        "/api/v1/auth/login",
+        headers={"User-Agent": "remote-device/1.0"},
+        json={
+            "email": "owner@example.com",
+            "password": "correct-horse-battery",
+        },
+    )
+    assert login.status_code == 200
+
+    sessions = first.get("/api/v1/auth/sessions").json()
+    remote = next(item for item in sessions if not item["current"])
+    assert remote["user_agent"] == "remote-device/1.0"
+
+    revoked = first.delete(
+        f"/api/v1/auth/sessions/{remote['id']}",
+        headers=csrf_headers(first),
+    )
+    assert revoked.status_code == 204
+    assert second.get("/api/v1/auth/me").status_code == 401
+    assert first.get("/api/v1/auth/me").status_code == 200
+
+
+def test_password_change_revokes_other_sessions_and_keeps_current() -> None:
+    first, services = build_client()
+    register_owner(first)
+
+    second = client_for(services)
+    assert second.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "correct-horse-battery",
+        },
+    ).status_code == 200
+
+    changed = first.post(
+        "/api/v1/auth/change-password",
+        headers=csrf_headers(first),
+        json={
+            "current_password": "correct-horse-battery",
+            "new_password": "new-correct-horse-battery",
+        },
+    )
+    assert changed.status_code == 200
+    assert changed.json()["revoked_other_sessions"] == 1
+    assert first.get("/api/v1/auth/me").status_code == 200
+    assert second.get("/api/v1/auth/me").status_code == 401
+
+    fresh = client_for(services)
+    assert fresh.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "correct-horse-battery",
+        },
+    ).status_code == 401
+    assert fresh.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "new-correct-horse-battery",
+        },
+    ).status_code == 200

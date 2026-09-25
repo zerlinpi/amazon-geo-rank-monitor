@@ -35,6 +35,10 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         column["name"] for column in inspector.get_columns("audit_events")
     }
     assert {"user_id", "actor_type"} <= audit_columns
+    session_columns = {
+        column["name"] for column in inspector.get_columns("user_sessions")
+    }
+    assert {"csrf_hash", "created_ip", "last_seen_ip", "user_agent"} <= session_columns
     rank_job_columns = {
         column["name"] for column in inspector.get_columns("rank_jobs")
     }

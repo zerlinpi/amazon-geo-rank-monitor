@@ -1,18 +1,29 @@
 import axios from 'axios'
 
 const client = axios.create({
-  baseURL: import.meta.env.VITE_AGRM_API_BASEURL || 'http://127.0.0.1:8000',
+  baseURL: import.meta.env.VITE_AGRM_API_BASEURL || 'http://localhost:8000',
   timeout: 120000,
+  withCredentials: true,
 })
+
+function readCookie(name: string) {
+  const prefix = `${encodeURIComponent(name)}=`
+  const value = document.cookie
+    .split('; ')
+    .find(item => item.startsWith(prefix))
+  return value ? decodeURIComponent(value.slice(prefix.length)) : ''
+}
 
 client.interceptors.request.use((config) => {
   const key = localStorage.getItem('token')
-  if (key) {
-    if (key.startsWith('agrs_')) {
-      config.headers.Authorization = `Bearer ${key}`
-    }
-    else {
-      config.headers['X-API-Key'] = key
+  if (key?.startsWith('agrm_')) {
+    config.headers['X-API-Key'] = key
+  }
+  const method = (config.method || 'get').toLowerCase()
+  if (!['get', 'head', 'options'].includes(method)) {
+    const csrf = readCookie(import.meta.env.VITE_AGRM_CSRF_COOKIE_NAME || 'agrm_csrf')
+    if (csrf) {
+      config.headers['X-CSRF-Token'] = csrf
     }
   }
   return config
@@ -23,6 +34,7 @@ client.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
+      localStorage.removeItem('authMode')
       if (location.hash !== '#/login') {
         location.hash = '#/login'
       }
@@ -59,8 +71,19 @@ export interface AccountProfile {
 }
 
 export interface SessionResult extends AccountProfile {
-  session_token: string
   expires_at: string
+}
+
+export interface UserSession {
+  id: string
+  owner_id: string
+  created_at: string
+  expires_at: string
+  last_seen_at: string
+  created_ip?: string | null
+  last_seen_ip?: string | null
+  user_agent?: string | null
+  current: boolean
 }
 
 export interface TeamMember extends WorkspaceMembership {
@@ -249,6 +272,12 @@ export const agrmApi = {
   }) => data<SessionResult>(client.post('/api/v1/auth/login', payload)),
   getMe: () => data<AccountProfile>(client.get('/api/v1/auth/me')),
   logoutAccount: () => data<void>(client.post('/api/v1/auth/logout')),
+  logoutAll: () => data<void>(client.post('/api/v1/auth/logout-all')),
+  getSessions: () => data<UserSession[]>(client.get('/api/v1/auth/sessions')),
+  revokeSession: (id: string) => data<void>(client.delete('/api/v1/auth/sessions/' + id)),
+  changePassword: (current_password: string, new_password: string) => data<{
+    revoked_other_sessions: number
+  }>(client.post('/api/v1/auth/change-password', { current_password, new_password })),
   switchWorkspace: (workspace_id: string) => data<SessionResult>(
     client.post('/api/v1/auth/switch-workspace', { workspace_id }),
   ),

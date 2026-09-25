@@ -50,6 +50,10 @@ class AppServices:
     account_repository: Any | None = None
     accounts: Any | None = None
     allow_public_signup: bool = True
+    session_cookie_name: str = "agrm_session"
+    csrf_cookie_name: str = "agrm_csrf"
+    session_cookie_secure: bool = False
+    session_cookie_samesite: str = "lax"
 
 
 def create_app(
@@ -88,7 +92,8 @@ def create_app(
             scheme, _, credential = authorization.partition(" ")
             if scheme.lower() == "bearer" and credential:
                 bearer_token = credential
-        rate_credential = api_key or bearer_token
+        session_cookie = request.cookies.get(services.session_cookie_name)
+        rate_credential = api_key or bearer_token or session_cookie
         public_auth = request.url.path in {
             "/api/v1/auth/login",
             "/api/v1/auth/register",
@@ -187,7 +192,7 @@ def create_app(
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cors_origins,
-            allow_credentials=False,
+            allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
         )
