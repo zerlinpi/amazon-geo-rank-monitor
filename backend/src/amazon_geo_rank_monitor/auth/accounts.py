@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -64,6 +65,7 @@ class HumanPrincipal:
     email: str
     display_name: str
     workspace_name: str
+    csrf_hash: str
     auth_type: str = "session"
     key_id: None = None
 
@@ -74,6 +76,7 @@ class HumanPrincipal:
 @dataclass(frozen=True)
 class SessionCreation:
     plaintext: str
+    csrf_token: str
     expires_at: datetime
     principal: HumanPrincipal
 
@@ -133,6 +136,8 @@ class AccountService:
         display_name: str,
         workspace_name: str | None = None,
         invitation_token: str | None = None,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
     ) -> SessionCreation:
         normalized_email = self.normalize_email(email)
         self.validate_password(password)
@@ -157,6 +162,8 @@ class AccountService:
             return self._issue_session(
                 user_id=user["id"],
                 owner_id=membership["owner_id"],
+                client_ip=client_ip,
+                user_agent=user_agent,
             )
 
         workspace = (workspace_name or "").strip()
@@ -171,6 +178,8 @@ class AccountService:
         return self._issue_session(
             user_id=user["id"],
             owner_id=membership["owner_id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
         )
 
     def bootstrap_owner(
@@ -180,6 +189,8 @@ class AccountService:
         email: str,
         password: str,
         display_name: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
     ) -> SessionCreation:
         normalized_email = self.normalize_email(email)
         self.validate_password(password)
@@ -203,6 +214,8 @@ class AccountService:
         return self._issue_session(
             user_id=user["id"],
             owner_id=membership["owner_id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
         )
 
     def login(
@@ -211,6 +224,8 @@ class AccountService:
         email: str,
         password: str,
         workspace_id: str | None = None,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
     ) -> SessionCreation:
         normalized_email = self.normalize_email(email)
         user = self._repository.find_user_by_email(normalized_email)
@@ -241,9 +256,16 @@ class AccountService:
         return self._issue_session(
             user_id=user["id"],
             owner_id=membership["owner_id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
         )
 
-    def authenticate_session(self, plaintext: str) -> HumanPrincipal | None:
+    def authenticate_session(
+        self,
+        plaintext: str,
+        *,
+        client_ip: str | None = None,
+    ) -> HumanPrincipal | None:
         if not plaintext.startswith("agrs_"):
             return None
         try:
@@ -252,7 +274,7 @@ class AccountService:
             )
         except KeyError:
             return None
-        self._repository.touch_session(row["id"])
+        self._repository.touch_session(row["id"], client_ip=client_ip)
         return self._principal(row)
 
     def logout(self, session_id: str) -> None:
@@ -263,6 +285,8 @@ class AccountService:
         *,
         principal: HumanPrincipal,
         owner_id: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
     ) -> SessionCreation:
         self._repository.get_membership(
             user_id=principal.user_id,
@@ -272,6 +296,8 @@ class AccountService:
         return self._issue_session(
             user_id=principal.user_id,
             owner_id=owner_id,
+            client_ip=client_ip,
+            user_agent=user_agent,
         )
 
     def profile(self, principal: HumanPrincipal) -> dict:
@@ -326,6 +352,8 @@ class AccountService:
         *,
         principal: HumanPrincipal,
         invitation_token: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
     ) -> SessionCreation:
         invitation = self._load_invitation(invitation_token)
         if invitation["email"] != principal.email:
@@ -338,6 +366,63 @@ class AccountService:
         return self._issue_session(
             user_id=principal.user_id,
             owner_id=membership["owner_id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+
+    def verify_csrf(self, principal: HumanPrincipal, csrf_token: str) -> bool:
+        if not csrf_token:
+            return False
+        return hmac.compare_digest(
+            self._token_hash(csrf_token),
+            principal.csrf_hash,
+        )
+
+    def list_sessions(self, principal: HumanPrincipal) -> list[dict]:
+        return [
+            {
+                **row,
+                "current": row["id"] == principal.session_id,
+            }
+            for row in self._repository.list_sessions(user_id=principal.user_id)
+        ]
+
+    def revoke_user_session(
+        self,
+        *,
+        principal: HumanPrincipal,
+        session_id: str,
+    ) -> bool:
+        return self._repository.revoke_user_session(
+            user_id=principal.user_id,
+            session_id=session_id,
+        )
+
+    def logout_all(self, principal: HumanPrincipal) -> int:
+        return self._repository.revoke_all_sessions(user_id=principal.user_id)
+
+    def change_password(
+        self,
+        *,
+        principal: HumanPrincipal,
+        current_password: str,
+        new_password: str,
+    ) -> int:
+        self.validate_password(new_password)
+        user = self._repository.get_user(principal.user_id)
+        try:
+            self._passwords.verify(user["password_hash"], current_password)
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            raise ValueError("current password is invalid") from None
+        if current_password == new_password:
+            raise ValueError("new password must be different")
+        self._repository.update_password(
+            user_id=principal.user_id,
+            password_hash=self._passwords.hash(new_password),
+        )
+        return self._repository.revoke_other_sessions(
+            user_id=principal.user_id,
+            keep_session_id=principal.session_id,
         )
 
     def _load_invitation(self, plaintext: str) -> dict:
@@ -364,17 +449,24 @@ class AccountService:
         *,
         user_id: str,
         owner_id: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
     ) -> SessionCreation:
         plaintext = f"agrs_{secrets.token_urlsafe(32)}"
+        csrf_token = f"agrc_{secrets.token_urlsafe(24)}"
         expires_at = datetime.now(UTC) + self._session_ttl
         row = self._repository.create_session(
             user_id=user_id,
             owner_id=owner_id,
             token_hash=self._token_hash(plaintext),
+            csrf_hash=self._token_hash(csrf_token),
             expires_at=expires_at,
+            client_ip=client_ip,
+            user_agent=user_agent,
         )
         return SessionCreation(
             plaintext=plaintext,
+            csrf_token=csrf_token,
             expires_at=expires_at,
             principal=self._principal(row),
         )
@@ -393,4 +485,5 @@ class AccountService:
             email=row["email"],
             display_name=row["display_name"],
             workspace_name=row["workspace_name"],
+            csrf_hash=row["csrf_hash"],
         )
