@@ -17,7 +17,6 @@ from .models import (
     WorkspaceScimConfigRow,
 )
 
-
 SCIM_ROLES = {"admin", "analyst", "viewer"}
 ROLE_PRIORITY = {"admin": 3, "analyst": 2, "viewer": 1}
 
