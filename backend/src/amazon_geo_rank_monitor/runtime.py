@@ -168,7 +168,11 @@ def build_services(settings: AppSettings) -> AppServices:
         repository=sso_repository,
         account_repository=accounts_repository,
         accounts=accounts,
-        encryption_key=settings.sso_encryption_key or settings.mfa_encryption_key or settings.api_key_pepper,
+        encryption_key=(
+            settings.sso_encryption_key
+            or settings.mfa_encryption_key
+            or settings.api_key_pepper
+        ),
         callback_url=settings.sso_callback_url,
         public_web_url=settings.public_web_url,
         transaction_minutes=settings.sso_transaction_minutes,
