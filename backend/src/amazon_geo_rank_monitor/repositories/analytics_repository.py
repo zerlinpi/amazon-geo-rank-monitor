@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import sessionmaker
 
-from .models import RankJobRow, RankObservationRow, RankRunRow, RankSnapshotRow
+from .models import (
+    RankJobRow,
+    RankObservationRow,
+    RankRunRow,
+    RankSnapshotRow,
+)
 
 
 COMPLETED_JOB_STATUSES = ("succeeded", "partially_succeeded")
