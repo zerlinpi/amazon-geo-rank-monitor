@@ -19,6 +19,7 @@ class RankWorker:
         rate_card: RateCard | None = None,
         worker_status_repository=None,
         alert_service=None,
+        probe_cache=None,
         worker_id: str = "rank-worker",
         lease_seconds: float = 900.0,
         retry_base_seconds: float = 30.0,
@@ -31,6 +32,7 @@ class RankWorker:
         self._rate_card = rate_card or RateCard()
         self._worker_status = worker_status_repository
         self._alerts = alert_service
+        self._probe_cache = probe_cache
         self._worker_id = worker_id
         self._lease_seconds = lease_seconds
         self._retry_base_seconds = retry_base_seconds
@@ -114,6 +116,8 @@ class RankWorker:
             service = RankMonitorService(
                 provider=provider,
                 repository=self._rank_repository,
+                probe_cache=self._probe_cache,
+                provider_mode=job["provider_mode"],
             )
             result = await service.check_with_result(
                 request,
@@ -121,13 +125,11 @@ class RankWorker:
             )
 
             if reservation is not None:
-                successful_geos = len(
-                    {item.geo_profile_id for item in result.observations}
-                )
                 self._billing.settle(
                     reservation["id"],
                     credits_used=self._rate_card.quote(
-                        job["provider_mode"], successful_geos
+                        job["provider_mode"],
+                        result.upstream_probe_count,
                     ),
                 )
 
