@@ -30,6 +30,8 @@ const disableDialog = ref(false)
 const disablePassword = ref('')
 const disableCode = ref('')
 const disablingMfa = ref(false)
+const sessionMfaCode = ref('')
+const verifyingSessionMfa = ref(false)
 
 const isHuman = computed(() => appAccountStore.authMode === 'session')
 const mfaEnabled = computed(() => profile.value?.user.mfa_enabled === true)
@@ -161,6 +163,26 @@ async function disableMfa() {
   }
 }
 
+async function verifySessionMfa() {
+  if (!sessionMfaCode.value.trim()) {
+    ElMessage.warning('Enter your authenticator or recovery code')
+    return
+  }
+  verifyingSessionMfa.value = true
+  try {
+    await agrmApi.verifyCurrentSessionMfa(sessionMfaCode.value.trim())
+    sessionMfaCode.value = ''
+    ElMessage.success('Current session verified with MFA')
+    await load()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Invalid MFA code')
+  }
+  finally {
+    verifyingSessionMfa.value = false
+  }
+}
+
 async function revoke(row: UserSession) {
   if (row.current) {
     return
@@ -251,6 +273,33 @@ onMounted(load)
         title="This workspace requires MFA"
         description="Enable two-factor authentication below before accessing workspace resources."
       />
+
+      <el-card
+        v-if="profile?.workspace.mfa_session_verification_required"
+        shadow="never"
+      >
+        <template #header>
+          <span class="font-medium">Verify this SSO session with MFA</span>
+        </template>
+        <p class="text-sm text-muted-foreground mb-4">
+          Your identity provider did not assert MFA for this sign-in. Complete local TOTP verification to access this workspace.
+        </p>
+        <div class="max-w-md flex gap-2">
+          <el-input
+            v-model="sessionMfaCode"
+            autocomplete="one-time-code"
+            placeholder="123456 or XXXX-XXXX-XXXX"
+            @keyup.enter="verifySessionMfa"
+          />
+          <el-button
+            type="primary"
+            :loading="verifyingSessionMfa"
+            @click="verifySessionMfa"
+          >
+            Verify
+          </el-button>
+        </div>
+      </el-card>
 
       <el-card shadow="never">
         <template #header>
