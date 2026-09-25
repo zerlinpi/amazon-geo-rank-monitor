@@ -75,7 +75,8 @@ class OidcSsoService:
         if not parsed.hostname or parsed.username or parsed.password:
             raise ValueError("invalid OIDC URL")
         is_local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
-        if parsed.scheme != "https" and not (allow_http_local and is_local and parsed.scheme == "http"):
+        local_http = allow_http_local and is_local and parsed.scheme == "http"
+        if parsed.scheme != "https" and not local_http:
             raise ValueError("OIDC URLs must use HTTPS")
         if parsed.query or parsed.fragment:
             raise ValueError("OIDC URL must not include query or fragment")
