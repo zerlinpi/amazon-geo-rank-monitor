@@ -646,8 +646,15 @@ class AlertService:
             raise ValueError("invalid webhook URL")
         if slack and host not in {"hooks.slack.com", "hooks.slack-gov.com"}:
             raise ValueError("Slack webhook must use an official Slack host")
-        if self._allowed_hosts and host not in self._allowed_hosts and not slack:
-            raise ValueError("webhook host is not in ALERT_WEBHOOK_ALLOWED_HOSTS")
+        if not slack:
+            if not self._allowed_hosts:
+                raise ValueError(
+                    "generic webhooks require ALERT_WEBHOOK_ALLOWED_HOSTS"
+                )
+            if host not in self._allowed_hosts:
+                raise ValueError(
+                    "webhook host is not in ALERT_WEBHOOK_ALLOWED_HOSTS"
+                )
         if host in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
             raise ValueError("private webhook targets are not allowed")
         try:
