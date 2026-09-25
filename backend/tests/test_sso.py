@@ -1,16 +1,21 @@
 import base64
 import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from amazon_geo_rank_monitor.api.routes.team import update_sso_enforcement
+from amazon_geo_rank_monitor.api.schemas import WorkspaceSsoEnforcementUpdate
 from amazon_geo_rank_monitor.auth.accounts import AccountService, SsoRequiredError
+from amazon_geo_rank_monitor.auth.api_keys import ApiPrincipal
 from amazon_geo_rank_monitor.auth.sso import OidcSsoService
 from amazon_geo_rank_monitor.repositories.account_repository import AccountRepository
 from amazon_geo_rank_monitor.repositories.models import Base
@@ -351,3 +356,40 @@ def test_local_session_cannot_switch_into_enforced_sso_workspace() -> None:
             principal=local.principal,
             owner_id=target_owner_id,
         )
+
+
+def test_api_key_break_glass_can_only_disable_sso_enforcement() -> None:
+    _, sso_repository, accounts, sso, _ = build_services()
+    owner_id = register_owner(accounts).principal.owner_id
+    configure_owner_sso(sso, owner_id)
+    sso_repository.mark_verified(owner_id=owner_id)
+    sso.set_enforcement(owner_id=owner_id, enforce_sso=True)
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                services=SimpleNamespace(sso=sso),
+            )
+        )
+    )
+    principal = ApiPrincipal(
+        owner_id=owner_id,
+        key_id="break-glass-key",
+        scopes=frozenset({"team:manage"}),
+    )
+
+    disabled = update_sso_enforcement(
+        WorkspaceSsoEnforcementUpdate(enforce_sso=False),
+        request,
+        principal,
+    )
+    assert disabled["enforce_sso"] is False
+
+    with pytest.raises(HTTPException) as exc:
+        update_sso_enforcement(
+            WorkspaceSsoEnforcementUpdate(enforce_sso=True),
+            request,
+            principal,
+        )
+    assert exc.value.status_code == 403
+    assert "only disable" in exc.value.detail
