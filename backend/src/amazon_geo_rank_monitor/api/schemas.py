@@ -102,3 +102,22 @@ class PasswordResetRequest(BaseModel):
 
 class EmailVerificationRequest(BaseModel):
     token: str = Field(min_length=8)
+
+
+class MfaCompleteRequest(BaseModel):
+    challenge_token: str = Field(min_length=8)
+    code: str = Field(min_length=4, max_length=64)
+    remember_device: bool = False
+
+
+class MfaCodeRequest(BaseModel):
+    code: str = Field(min_length=4, max_length=64)
+
+
+class MfaDisableRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=512)
+    code: str = Field(min_length=4, max_length=64)
+
+
+class WorkspaceMfaPolicyUpdate(BaseModel):
+    require_mfa: bool
