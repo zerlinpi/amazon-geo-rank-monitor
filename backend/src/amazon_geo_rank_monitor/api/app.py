@@ -97,6 +97,9 @@ def create_app(
         public_auth = request.url.path in {
             "/api/v1/auth/login",
             "/api/v1/auth/register",
+            "/api/v1/auth/forgot-password",
+            "/api/v1/auth/reset-password",
+            "/api/v1/auth/verify-email",
         }
         if public_auth and request.method == "POST":
             auth_limiter = request.app.state.auth_rate_limiter

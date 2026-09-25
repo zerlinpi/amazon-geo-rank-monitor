@@ -25,6 +25,8 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "workspace_memberships",
         "user_sessions",
         "workspace_invitations",
+        "account_tokens",
+        "auth_events",
     } <= tables
     inspector = inspect(create_engine(database_url))
     api_key_columns = {
@@ -35,6 +37,16 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         column["name"] for column in inspector.get_columns("audit_events")
     }
     assert {"user_id", "actor_type"} <= audit_columns
+    user_columns = {
+        column["name"] for column in inspector.get_columns("users")
+    }
+    assert {
+        "email_verified_at",
+        "failed_login_count",
+        "locked_until",
+        "last_login_at",
+        "last_login_ip",
+    } <= user_columns
     session_columns = {
         column["name"] for column in inspector.get_columns("user_sessions")
     }

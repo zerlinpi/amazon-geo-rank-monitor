@@ -89,3 +89,16 @@ class BootstrapOwnerCreate(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=512)
     new_password: str = Field(min_length=10, max_length=512)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+class PasswordResetRequest(BaseModel):
+    token: str = Field(min_length=8)
+    new_password: str = Field(min_length=10, max_length=512)
+
+
+class EmailVerificationRequest(BaseModel):
+    token: str = Field(min_length=8)

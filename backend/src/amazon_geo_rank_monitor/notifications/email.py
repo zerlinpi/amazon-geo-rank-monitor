@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+import logging
+import smtplib
+from dataclasses import dataclass
+from email.message import EmailMessage
+
+logger = logging.getLogger("amazon_geo_rank_monitor.email")
+
+
+@dataclass(frozen=True)
+class SentEmail:
+    to: str
+    subject: str
+    text: str
+
+
+class ConsoleEmailSender:
+    def send(self, *, to: str, subject: str, text: str) -> None:
+        logger.info(
+            "development_email to=%s subject=%s body=%s",
+            to,
+            subject,
+            text.replace("\n", " | "),
+        )
+
+
+class MemoryEmailSender:
+    def __init__(self) -> None:
+        self.messages: list[SentEmail] = []
+
+    def send(self, *, to: str, subject: str, text: str) -> None:
+        self.messages.append(SentEmail(to=to, subject=subject, text=text))
+
+
+class SmtpEmailSender:
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        from_email: str,
+        username: str | None = None,
+        password: str | None = None,
+        starttls: bool = True,
+        timeout: float = 15.0,
+    ) -> None:
+        self._host = host
+        self._port = port
+        self._from_email = from_email
+        self._username = username
+        self._password = password
+        self._starttls = starttls
+        self._timeout = timeout
+
+    def send(self, *, to: str, subject: str, text: str) -> None:
+        message = EmailMessage()
+        message["From"] = self._from_email
+        message["To"] = to
+        message["Subject"] = subject
+        message.set_content(text)
+
+        with smtplib.SMTP(
+            self._host,
+            self._port,
+            timeout=self._timeout,
+        ) as client:
+            if self._starttls:
+                client.starttls()
+            if self._username:
+                client.login(self._username, self._password or "")
+            client.send_message(message)
+
+
+def build_email_sender(settings):
+    if not settings.smtp_host:
+        return ConsoleEmailSender()
+    if not settings.smtp_from_email:
+        raise ValueError("SMTP_FROM_EMAIL is required when SMTP_HOST is configured")
+    return SmtpEmailSender(
+        host=settings.smtp_host,
+        port=settings.smtp_port,
+        from_email=settings.smtp_from_email,
+        username=settings.smtp_username,
+        password=settings.smtp_password,
+        starttls=settings.smtp_starttls,
+    )

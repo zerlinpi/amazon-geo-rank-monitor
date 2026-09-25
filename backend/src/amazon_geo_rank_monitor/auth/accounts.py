@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,12 @@ from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatc
 
 ROLES = frozenset({"owner", "admin", "analyst", "viewer"})
 INVITABLE_ROLES = frozenset({"admin", "analyst", "viewer"})
+
+logger = logging.getLogger("amazon_geo_rank_monitor.accounts")
+
+
+class AccountLockedError(ValueError):
+    pass
 
 ROLE_SCOPES: dict[str, frozenset[str]] = {
     "owner": frozenset({"*"}),
@@ -66,6 +73,7 @@ class HumanPrincipal:
     display_name: str
     workspace_name: str
     csrf_hash: str
+    email_verified_at: datetime | None
     auth_type: str = "session"
     key_id: None = None
 
@@ -97,15 +105,35 @@ class AccountService:
         repository,
         session_ttl_hours: int = 720,
         invitation_ttl_hours: int = 168,
+        verification_ttl_hours: int = 24,
+        password_reset_ttl_minutes: int = 30,
+        login_max_failures: int = 5,
+        login_lock_minutes: int = 15,
+        email_sender=None,
+        public_web_url: str = "http://localhost:5173",
     ) -> None:
         if session_ttl_hours < 1:
             raise ValueError("session_ttl_hours must be at least 1")
         if invitation_ttl_hours < 1:
             raise ValueError("invitation_ttl_hours must be at least 1")
+        if verification_ttl_hours < 1:
+            raise ValueError("verification_ttl_hours must be at least 1")
+        if password_reset_ttl_minutes < 5:
+            raise ValueError("password_reset_ttl_minutes must be at least 5")
+        if login_max_failures < 1:
+            raise ValueError("login_max_failures must be at least 1")
+        if login_lock_minutes < 1:
+            raise ValueError("login_lock_minutes must be at least 1")
         self._repository = repository
         self._passwords = PasswordHasher()
         self._session_ttl = timedelta(hours=session_ttl_hours)
         self._invitation_ttl = timedelta(hours=invitation_ttl_hours)
+        self._verification_ttl = timedelta(hours=verification_ttl_hours)
+        self._password_reset_ttl = timedelta(minutes=password_reset_ttl_minutes)
+        self._login_max_failures = login_max_failures
+        self._login_lock = timedelta(minutes=login_lock_minutes)
+        self._email_sender = email_sender
+        self._public_web_url = public_web_url.rstrip("/")
 
     @staticmethod
     def normalize_email(email: str) -> str:
@@ -159,6 +187,16 @@ class AccountService:
                 invitation_id=invitation["id"],
                 user_id=user["id"],
             )
+            self._repository.mark_email_verified(user_id=user["id"])
+            self._repository.record_auth_event(
+                email=normalized_email,
+                event_type="account_registered",
+                success=True,
+                user_id=user["id"],
+                client_ip=client_ip,
+                user_agent=user_agent,
+                details={"verified_by": "workspace_invitation"},
+            )
             return self._issue_session(
                 user_id=user["id"],
                 owner_id=membership["owner_id"],
@@ -175,6 +213,15 @@ class AccountService:
             display_name=name,
             workspace_name=workspace,
         )
+        self._repository.record_auth_event(
+            email=normalized_email,
+            event_type="account_registered",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        self._send_verification(user)
         return self._issue_session(
             user_id=user["id"],
             owner_id=membership["owner_id"],
@@ -211,6 +258,7 @@ class AccountService:
             owner_id=owner_id,
             user_id=user["id"],
         )
+        self._send_verification(user)
         return self._issue_session(
             user_id=user["id"],
             owner_id=membership["owner_id"],
@@ -230,11 +278,68 @@ class AccountService:
         normalized_email = self.normalize_email(email)
         user = self._repository.find_user_by_email(normalized_email)
         if user is None or user["disabled_at"] is not None:
+            self._repository.record_auth_event(
+                email=normalized_email,
+                event_type="login_failed",
+                success=False,
+                user_id=user["id"] if user else None,
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
             raise ValueError("invalid email or password")
+
+        now = datetime.now(UTC)
+        locked_until = user["locked_until"]
+        if locked_until is not None:
+            if locked_until.tzinfo is None:
+                locked_until = locked_until.replace(tzinfo=UTC)
+            if locked_until > now:
+                self._repository.record_auth_event(
+                    email=normalized_email,
+                    event_type="login_locked",
+                    success=False,
+                    user_id=user["id"],
+                    client_ip=client_ip,
+                    user_agent=user_agent,
+                    details={"locked_until": locked_until.isoformat()},
+                )
+                raise AccountLockedError("account temporarily locked")
+            self._repository.reset_login_security(user_id=user["id"])
+
         try:
             self._passwords.verify(user["password_hash"], password)
         except (VerifyMismatchError, VerificationError, InvalidHashError):
+            updated = self._repository.register_login_failure(
+                user_id=user["id"],
+                max_failures=self._login_max_failures,
+                lock_until=now + self._login_lock,
+            )
+            newly_locked = updated["locked_until"] is not None
+            self._repository.record_auth_event(
+                email=normalized_email,
+                event_type="login_locked" if newly_locked else "login_failed",
+                success=False,
+                user_id=user["id"],
+                client_ip=client_ip,
+                user_agent=user_agent,
+                details={"failed_login_count": updated["failed_login_count"]},
+            )
+            if newly_locked:
+                raise AccountLockedError("account temporarily locked") from None
             raise ValueError("invalid email or password") from None
+
+        self._repository.record_login_success(
+            user_id=user["id"],
+            client_ip=client_ip,
+        )
+        self._repository.record_auth_event(
+            email=normalized_email,
+            event_type="login_succeeded",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
 
         memberships = self._repository.list_memberships(user_id=user["id"])
         if not memberships:
@@ -306,6 +411,8 @@ class AccountService:
                 "id": principal.user_id,
                 "email": principal.email,
                 "display_name": principal.display_name,
+                "email_verified": principal.email_verified_at is not None,
+                "email_verified_at": principal.email_verified_at,
             },
             "workspace": {
                 "id": principal.owner_id,
@@ -339,6 +446,16 @@ class AccountService:
             created_by_user_id=principal.user_id,
             expires_at=expires_at,
         )
+        self._safe_send(
+            to=normalized_email,
+            subject=f"Join {principal.workspace_name} on Geo Rank Monitor",
+            text=(
+                f"{principal.display_name} invited you to join "
+                f"{principal.workspace_name} as {role}.\n\n"
+                f"Open: {self._public_web_url}/#/login?invite={plaintext}\n\n"
+                f"This invitation expires at {expires_at.isoformat()}."
+            ),
+        )
         return InvitationCreation(
             id=row["id"],
             email=row["email"],
@@ -362,12 +479,149 @@ class AccountService:
             invitation_id=invitation["id"],
             user_id=principal.user_id,
         )
+        self._repository.mark_email_verified(user_id=principal.user_id)
+        self._repository.record_auth_event(
+            email=principal.email,
+            event_type="email_verified",
+            success=True,
+            user_id=principal.user_id,
+            client_ip=client_ip,
+            user_agent=user_agent,
+            details={"verified_by": "workspace_invitation"},
+        )
         self._repository.revoke_session(principal.session_id)
         return self._issue_session(
             user_id=principal.user_id,
             owner_id=membership["owner_id"],
             client_ip=client_ip,
             user_agent=user_agent,
+        )
+
+    def resend_verification(
+        self,
+        *,
+        principal: HumanPrincipal,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> bool:
+        user = self._repository.get_user(principal.user_id)
+        if user["email_verified_at"] is not None:
+            return False
+        self._send_verification(user)
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="verification_resent",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        return True
+
+    def verify_email(
+        self,
+        *,
+        token: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> dict:
+        if not token.startswith("agrv_"):
+            raise ValueError("invalid or expired verification token")
+        try:
+            stored = self._repository.get_account_token(
+                token_type="email_verification",
+                token_hash=self._token_hash(token),
+            )
+            self._repository.consume_account_token(stored["id"])
+        except KeyError:
+            raise ValueError("invalid or expired verification token") from None
+        user = self._repository.mark_email_verified(user_id=stored["user_id"])
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="email_verified",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        return user
+
+    def forgot_password(
+        self,
+        *,
+        email: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        normalized_email = self.normalize_email(email)
+        user = self._repository.find_user_by_email(normalized_email)
+        if user is None or user["disabled_at"] is not None:
+            self._repository.record_auth_event(
+                email=normalized_email,
+                event_type="password_reset_requested",
+                success=False,
+                user_id=user["id"] if user else None,
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
+            return
+        self._send_password_reset(user)
+        self._repository.record_auth_event(
+            email=normalized_email,
+            event_type="password_reset_requested",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+
+    def reset_password(
+        self,
+        *,
+        token: str,
+        new_password: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> int:
+        self.validate_password(new_password)
+        if not token.startswith("agrr_"):
+            raise ValueError("invalid or expired reset token")
+        try:
+            stored = self._repository.get_account_token(
+                token_type="password_reset",
+                token_hash=self._token_hash(token),
+            )
+            self._repository.consume_account_token(stored["id"])
+        except KeyError:
+            raise ValueError("invalid or expired reset token") from None
+
+        user = self._repository.get_user(stored["user_id"])
+        self._repository.update_password(
+            user_id=user["id"],
+            password_hash=self._passwords.hash(new_password),
+        )
+        self._repository.reset_login_security(user_id=user["id"])
+        revoked = self._repository.revoke_all_sessions(user_id=user["id"])
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="password_reset_completed",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+            details={"revoked_sessions": revoked},
+        )
+        return revoked
+
+    def list_auth_events(
+        self,
+        *,
+        principal: HumanPrincipal,
+        limit: int = 100,
+    ) -> list[dict]:
+        return self._repository.list_auth_events(
+            user_id=principal.user_id,
+            limit=limit,
         )
 
     def verify_csrf(self, principal: HumanPrincipal, csrf_token: str) -> bool:
@@ -440,6 +694,55 @@ class AccountService:
             user_agent=user_agent,
         )
 
+    def _send_verification(self, user: dict) -> None:
+        if user["email_verified_at"] is not None:
+            return
+        plaintext = f"agrv_{secrets.token_urlsafe(32)}"
+        expires_at = datetime.now(UTC) + self._verification_ttl
+        self._repository.create_account_token(
+            user_id=user["id"],
+            token_type="email_verification",
+            token_hash=self._token_hash(plaintext),
+            expires_at=expires_at,
+        )
+        self._safe_send(
+            to=user["email"],
+            subject="Verify your Geo Rank Monitor email",
+            text=(
+                "Verify your email address to secure your account.\n\n"
+                f"Open: {self._public_web_url}/#/verify-email?token={plaintext}\n\n"
+                f"This link expires at {expires_at.isoformat()}."
+            ),
+        )
+
+    def _send_password_reset(self, user: dict) -> None:
+        plaintext = f"agrr_{secrets.token_urlsafe(32)}"
+        expires_at = datetime.now(UTC) + self._password_reset_ttl
+        self._repository.create_account_token(
+            user_id=user["id"],
+            token_type="password_reset",
+            token_hash=self._token_hash(plaintext),
+            expires_at=expires_at,
+        )
+        self._safe_send(
+            to=user["email"],
+            subject="Reset your Geo Rank Monitor password",
+            text=(
+                "A password reset was requested for your account.\n\n"
+                f"Open: {self._public_web_url}/#/reset-password?token={plaintext}\n\n"
+                f"This link expires at {expires_at.isoformat()}. "
+                "If you did not request this, ignore this email."
+            ),
+        )
+
+    def _safe_send(self, *, to: str, subject: str, text: str) -> None:
+        if self._email_sender is None:
+            return
+        try:
+            self._email_sender.send(to=to, subject=subject, text=text)
+        except Exception:
+            logger.exception("account_email_delivery_failed to=%s subject=%s", to, subject)
+
     def _load_invitation(self, plaintext: str) -> dict:
         if not plaintext.startswith("agri_"):
             raise ValueError("invalid invitation")
@@ -501,4 +804,5 @@ class AccountService:
             display_name=row["display_name"],
             workspace_name=row["workspace_name"],
             csrf_hash=row["csrf_hash"],
+            email_verified_at=row["email_verified_at"],
         )

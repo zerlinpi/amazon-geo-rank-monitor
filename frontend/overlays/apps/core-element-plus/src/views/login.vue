@@ -5,7 +5,7 @@ import ColorScheme from '@/layouts/components/Topbar/Toolbar/ColorScheme/index.v
 
 defineOptions({ name: 'Login' })
 
-type Mode = 'login' | 'register' | 'api'
+type Mode = 'login' | 'register' | 'forgot' | 'api'
 
 const route = useRoute()
 const router = useRouter()
@@ -65,6 +65,26 @@ async function submitRegister() {
   }
 }
 
+async function submitForgot() {
+  if (!email.value.trim()) {
+    ElMessage.warning('Email is required')
+    return
+  }
+  loading.value = true
+  try {
+    const result = await agrmApi.forgotPassword(email.value.trim())
+    ElMessage.success(result.message)
+    mode.value = 'login'
+  }
+  catch {
+    ElMessage.success('If the account exists, a password reset email will be sent.')
+    mode.value = 'login'
+  }
+  finally {
+    loading.value = false
+  }
+}
+
 async function submitApiKey() {
   loading.value = true
   try {
@@ -118,6 +138,7 @@ async function submitApiKey() {
           :options="[
             { label: 'Sign in', value: 'login' },
             { label: 'Create account', value: 'register' },
+            { label: 'Recover', value: 'forgot' },
             { label: 'API Key', value: 'api' },
           ]"
           class="w-full mb-6"
@@ -144,6 +165,9 @@ async function submitApiKey() {
             </el-form-item>
             <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitLogin">
               Sign in
+            </el-button>
+            <el-button class="w-full mt-2" text @click="mode = 'forgot'">
+              Forgot password?
             </el-button>
           </el-form>
         </template>
@@ -176,6 +200,30 @@ async function submitApiKey() {
             </el-form-item>
             <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitRegister">
               {{ inviteToken ? 'Create account & join' : 'Create account' }}
+            </el-button>
+          </el-form>
+        </template>
+
+        <template v-else-if="mode === 'forgot'">
+          <div class="text-2xl font-semibold mb-2">Recover account</div>
+          <div class="text-sm text-muted-foreground mb-6">
+            Enter your email. If an account exists, we will send a single-use reset link.
+          </div>
+          <el-form label-position="top" @submit.prevent="submitForgot">
+            <el-form-item label="Email">
+              <el-input
+                v-model="email"
+                size="large"
+                autocomplete="email"
+                placeholder="you@company.com"
+                @keyup.enter="submitForgot"
+              />
+            </el-form-item>
+            <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitForgot">
+              Send reset link
+            </el-button>
+            <el-button class="w-full mt-2" text @click="mode = 'login'">
+              Back to sign in
             </el-button>
           </el-form>
         </template>

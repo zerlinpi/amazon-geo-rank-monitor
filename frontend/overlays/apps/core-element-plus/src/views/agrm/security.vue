@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UserSession } from '@/api/agrm'
+import type { AccountProfile, AuthSecurityEvent, UserSession } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
 
@@ -8,6 +8,8 @@ defineOptions({ name: 'AccountSecurity' })
 const appAccountStore = useAppAccountStore()
 const loading = ref(false)
 const sessions = ref<UserSession[]>([])
+const securityEvents = ref<AuthSecurityEvent[]>([])
+const profile = ref<AccountProfile>()
 const currentPassword = ref('')
 const newPassword = ref('')
 const changing = ref(false)
@@ -21,13 +23,36 @@ async function load() {
   }
   loading.value = true
   try {
-    sessions.value = await agrmApi.getSessions()
+    const [sessionResult, eventResult, profileResult] = await Promise.all([
+      agrmApi.getSessions(),
+      agrmApi.getSecurityEvents(100),
+      agrmApi.getMe(),
+    ])
+    sessions.value = sessionResult
+    securityEvents.value = eventResult
+    profile.value = profileResult
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Failed to load sessions')
   }
   finally {
     loading.value = false
+  }
+}
+
+async function resendVerification() {
+  try {
+    const result = await agrmApi.resendVerification()
+    if (result.sent) {
+      ElMessage.success('Verification email sent')
+    }
+    else {
+      ElMessage.info('Email is already verified')
+    }
+    await load()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to send verification email')
   }
 }
 
@@ -116,6 +141,24 @@ onMounted(load)
     <template v-else>
       <el-card shadow="never">
         <template #header>
+          <span class="font-medium">Email verification</span>
+        </template>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div class="text-sm">{{ profile?.user.email || '—' }}</div>
+            <div class="text-xs text-muted-foreground mt-1">
+              {{ profile?.user.email_verified ? 'Verified' : 'Verification pending' }}
+            </div>
+          </div>
+          <el-tag v-if="profile?.user.email_verified" type="success">Verified</el-tag>
+          <el-button v-else type="primary" plain @click="resendVerification">
+            Resend verification
+          </el-button>
+        </div>
+      </el-card>
+
+      <el-card shadow="never">
+        <template #header>
           <span class="font-medium">Change password</span>
         </template>
         <div class="max-w-lg">
@@ -140,6 +183,33 @@ onMounted(load)
             Changing your password revokes every other active session.
           </div>
         </div>
+      </el-card>
+
+      <el-card v-loading="loading" shadow="never">
+        <template #header>
+          <span class="font-medium">Recent security events</span>
+        </template>
+        <el-table :data="securityEvents" empty-text="No security events">
+          <el-table-column label="Time" min-width="170">
+            <template #default="{ row }">
+              {{ new Date(row.created_at).toLocaleString() }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="event_type" label="Event" min-width="180" />
+          <el-table-column label="Result" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.success ? 'success' : 'danger'" size="small">
+                {{ row.success ? 'Success' : 'Failed' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="IP" min-width="140">
+            <template #default="{ row }">
+              <span class="font-mono text-xs">{{ row.client_ip || '—' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="user_agent" label="Client" min-width="260" show-overflow-tooltip />
+        </el-table>
       </el-card>
 
       <el-card v-loading="loading" shadow="never">

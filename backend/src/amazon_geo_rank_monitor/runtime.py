@@ -19,6 +19,7 @@ from amazon_geo_rank_monitor.config import (
 )
 from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 from amazon_geo_rank_monitor.domain.models import VerificationLevel
+from amazon_geo_rank_monitor.notifications.email import build_email_sender
 from amazon_geo_rank_monitor.providers.playwright_amazon import (
     PlaywrightAmazonBrowserClient,
 )
@@ -173,6 +174,12 @@ def build_services(settings: AppSettings) -> AppServices:
             repository=accounts_repository,
             session_ttl_hours=settings.session_ttl_hours,
             invitation_ttl_hours=settings.invitation_ttl_hours,
+            verification_ttl_hours=settings.email_verification_ttl_hours,
+            password_reset_ttl_minutes=settings.password_reset_ttl_minutes,
+            login_max_failures=settings.login_max_failures,
+            login_lock_minutes=settings.login_lock_minutes,
+            email_sender=build_email_sender(settings),
+            public_web_url=settings.public_web_url,
         ),
         allow_public_signup=settings.allow_public_signup,
         session_cookie_name=settings.session_cookie_name,

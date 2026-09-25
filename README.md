@@ -741,3 +741,95 @@ alembic -c alembic.ini upgrade head
 ```
 
 Existing Phase 11 browser sessions should sign in again after deployment so the browser receives the new HttpOnly session and CSRF cookies.
+
+
+## Email verification and account recovery
+
+Phase 13 adds email ownership verification, privacy-safe password recovery, login lockout and user-visible authentication history.
+
+New accounts created through public registration start with an unverified email address. Accounts created from a valid workspace invitation are marked verified because possession of the invitation link proves access to the invited mailbox.
+
+Existing users are backfilled as verified by migration `20260925_0007`, so upgrading an existing deployment does not lock current users out.
+
+Account endpoints:
+
+- `POST /api/v1/auth/verify-email`
+- `POST /api/v1/auth/resend-verification`
+- `POST /api/v1/auth/forgot-password`
+- `POST /api/v1/auth/reset-password`
+- `GET /api/v1/auth/security-events`
+
+Verification tokens use an `agrv_...` prefix. Password reset tokens use `agrr_...`. Only SHA-256 hashes are stored in the database. Creating a new token invalidates previous unused tokens of the same type, and a successful verification/reset consumes the token permanently.
+
+Forgot-password always returns the same accepted response whether or not the account exists. This prevents the recovery endpoint from becoming an email-enumeration oracle.
+
+Password reset:
+
+- validates the single-use reset token;
+- updates the Argon2 password hash;
+- clears failed-login counters and account lock state;
+- revokes every active session;
+- records a security event.
+
+### Login lockout
+
+Default policy:
+
+```env
+LOGIN_MAX_FAILURES=5
+LOGIN_LOCK_MINUTES=15
+```
+
+Repeated invalid passwords increment a per-user failure counter. Reaching the threshold temporarily locks the account and login responds with HTTP `423 Locked`. A successful login clears the counter. A successful password reset also clears any lock.
+
+Login success, login failure, lockouts, reset requests/completions, registration and email verification are written to `auth_events`. Users can review their own events in **Workspace → Account Security**.
+
+### Email delivery
+
+Development defaults to a console/log email sender. Production can use SMTP:
+
+```env
+PUBLIC_WEB_URL=https://app.example.com
+EMAIL_VERIFICATION_TTL_HOURS=24
+PASSWORD_RESET_TTL_MINUTES=30
+
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_FROM_EMAIL=no-reply@example.com
+SMTP_STARTTLS=true
+```
+
+The sender abstraction is intentionally separate from account logic, so a managed provider such as SES, Postmark or Resend can replace SMTP later without changing recovery-token behavior.
+
+Workspace invitations are also delivered through the same sender while the console continues to expose the one-time invitation link for manual sharing.
+
+### Browser flows
+
+The Fantastic Admin frontend now includes:
+
+- **Recover** on the sign-in page;
+- `/#/reset-password?token=...`;
+- `/#/verify-email?token=...`;
+- email verification state and resend control in Account Security;
+- recent authentication/security events with result, IP and user agent.
+
+## Phase 13 migration
+
+Schema revision `20260925_0007` adds:
+
+- `users.email_verified_at`;
+- `users.failed_login_count`;
+- `users.locked_until`;
+- `users.last_login_at`;
+- `users.last_login_ip`;
+- `account_tokens`;
+- `auth_events`.
+
+Upgrade with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
