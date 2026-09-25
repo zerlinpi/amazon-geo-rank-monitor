@@ -83,6 +83,38 @@ class AccountRepository:
             raise ValueError("an account with this email already exists") from None
         return self.get_user(user_id)
 
+    def create_membership(
+        self,
+        *,
+        owner_id: str,
+        user_id: str,
+        role: str = "viewer",
+    ) -> dict:
+        with self._sessions.begin() as session:
+            tenant = session.get(TenantRow, owner_id)
+            user = session.get(UserRow, user_id)
+            if tenant is None:
+                raise KeyError("workspace not found")
+            if user is None:
+                raise KeyError("user not found")
+            existing = session.scalar(
+                select(WorkspaceMembershipRow).where(
+                    WorkspaceMembershipRow.owner_id == owner_id,
+                    WorkspaceMembershipRow.user_id == user_id,
+                )
+            )
+            if existing is not None:
+                return self._serialize_membership(existing)
+            row = WorkspaceMembershipRow(
+                id=str(uuid4()),
+                owner_id=owner_id,
+                user_id=user_id,
+                role=role,
+            )
+            session.add(row)
+            session.flush()
+            return self._serialize_membership(row)
+
     def create_owner_membership(
         self,
         *,
