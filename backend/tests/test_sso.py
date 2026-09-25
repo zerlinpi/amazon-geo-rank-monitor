@@ -393,3 +393,26 @@ def test_api_key_break_glass_can_only_disable_sso_enforcement() -> None:
         )
     assert exc.value.status_code == 403
     assert "only disable" in exc.value.detail
+
+
+def test_changing_allowed_domains_disables_enforcement() -> None:
+    _, sso_repository, accounts, sso, _ = build_services()
+    owner_id = register_owner(accounts).principal.owner_id
+    configure_owner_sso(sso, owner_id)
+    sso_repository.mark_verified(owner_id=owner_id)
+    sso.set_enforcement(owner_id=owner_id, enforce_sso=True)
+
+    updated = sso.configure(
+        owner_id=owner_id,
+        provider_type="oidc",
+        display_name="Acme SSO",
+        issuer_url=ISSUER,
+        client_id=CLIENT_ID,
+        client_secret=None,
+        email_domains=["new-example.com"],
+        auto_join=False,
+        enabled=True,
+    )
+
+    assert updated["enforce_sso"] is False
+    assert updated["verified_at"] is not None
