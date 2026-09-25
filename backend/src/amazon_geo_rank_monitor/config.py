@@ -36,6 +36,17 @@ class AppSettings(BaseSettings):
     allow_public_signup: bool = True
     session_ttl_hours: int = 720
     invitation_ttl_hours: int = 168
+    email_verification_ttl_hours: int = 24
+    password_reset_ttl_minutes: int = 30
+    login_max_failures: int = 5
+    login_lock_minutes: int = 15
+    public_web_url: str = "http://localhost:5173"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_starttls: bool = True
     session_cookie_name: str = "agrm_session"
     csrf_cookie_name: str = "agrm_csrf"
     session_cookie_secure: bool = False
