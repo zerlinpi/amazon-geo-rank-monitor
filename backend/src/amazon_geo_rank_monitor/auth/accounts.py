@@ -703,6 +703,38 @@ class AccountService:
         )
         return recovery_codes
 
+    def verify_current_session_mfa(
+        self,
+        *,
+        principal: HumanPrincipal,
+        code: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        user = self._repository.get_user(principal.user_id)
+        if user["mfa_enabled_at"] is None or not self._verify_mfa_code(user, code):
+            self._repository.record_auth_event(
+                email=user["email"],
+                event_type="mfa_session_verification_failed",
+                success=False,
+                user_id=user["id"],
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
+            raise ValueError("valid MFA code required")
+        self._repository.mark_mfa_verified(user_id=user["id"])
+        self._repository.mark_session_mfa_authenticated(
+            session_id=principal.session_id
+        )
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="mfa_session_verified",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+
     def regenerate_recovery_codes(
         self,
         *,
