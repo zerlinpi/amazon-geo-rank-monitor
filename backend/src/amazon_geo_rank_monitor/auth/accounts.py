@@ -90,6 +90,9 @@ class HumanPrincipal:
     mfa_enabled_at: datetime | None
     mfa_authenticated_at: datetime | None
     workspace_require_mfa: bool
+    workspace_enforce_sso: bool
+    auth_method: str
+    sso_owner_id: str | None
     auth_type: str = "session"
     key_id: None = None
 
@@ -576,6 +579,8 @@ class AccountService:
             client_ip=client_ip,
             user_agent=user_agent,
             mfa_authenticated=mfa_authenticated,
+            auth_method="sso",
+            sso_owner_id=owner_id,
         )
 
     def authenticate_session(
@@ -605,6 +610,15 @@ class AccountService:
         user_agent: str | None = None,
     ) -> SessionCreation:
         self._repository.get_membership(user_id=principal.user_id, owner_id=owner_id)
+        if self._sso_repository is not None:
+            target_sso = self._sso_repository.get_config(owner_id=owner_id)
+            if (
+                target_sso
+                and target_sso["enabled"]
+                and target_sso["enforce_sso"]
+                and principal.sso_owner_id != owner_id
+            ):
+                raise SsoRequiredError("SSO is required for this workspace")
         self._repository.revoke_session(principal.session_id)
         return self._issue_session(
             user_id=principal.user_id,
@@ -612,6 +626,8 @@ class AccountService:
             client_ip=client_ip,
             user_agent=user_agent,
             mfa_authenticated=principal.mfa_authenticated_at is not None,
+            auth_method=principal.auth_method,
+            sso_owner_id=principal.sso_owner_id,
         )
 
     def profile(self, principal: HumanPrincipal) -> dict:
@@ -641,6 +657,10 @@ class AccountService:
                     principal.workspace_require_mfa
                     and principal.mfa_enabled_at is not None
                     and principal.mfa_authenticated_at is None
+                ),
+                "enforce_sso": principal.workspace_enforce_sso,
+                "sso_authenticated": (
+                    principal.sso_owner_id == principal.owner_id
                 ),
             },
             "memberships": self._repository.list_memberships(
@@ -886,6 +906,8 @@ class AccountService:
             client_ip=client_ip,
             user_agent=user_agent,
             mfa_authenticated=principal.mfa_authenticated_at is not None,
+            auth_method=principal.auth_method,
+            sso_owner_id=principal.sso_owner_id,
         )
 
     def resend_verification(
@@ -1087,6 +1109,8 @@ class AccountService:
             client_ip=client_ip,
             user_agent=user_agent,
             mfa_authenticated=principal.mfa_authenticated_at is not None,
+            auth_method=principal.auth_method,
+            sso_owner_id=principal.sso_owner_id,
         )
 
     def _verify_mfa_code(self, user: dict, code: str) -> bool:
@@ -1180,6 +1204,8 @@ class AccountService:
         client_ip: str | None = None,
         user_agent: str | None = None,
         mfa_authenticated: bool = False,
+        auth_method: str = "local",
+        sso_owner_id: str | None = None,
     ) -> SessionCreation:
         plaintext = f"agrs_{secrets.token_urlsafe(32)}"
         csrf_token = f"agrc_{secrets.token_urlsafe(24)}"
@@ -1193,6 +1219,8 @@ class AccountService:
             client_ip=client_ip,
             user_agent=user_agent,
             mfa_authenticated=mfa_authenticated,
+            auth_method=auth_method,
+            sso_owner_id=sso_owner_id,
         )
         return SessionCreation(
             plaintext=plaintext,
@@ -1220,4 +1248,7 @@ class AccountService:
             mfa_enabled_at=row["mfa_enabled_at"],
             mfa_authenticated_at=row["mfa_authenticated_at"],
             workspace_require_mfa=bool(row["workspace_require_mfa"]),
+            workspace_enforce_sso=bool(row["workspace_enforce_sso"]),
+            auth_method=row["auth_method"],
+            sso_owner_id=row["sso_owner_id"],
         )
