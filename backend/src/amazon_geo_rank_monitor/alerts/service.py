@@ -646,6 +646,21 @@ class AlertService:
             raise ValueError("invalid webhook URL")
         if slack and host not in {"hooks.slack.com", "hooks.slack-gov.com"}:
             raise ValueError("Slack webhook must use an official Slack host")
+        if host in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
+            raise ValueError("private webhook targets are not allowed")
+        try:
+            address = ipaddress.ip_address(host.strip("[]"))
+        except ValueError:
+            address = None
+        if address is not None and (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_reserved
+            or address.is_unspecified
+        ):
+            raise ValueError("private webhook targets are not allowed")
         if not slack:
             if not self._allowed_hosts:
                 raise ValueError(
@@ -655,21 +670,6 @@ class AlertService:
                 raise ValueError(
                     "webhook host is not in ALERT_WEBHOOK_ALLOWED_HOSTS"
                 )
-        if host in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
-            raise ValueError("private webhook targets are not allowed")
-        try:
-            address = ipaddress.ip_address(host.strip("[]"))
-        except ValueError:
-            return
-        if (
-            address.is_private
-            or address.is_loopback
-            or address.is_link_local
-            or address.is_multicast
-            or address.is_reserved
-            or address.is_unspecified
-        ):
-            raise ValueError("private webhook targets are not allowed")
 
     def _encrypt_channels(self, channels: dict) -> str:
         raw = json.dumps(channels, separators=(",", ":"), sort_keys=True)
