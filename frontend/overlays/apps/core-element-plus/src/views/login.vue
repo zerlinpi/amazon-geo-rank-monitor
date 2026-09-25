@@ -23,8 +23,13 @@ const mfaChallengeToken = ref('')
 const mfaCode = ref('')
 const rememberDevice = ref(false)
 
-async function finish() {
+async function finish(result?: { workspace?: { mfa_setup_required?: boolean } }) {
   ElMessage.success(inviteToken.value ? 'Workspace joined' : 'Signed in')
+  if (result?.workspace?.mfa_setup_required) {
+    ElMessage.warning('This workspace requires MFA. Complete setup to continue.')
+    await router.replace('/workspace/security')
+    return
+  }
   const redirect = route.query.redirect?.toString() || appSettingsStore.settings.app.home.fullPath
   await router.replace(redirect)
 }
@@ -41,8 +46,10 @@ async function submitLogin() {
     if (inviteToken.value) {
       const accepted = await agrmApi.acceptInvitation(inviteToken.value)
       appAccountStore.applySession(accepted)
+      await finish(accepted)
+      return
     }
-    await finish()
+    await finish(result)
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Email or password is invalid')
@@ -67,6 +74,9 @@ async function submitMfa() {
     if (inviteToken.value) {
       const accepted = await agrmApi.acceptInvitation(inviteToken.value)
       appAccountStore.applySession(accepted)
+      mfaChallengeToken.value = ''
+      await finish(accepted)
+      return
     }
     mfaChallengeToken.value = ''
     await finish()
@@ -89,7 +99,7 @@ function cancelMfa() {
 async function submitRegister() {
   loading.value = true
   try {
-    await appAccountStore.registerAccount({
+    const result = await appAccountStore.registerAccount({
       email: email.value,
       password: password.value,
       display_name: displayName.value,
@@ -97,7 +107,7 @@ async function submitRegister() {
         ? { invitation_token: inviteToken.value }
         : { workspace_name: workspaceName.value }),
     })
-    await finish()
+    await finish(result)
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Unable to create account')
