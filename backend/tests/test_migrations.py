@@ -40,6 +40,7 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "rank_alert_deliveries",
         "report_schedules",
         "report_deliveries",
+        "serp_probe_cache",
     } <= tables
     inspector = inspect(create_engine(database_url))
     api_key_columns = {
@@ -99,6 +100,15 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         column["name"] for column in inspector.get_columns("account_tokens")
     }
     assert {"details"} <= token_columns
+    rank_run_columns = {
+        column["name"] for column in inspector.get_columns("rank_runs")
+    }
+    assert {"cache_hit_count"} <= rank_run_columns
+    rank_observation_columns = {
+        column["name"] for column in inspector.get_columns("rank_observations")
+    }
+    assert {"probe_source", "cache_age_seconds"} <= rank_observation_columns
+
     rank_job_columns = {
         column["name"] for column in inspector.get_columns("rank_jobs")
     }

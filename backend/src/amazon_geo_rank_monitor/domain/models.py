@@ -145,6 +145,8 @@ class RankObservation(BaseModel):
     page: int | None = Field(default=None, ge=1)
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     raw_result_reference: str | None = None
+    probe_source: Literal["upstream", "cache"] = "upstream"
+    cache_age_seconds: int | None = Field(default=None, ge=0)
 
     @field_validator("asin")
     @classmethod
@@ -172,6 +174,9 @@ class RankExecutionResult(BaseModel):
     observations: list[RankObservation]
     snapshots: list[RankSnapshot]
     errors: list[str] = Field(default_factory=list)
+    requested_probe_count: int = Field(default=0, ge=0)
+    upstream_probe_count: int = Field(default=0, ge=0)
+    cache_hit_count: int = Field(default=0, ge=0)
 
 
 class ProxyLocation(BaseModel):

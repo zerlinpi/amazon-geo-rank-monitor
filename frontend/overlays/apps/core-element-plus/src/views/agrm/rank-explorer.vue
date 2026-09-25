@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { agrmApi, type GeoProfile } from '@/api/agrm'
+import { agrmApi, type GeoProfile, type RankCheckResult } from '@/api/agrm'
 
 defineOptions({ name: 'RankExplorer' })
 
@@ -14,7 +14,7 @@ const form = reactive({
   search_depth: 100,
   provider_mode: 'managed' as 'managed' | 'strict',
 })
-const result = ref<any | null>(null)
+const result = ref<RankCheckResult | null>(null)
 
 async function loadGeos() {
   geos.value = await agrmApi.getGeoProfiles()
@@ -122,6 +122,37 @@ onMounted(loadGeos)
     <template v-if="result">
       <el-card shadow="never">
         <template #header>
+          <span class="font-medium">Probe usage</span>
+        </template>
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="p-4 border rounded-lg">
+            <div class="text-xs text-muted-foreground">Requested</div>
+            <div class="text-3xl font-semibold mt-1">{{ result.usage.requested_probe_count }}</div>
+          </div>
+          <div class="p-4 border rounded-lg">
+            <div class="text-xs text-muted-foreground">Upstream</div>
+            <div class="text-3xl font-semibold mt-1">{{ result.usage.upstream_probe_count }}</div>
+          </div>
+          <div class="p-4 border rounded-lg">
+            <div class="text-xs text-muted-foreground">Cache hits</div>
+            <div class="text-3xl font-semibold mt-1">{{ result.usage.cache_hit_count }}</div>
+          </div>
+          <div class="p-4 border rounded-lg">
+            <div class="text-xs text-muted-foreground">Billable probes</div>
+            <div class="text-3xl font-semibold mt-1">{{ result.usage.billable_probe_count }}</div>
+          </div>
+        </div>
+        <el-alert
+          v-if="result.usage.cache_hit_count"
+          class="mt-4"
+          type="success"
+          :closable="false"
+          title="Fresh compatible SERP probes were reused and were not billed as new upstream probes."
+        />
+      </el-card>
+
+      <el-card shadow="never">
+        <template #header>
           <span class="font-medium">Weighted organic rank</span>
         </template>
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -159,6 +190,15 @@ onMounted(loadGeos)
           <el-table-column prop="sponsored_rank" label="Sponsored" width="110" />
           <el-table-column prop="provider" label="Provider" width="130" />
           <el-table-column prop="verification_level" label="Verification" width="130" />
+          <el-table-column label="Source" width="150">
+            <template #default="{ row }">
+              <el-tag :type="row.probe_source === 'cache' ? 'success' : 'info'" size="small">
+                {{ row.probe_source === 'cache'
+                  ? 'Cache · ' + (row.cache_age_seconds ?? 0) + 's old'
+                  : 'Upstream' }}
+              </el-tag>
+            </template>
+          </el-table-column>
         </el-table>
       </el-card>
     </template>

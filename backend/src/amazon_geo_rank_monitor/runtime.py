@@ -24,6 +24,7 @@ from amazon_geo_rank_monitor.config import (
 from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 from amazon_geo_rank_monitor.domain.models import VerificationLevel
 from amazon_geo_rank_monitor.notifications.email import build_email_sender
+from amazon_geo_rank_monitor.probe_cache import ProbeCacheService
 from amazon_geo_rank_monitor.providers.playwright_amazon import (
     PlaywrightAmazonBrowserClient,
 )
@@ -38,6 +39,9 @@ from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
 from amazon_geo_rank_monitor.repositories.monitor_repository import MonitorRepository
+from amazon_geo_rank_monitor.repositories.probe_cache_repository import (
+    ProbeCacheRepository,
+)
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
 from amazon_geo_rank_monitor.repositories.report_repository import ReportRepository
 from amazon_geo_rank_monitor.repositories.scim_repository import ScimRepository
@@ -161,6 +165,7 @@ def build_services(settings: AppSettings) -> AppServices:
         default_max_attempts=settings.job_max_attempts,
     )
     rank_repository = RankRepository(engine)
+    probe_cache_repository = ProbeCacheRepository(engine)
     analytics_repository = AnalyticsRepository(engine)
     report_repository = ReportRepository(engine)
     accounts_repository = AccountRepository(engine)
@@ -233,6 +238,13 @@ def build_services(settings: AppSettings) -> AppServices:
         webhook_allowed_hosts=settings.alert_webhook_allowed_host_list,
     )
 
+    probe_cache = ProbeCacheService(
+        repository=probe_cache_repository,
+        managed_ttl_seconds=settings.probe_cache_managed_ttl_seconds,
+        strict_ttl_seconds=settings.probe_cache_strict_ttl_seconds,
+        retention_hours=settings.probe_cache_retention_hours,
+    )
+
     billing = BillingRepository(engine)
     _seed_credit_packs(billing, settings)
     return AppServices(
@@ -241,6 +253,8 @@ def build_services(settings: AppSettings) -> AppServices:
         monitor_repository=monitor_repository,
         job_repository=job_repository,
         rank_repository=rank_repository,
+        probe_cache_repository=probe_cache_repository,
+        probe_cache=probe_cache,
         api_keys=ApiKeyService(
             repository=tenants,
             pepper=settings.api_key_pepper,

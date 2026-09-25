@@ -76,6 +76,9 @@ class AppSettings(BaseSettings):
     mcp_tenant_id: str | None = None
     managed_serp_credit_cost: int = 1
     strict_serp_credit_cost: int = 5
+    probe_cache_managed_ttl_seconds: int = 300
+    probe_cache_strict_ttl_seconds: int = 0
+    probe_cache_retention_hours: int = 24
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
     stripe_success_url: str = "http://localhost:5173/billing/success"

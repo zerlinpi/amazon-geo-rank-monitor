@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import suppress
 
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.domain.models import RankCheckRequest
 from amazon_geo_rank_monitor.monitor.service import RankMonitorService
+
+logger = logging.getLogger("amazon_geo_rank_monitor.worker")
 
 
 class RankWorker:
@@ -19,6 +22,7 @@ class RankWorker:
         rate_card: RateCard | None = None,
         worker_status_repository=None,
         alert_service=None,
+        probe_cache=None,
         worker_id: str = "rank-worker",
         lease_seconds: float = 900.0,
         retry_base_seconds: float = 30.0,
@@ -31,6 +35,7 @@ class RankWorker:
         self._rate_card = rate_card or RateCard()
         self._worker_status = worker_status_repository
         self._alerts = alert_service
+        self._probe_cache = probe_cache
         self._worker_id = worker_id
         self._lease_seconds = lease_seconds
         self._retry_base_seconds = retry_base_seconds
@@ -97,11 +102,31 @@ class RankWorker:
         reservation = None
         try:
             request = RankCheckRequest.model_validate(job["request_payload"])
-            if self._billing is not None:
+            provider = self._providers.get(job["provider_mode"])
+            prepared_cache = {}
+            if self._probe_cache is not None:
+                try:
+                    prepared_cache = self._probe_cache.prefetch(
+                        owner_id=job["owner_id"],
+                        provider_mode=job["provider_mode"],
+                        provider=provider,
+                        request=request,
+                    )
+                except Exception:
+                    logger.exception(
+                        "probe_cache_prefetch_failed owner_id=%s job_id=%s",
+                        job["owner_id"],
+                        job["id"],
+                    )
+            reserve_probe_count = max(
+                len(request.geo_profiles) - len(prepared_cache),
+                0,
+            )
+            if self._billing is not None and reserve_probe_count > 0:
                 reservation = self._billing.reserve(
                     owner_id=job["owner_id"],
                     credits=self._rate_card.quote(
-                        job["provider_mode"], len(request.geo_profiles)
+                        job["provider_mode"], reserve_probe_count
                     ),
                     idempotency_key=(
                         f"rank_job:{job['id']}:attempt:{job['attempt_count']}"
@@ -110,24 +135,24 @@ class RankWorker:
                     reference_id=job["id"],
                 )
 
-            provider = self._providers.get(job["provider_mode"])
             service = RankMonitorService(
                 provider=provider,
                 repository=self._rank_repository,
+                probe_cache=self._probe_cache,
+                provider_mode=job["provider_mode"],
             )
             result = await service.check_with_result(
                 request,
                 owner_id=job["owner_id"],
+                prepared_cache=prepared_cache,
             )
 
             if reservation is not None:
-                successful_geos = len(
-                    {item.geo_profile_id for item in result.observations}
-                )
                 self._billing.settle(
                     reservation["id"],
                     credits_used=self._rate_card.quote(
-                        job["provider_mode"], successful_geos
+                        job["provider_mode"],
+                        result.upstream_probe_count,
                     ),
                 )
 

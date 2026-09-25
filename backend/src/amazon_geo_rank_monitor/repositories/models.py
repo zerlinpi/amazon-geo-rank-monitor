@@ -463,6 +463,7 @@ class RankRunRow(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="running")
     requested_probe_count: Mapped[int] = mapped_column(Integer, nullable=False)
     settled_probe_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cache_hit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
@@ -511,8 +512,38 @@ class RankObservationRow(Base):
         DateTime(timezone=True), nullable=False
     )
     raw_result_reference: Mapped[str | None] = mapped_column(Text, nullable=True)
+    probe_source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="upstream"
+    )
+    cache_age_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     run: Mapped[RankRunRow] = relationship(back_populates="observations")
+
+
+class SerpProbeCacheRow(Base):
+    __tablename__ = "serp_probe_cache"
+
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    cache_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    verification_level: Mapped[str] = mapped_column(String(32), nullable=False)
+    marketplace: Mapped[str] = mapped_column(String(128), nullable=False)
+    keyword: Mapped[str] = mapped_column(String(512), nullable=False)
+    geo_profile_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    device: Mapped[str] = mapped_column(String(16), nullable=False)
+    search_depth: Mapped[int] = mapped_column(Integer, nullable=False)
+    identity_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    result_payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    hit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class RankSnapshotRow(Base):
