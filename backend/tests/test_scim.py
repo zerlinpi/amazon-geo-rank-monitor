@@ -188,6 +188,21 @@ def test_scim_user_filter_suspend_revokes_workspace_session_and_reactivates() ->
     member_client.cookies.set("agrm_session", browser_session.plaintext)
     assert member_client.get("/api/v1/auth/me").status_code == 200
 
+    other_workspace = services.tenant_repository.create_tenant("Other Workspace")
+    services.account_repository.create_membership(
+        owner_id=other_workspace["id"],
+        user_id=user["id"],
+        role="viewer",
+    )
+    other_session = services.accounts.issue_sso_session(
+        user_id=user["id"],
+        owner_id=other_workspace["id"],
+        mfa_authenticated=False,
+    )
+    other_client = TestClient(client.app)
+    other_client.cookies.set("agrm_session", other_session.plaintext)
+    assert other_client.get("/api/v1/auth/me").status_code == 200
+
     suspended = client.patch(
         f"/scim/v2/Users/{membership_id}",
         headers=scim_headers(token),
@@ -201,6 +216,7 @@ def test_scim_user_filter_suspend_revokes_workspace_session_and_reactivates() ->
     assert suspended.status_code == 200
     assert suspended.json()["active"] is False
     assert member_client.get("/api/v1/auth/me").status_code == 401
+    assert other_client.get("/api/v1/auth/me").status_code == 200
 
     stored = services.account_repository.get_membership(
         user_id=user["id"],
