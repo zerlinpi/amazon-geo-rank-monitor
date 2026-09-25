@@ -12,7 +12,6 @@ from .models import (
     RankSnapshotRow,
 )
 
-
 COMPLETED_JOB_STATUSES = ("succeeded", "partially_succeeded")
 
 
