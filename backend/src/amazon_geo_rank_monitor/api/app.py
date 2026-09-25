@@ -106,8 +106,9 @@ def create_app(
             "/api/v1/auth/verify-email",
             "/api/v1/auth/mfa/complete",
             "/api/v1/auth/sso/start",
+            "/api/v1/auth/sso/discover",
         }
-        if public_auth and request.method == "POST":
+        if public_auth and request.method in {"GET", "POST"}:
             auth_limiter = request.app.state.auth_rate_limiter
             if auth_limiter.limit:
                 client_ip = request.client.host if request.client else "unknown"
