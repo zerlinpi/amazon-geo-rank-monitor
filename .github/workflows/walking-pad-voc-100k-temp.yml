@@ -25,7 +25,8 @@ jobs:
       - name: Collect walking pad VOC 100K
         env:
           TARGET_REVIEWS: "100000"
-          MIN_VALID: "100000"\n          OUTDIR: "voc_output"
+          MIN_VALID: "100000"
+          OUTDIR: "voc_output"
         run: python scripts/walking_pad_voc_10k.py
       - name: Show stats
         if: always()
@@ -44,3 +45,5 @@ jobs:
 # rerun-100k-2
 
 # true-walking-pad-100k
+
+# yaml-fixed
