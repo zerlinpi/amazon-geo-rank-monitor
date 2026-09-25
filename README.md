@@ -1005,7 +1005,7 @@ SSO rollout intentionally has two stages:
 
 A connection is marked `verified_at` only after a real successful Owner SSO callback. `enforce_sso=true` is rejected until the connection is both enabled and verified.
 
-Changing the issuer, client ID or client secret clears verification and automatically disables enforcement. Disabling the connection also disables enforcement.
+Changing the issuer, client ID or client secret clears verification and automatically disables enforcement. Changing allowed email domains also disables enforcement so the new access boundary must be reviewed before it is required. Disabling the connection also disables enforcement.
 
 This prevents a mistyped issuer or client credential from immediately locking the workspace out.
 
