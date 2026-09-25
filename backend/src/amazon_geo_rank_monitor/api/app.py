@@ -43,9 +43,9 @@ class AppServices:
     job_repository: Any
     rank_repository: Any
     api_keys: Any
+    provider_registry: Any
     probe_cache_repository: Any | None = None
     probe_cache: Any | None = None
-    provider_registry: Any
     alert_repository: Any | None = None
     alerts: Any | None = None
     analytics_repository: Any | None = None
