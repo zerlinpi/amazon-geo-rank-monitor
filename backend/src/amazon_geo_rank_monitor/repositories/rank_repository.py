@@ -62,6 +62,8 @@ class RankRepository:
                         page=observation.page,
                         observed_at=observation.observed_at,
                         raw_result_reference=observation.raw_result_reference,
+                        probe_source=observation.probe_source,
+                        cache_age_seconds=observation.cache_age_seconds,
                     )
                 )
 
@@ -86,6 +88,7 @@ class RankRepository:
         *,
         status: str,
         settled_probe_count: int,
+        cache_hit_count: int = 0,
         error_summary: str | None = None,
     ) -> None:
         with self._sessions.begin() as session:
@@ -94,6 +97,7 @@ class RankRepository:
                 raise KeyError(f"rank run not found: {run_id}")
             row.status = status
             row.settled_probe_count = settled_probe_count
+            row.cache_hit_count = cache_hit_count
             row.error_summary = error_summary
             row.completed_at = datetime.now(UTC)
 
@@ -127,6 +131,7 @@ class RankRepository:
             "status": run.status,
             "requested_probe_count": run.requested_probe_count,
             "settled_probe_count": run.settled_probe_count,
+            "cache_hit_count": run.cache_hit_count,
             "error_summary": run.error_summary,
             "started_at": run.started_at,
             "completed_at": run.completed_at,
@@ -145,6 +150,8 @@ class RankRepository:
                     "page": row.page,
                     "observed_at": row.observed_at,
                     "raw_result_reference": row.raw_result_reference,
+                    "probe_source": row.probe_source,
+                    "cache_age_seconds": row.cache_age_seconds,
                 }
                 for row in observations
             ],
