@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type {
   AccountProfile,
+  ScimAdminGroup,
   TeamMember,
   WorkspaceInvitation,
+  WorkspaceScimConfig,
   WorkspaceSsoConfig,
 } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -26,6 +28,14 @@ const ssoConfig = ref<WorkspaceSsoConfig | null>(null)
 const savingSso = ref(false)
 const updatingSsoEnforcement = ref(false)
 const testingSso = ref(false)
+const scimConfig = ref<WorkspaceScimConfig>()
+const scimGroups = ref<ScimAdminGroup[]>([])
+const scimEnabled = ref(false)
+const scimDefaultRole = ref('viewer')
+const savingScim = ref(false)
+const rotatingScimToken = ref(false)
+const scimTokenDialog = ref(false)
+const scimToken = ref('')
 const ssoForm = reactive({
   provider_type: 'oidc',
   display_name: 'Enterprise SSO',
@@ -57,7 +67,16 @@ async function load() {
     const policy = await agrmApi.getWorkspaceSecurityPolicy()
     requireMfa.value = policy.require_mfa
     if (currentRole.value === 'owner') {
-      ssoConfig.value = await agrmApi.getWorkspaceSsoConfig()
+      const [loadedSso, loadedScim, loadedScimGroups] = await Promise.all([
+        agrmApi.getWorkspaceSsoConfig(),
+        agrmApi.getWorkspaceScimConfig(),
+        agrmApi.getScimGroups(),
+      ])
+      ssoConfig.value = loadedSso
+      scimConfig.value = loadedScim
+      scimGroups.value = loadedScimGroups
+      scimEnabled.value = loadedScim.enabled
+      scimDefaultRole.value = loadedScim.default_role
       if (ssoConfig.value) {
         ssoForm.provider_type = ssoConfig.value.provider_type
         ssoForm.display_name = ssoConfig.value.display_name
@@ -71,6 +90,8 @@ async function load() {
     }
     else {
       ssoConfig.value = null
+      scimConfig.value = undefined
+      scimGroups.value = []
     }
     if (canManage.value) {
       invitations.value = await agrmApi.getTeamInvitations()
@@ -205,6 +226,82 @@ async function updateSsoEnforcement(value: string | number | boolean) {
   }
   finally {
     updatingSsoEnforcement.value = false
+  }
+}
+
+async function saveScim() {
+  if (currentRole.value !== 'owner') {
+    return
+  }
+  savingScim.value = true
+  try {
+    scimConfig.value = await agrmApi.updateWorkspaceScimConfig(
+      scimEnabled.value,
+      scimDefaultRole.value,
+    )
+    ElMessage.success(
+      scimConfig.value.enabled
+        ? 'SCIM provisioning enabled'
+        : 'SCIM provisioning disabled',
+    )
+    await load()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to update SCIM provisioning')
+  }
+  finally {
+    savingScim.value = false
+  }
+}
+
+async function rotateScimToken() {
+  if (currentRole.value !== 'owner') {
+    return
+  }
+  try {
+    if (scimConfig.value?.has_token) {
+      await ElMessageBox.confirm(
+        'Rotating the SCIM token immediately invalidates the previous provisioning token. Update your identity provider after rotation.',
+        'Rotate SCIM token',
+        { type: 'warning', confirmButtonText: 'Rotate token' },
+      )
+    }
+    rotatingScimToken.value = true
+    const result = await agrmApi.rotateScimToken()
+    scimToken.value = result.token
+    scimTokenDialog.value = true
+    scimEnabled.value = true
+    await load()
+  }
+  catch (error: any) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(error.response?.data?.detail || 'Failed to rotate SCIM token')
+  }
+  finally {
+    rotatingScimToken.value = false
+  }
+}
+
+async function copyScimToken() {
+  if (!scimToken.value) {
+    return
+  }
+  await navigator.clipboard.writeText(scimToken.value)
+  ElMessage.success('SCIM token copied')
+}
+
+async function mapScimGroupRole(group: ScimAdminGroup, role: string) {
+  try {
+    await agrmApi.mapScimGroupRole(group.id, role || null)
+    ElMessage.success(role ? `Group mapped to ${role}` : 'Group role mapping cleared')
+    scimGroups.value = await agrmApi.getScimGroups()
+    members.value = await agrmApi.getTeamMembers()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to map SCIM group role')
+    scimGroups.value = await agrmApi.getScimGroups().catch(() => scimGroups.value)
   }
 }
 
