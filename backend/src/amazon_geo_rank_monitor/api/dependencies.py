@@ -26,10 +26,9 @@ def current_principal(
         return cached
 
     services = get_services(request)
-    principal: Principal | None = None
-
     accounts = getattr(services, "accounts", None)
     client_ip = request.client.host if request.client else None
+    principal: Principal | None = None
 
     if authorization:
         scheme, _, credential = authorization.partition(" ")
@@ -39,16 +38,29 @@ def current_principal(
                 client_ip=client_ip,
             )
 
+    if principal is None and x_api_key:
+        principal = services.api_keys.authenticate_principal(
+            x_api_key,
+            client_ip=client_ip,
+        )
+
     cookie_credential = request.cookies.get(
         getattr(services, "session_cookie_name", "agrm_session")
     )
-    if principal is None and cookie_credential and accounts is not None:
+    if (
+        principal is None
+        and not authorization
+        and not x_api_key
+        and cookie_credential
+        and accounts is not None
+    ):
         principal = accounts.authenticate_session(
             cookie_credential,
             client_ip=client_ip,
         )
         if principal is not None:
             request.state.auth_transport = "cookie"
+            request.state.api_principal = principal
             if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
                 csrf_cookie = request.cookies.get(
                     getattr(services, "csrf_cookie_name", "agrm_csrf")
@@ -64,12 +76,6 @@ def current_principal(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="valid CSRF token required",
                     )
-
-    if principal is None and x_api_key:
-        principal = services.api_keys.authenticate_principal(
-            x_api_key,
-            client_ip=client_ip,
-        )
 
     if principal is None:
         if not authorization and not x_api_key and not cookie_credential:
