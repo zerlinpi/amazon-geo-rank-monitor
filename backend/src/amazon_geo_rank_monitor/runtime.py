@@ -10,7 +10,6 @@ from amazon_geo_rank_monitor.api.rate_limit import build_rate_limiter
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.auth.accounts import AccountService
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
-from amazon_geo_rank_monitor.notifications.email import build_email_sender
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.billing.stripe_service import StripeBillingService
 from amazon_geo_rank_monitor.config import (
@@ -20,6 +19,7 @@ from amazon_geo_rank_monitor.config import (
 )
 from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 from amazon_geo_rank_monitor.domain.models import VerificationLevel
+from amazon_geo_rank_monitor.notifications.email import build_email_sender
 from amazon_geo_rank_monitor.providers.playwright_amazon import (
     PlaywrightAmazonBrowserClient,
 )
