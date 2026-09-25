@@ -244,6 +244,7 @@ class AccountRepository:
                 if int(owner_count or 0) <= 1:
                     raise ValueError("workspace must keep at least one owner")
             row.role = role
+            row.updated_at = datetime.now(UTC)
             session.flush()
             return self._serialize_membership(row)
 
