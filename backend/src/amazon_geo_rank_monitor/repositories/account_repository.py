@@ -135,6 +135,7 @@ class AccountRepository:
                 {
                     **self._serialize_membership(membership),
                     "workspace_name": tenant.name,
+                    "require_mfa": tenant.require_mfa,
                 }
                 for membership, tenant in rows
             ]
