@@ -10,7 +10,9 @@ from sqlalchemy.orm import sessionmaker
 from .models import (
     AccountTokenRow,
     AuthEventRow,
+    MfaRecoveryCodeRow,
     TenantRow,
+    TrustedDeviceRow,
     UserRow,
     UserSessionRow,
     WorkspaceInvitationRow,
@@ -163,6 +165,7 @@ class AccountRepository:
                     "email": user.email,
                     "display_name": user.display_name,
                     "disabled_at": user.disabled_at,
+                    "mfa_enabled": user.mfa_enabled_at is not None,
                 }
                 for membership, user in rows
             ]
@@ -227,6 +230,7 @@ class AccountRepository:
         expires_at: datetime,
         client_ip: str | None = None,
         user_agent: str | None = None,
+        mfa_authenticated: bool = False,
     ) -> dict:
         session_id = str(uuid4())
         with self._sessions.begin() as session:
@@ -240,6 +244,9 @@ class AccountRepository:
                 last_seen_ip=client_ip[:64] if client_ip else None,
                 user_agent=user_agent[:512] if user_agent else None,
                 expires_at=expires_at,
+                mfa_authenticated_at=(
+                    datetime.now(UTC) if mfa_authenticated else None
+                ),
             )
             session.add(row)
         return self.get_session_by_hash(token_hash)
@@ -279,6 +286,7 @@ class AccountRepository:
                 "csrf_hash": session_row.csrf_hash,
                 "created_at": session_row.created_at,
                 "expires_at": session_row.expires_at,
+                "mfa_authenticated_at": session_row.mfa_authenticated_at,
                 "last_seen_at": session_row.last_seen_at,
                 "created_ip": session_row.created_ip,
                 "last_seen_ip": session_row.last_seen_ip,
@@ -287,7 +295,9 @@ class AccountRepository:
                 "email": user.email,
                 "display_name": user.display_name,
                 "email_verified_at": user.email_verified_at,
+                "mfa_enabled_at": user.mfa_enabled_at,
                 "workspace_name": tenant.name,
+                "workspace_require_mfa": tenant.require_mfa,
             }
 
     def touch_session(
@@ -321,6 +331,7 @@ class AccountRepository:
                     "owner_id": row.owner_id,
                     "created_at": row.created_at,
                     "expires_at": row.expires_at,
+                    "mfa_authenticated_at": row.mfa_authenticated_at,
                     "last_seen_at": row.last_seen_at,
                     "created_ip": row.created_ip,
                     "last_seen_ip": row.last_seen_ip,
@@ -395,6 +406,7 @@ class AccountRepository:
         token_type: str,
         token_hash: str,
         expires_at: datetime,
+        details: dict | None = None,
     ) -> dict:
         now = datetime.now(UTC)
         token_id = str(uuid4())
@@ -414,6 +426,7 @@ class AccountRepository:
                 token_type=token_type,
                 token_hash=token_hash,
                 expires_at=expires_at,
+                details=details,
             )
             session.add(created)
             session.flush()
@@ -546,6 +559,187 @@ class AccountRepository:
             ).all()
             return [self._serialize_auth_event(row) for row in rows]
 
+    def get_workspace_security_policy(self, *, owner_id: str) -> dict:
+        with self._sessions() as session:
+            tenant = session.get(TenantRow, owner_id)
+            if tenant is None:
+                raise KeyError("workspace not found")
+            return {"owner_id": tenant.id, "require_mfa": tenant.require_mfa}
+
+    def set_workspace_require_mfa(
+        self,
+        *,
+        owner_id: str,
+        require_mfa: bool,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            tenant = session.get(TenantRow, owner_id)
+            if tenant is None:
+                raise KeyError("workspace not found")
+            tenant.require_mfa = require_mfa
+            session.flush()
+            return {"owner_id": tenant.id, "require_mfa": tenant.require_mfa}
+
+    def set_mfa_secret(self, *, user_id: str, encrypted_secret: str) -> dict:
+        with self._sessions.begin() as session:
+            row = session.get(UserRow, user_id)
+            if row is None:
+                raise KeyError("user not found")
+            row.mfa_secret_encrypted = encrypted_secret
+            row.mfa_enabled_at = None
+            row.mfa_last_verified_at = None
+            session.flush()
+            return self._serialize_user(row)
+
+    def enable_mfa(self, *, user_id: str) -> dict:
+        with self._sessions.begin() as session:
+            row = session.get(UserRow, user_id)
+            if row is None or not row.mfa_secret_encrypted:
+                raise KeyError("MFA enrollment not found")
+            now = datetime.now(UTC)
+            row.mfa_enabled_at = now
+            row.mfa_last_verified_at = now
+            session.flush()
+            return self._serialize_user(row)
+
+    def disable_mfa(self, *, user_id: str) -> dict:
+        with self._sessions.begin() as session:
+            row = session.get(UserRow, user_id)
+            if row is None:
+                raise KeyError("user not found")
+            row.mfa_secret_encrypted = None
+            row.mfa_enabled_at = None
+            row.mfa_last_verified_at = None
+            session.flush()
+            return self._serialize_user(row)
+
+    def mark_mfa_verified(self, *, user_id: str) -> None:
+        with self._sessions.begin() as session:
+            row = session.get(UserRow, user_id)
+            if row is not None:
+                row.mfa_last_verified_at = datetime.now(UTC)
+
+    def mark_session_mfa_authenticated(self, *, session_id: str) -> None:
+        with self._sessions.begin() as session:
+            row = session.get(UserSessionRow, session_id)
+            if row is None:
+                raise KeyError("session not found")
+            row.mfa_authenticated_at = datetime.now(UTC)
+
+    def replace_recovery_codes(
+        self,
+        *,
+        user_id: str,
+        code_hashes: list[str],
+    ) -> None:
+        with self._sessions.begin() as session:
+            old = session.scalars(
+                select(MfaRecoveryCodeRow).where(
+                    MfaRecoveryCodeRow.user_id == user_id
+                )
+            ).all()
+            for row in old:
+                session.delete(row)
+            for code_hash in code_hashes:
+                session.add(
+                    MfaRecoveryCodeRow(
+                        id=str(uuid4()),
+                        user_id=user_id,
+                        code_hash=code_hash,
+                    )
+                )
+
+    def consume_recovery_code(self, *, user_id: str, code_hash: str) -> bool:
+        with self._sessions.begin() as session:
+            row = session.scalar(
+                select(MfaRecoveryCodeRow).where(
+                    MfaRecoveryCodeRow.user_id == user_id,
+                    MfaRecoveryCodeRow.code_hash == code_hash,
+                    MfaRecoveryCodeRow.used_at.is_(None),
+                )
+            )
+            if row is None:
+                return False
+            row.used_at = datetime.now(UTC)
+            return True
+
+    def count_recovery_codes(self, *, user_id: str) -> int:
+        with self._sessions() as session:
+            count = session.scalar(
+                select(func.count(MfaRecoveryCodeRow.id)).where(
+                    MfaRecoveryCodeRow.user_id == user_id,
+                    MfaRecoveryCodeRow.used_at.is_(None),
+                )
+            )
+            return int(count or 0)
+
+    def clear_recovery_codes(self, *, user_id: str) -> None:
+        with self._sessions.begin() as session:
+            rows = session.scalars(
+                select(MfaRecoveryCodeRow).where(
+                    MfaRecoveryCodeRow.user_id == user_id
+                )
+            ).all()
+            for row in rows:
+                session.delete(row)
+
+    def create_trusted_device(
+        self,
+        *,
+        user_id: str,
+        token_hash: str,
+        expires_at: datetime,
+        client_ip: str | None,
+        user_agent: str | None,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            row = TrustedDeviceRow(
+                id=str(uuid4()),
+                user_id=user_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+                created_ip=client_ip[:64] if client_ip else None,
+                user_agent=user_agent[:512] if user_agent else None,
+            )
+            session.add(row)
+            session.flush()
+            return self._serialize_trusted_device(row)
+
+    def authenticate_trusted_device(
+        self,
+        *,
+        user_id: str,
+        token_hash: str,
+    ) -> dict | None:
+        now = datetime.now(UTC)
+        with self._sessions.begin() as session:
+            row = session.scalar(
+                select(TrustedDeviceRow).where(
+                    TrustedDeviceRow.user_id == user_id,
+                    TrustedDeviceRow.token_hash == token_hash,
+                    TrustedDeviceRow.revoked_at.is_(None),
+                    TrustedDeviceRow.expires_at > now,
+                )
+            )
+            if row is None:
+                return None
+            row.last_used_at = now
+            session.flush()
+            return self._serialize_trusted_device(row)
+
+    def revoke_trusted_devices(self, *, user_id: str) -> int:
+        with self._sessions.begin() as session:
+            rows = session.scalars(
+                select(TrustedDeviceRow).where(
+                    TrustedDeviceRow.user_id == user_id,
+                    TrustedDeviceRow.revoked_at.is_(None),
+                )
+            ).all()
+            now = datetime.now(UTC)
+            for row in rows:
+                row.revoked_at = now
+            return len(rows)
+
     def create_invitation(
         self,
         *,
@@ -646,6 +840,9 @@ class AccountRepository:
             "locked_until": row.locked_until,
             "last_login_at": row.last_login_at,
             "last_login_ip": row.last_login_ip,
+            "mfa_secret_encrypted": row.mfa_secret_encrypted,
+            "mfa_enabled_at": row.mfa_enabled_at,
+            "mfa_last_verified_at": row.mfa_last_verified_at,
             "created_at": row.created_at,
             "disabled_at": row.disabled_at,
         }
@@ -660,6 +857,20 @@ class AccountRepository:
             "created_at": row.created_at,
             "expires_at": row.expires_at,
             "used_at": row.used_at,
+            "details": row.details,
+        }
+
+    @staticmethod
+    def _serialize_trusted_device(row: TrustedDeviceRow) -> dict:
+        return {
+            "id": row.id,
+            "user_id": row.user_id,
+            "created_at": row.created_at,
+            "expires_at": row.expires_at,
+            "last_used_at": row.last_used_at,
+            "created_ip": row.created_ip,
+            "user_agent": row.user_agent,
+            "revoked_at": row.revoked_at,
         }
 
     @staticmethod
