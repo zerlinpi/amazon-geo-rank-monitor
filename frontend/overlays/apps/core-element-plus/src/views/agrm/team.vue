@@ -3,6 +3,7 @@ import type {
   AccountProfile,
   TeamMember,
   WorkspaceInvitation,
+  WorkspaceSsoConfig,
 } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
@@ -21,6 +22,20 @@ const inviting = ref(false)
 const createdInviteLink = ref('')
 const requireMfa = ref(false)
 const updatingPolicy = ref(false)
+const ssoConfig = ref<WorkspaceSsoConfig | null>(null)
+const savingSso = ref(false)
+const updatingSsoEnforcement = ref(false)
+const testingSso = ref(false)
+const ssoForm = reactive({
+  provider_type: 'oidc',
+  display_name: 'Enterprise SSO',
+  issuer_url: '',
+  client_id: '',
+  client_secret: '',
+  email_domains: '',
+  auto_join: false,
+  enabled: true,
+})
 
 const currentRole = computed(() => profile.value?.workspace.role)
 const canManage = computed(() => ['owner', 'admin'].includes(currentRole.value || ''))
@@ -41,6 +56,22 @@ async function load() {
     members.value = await agrmApi.getTeamMembers()
     const policy = await agrmApi.getWorkspaceSecurityPolicy()
     requireMfa.value = policy.require_mfa
+    if (currentRole.value === 'owner') {
+      ssoConfig.value = await agrmApi.getWorkspaceSsoConfig()
+      if (ssoConfig.value) {
+        ssoForm.provider_type = ssoConfig.value.provider_type
+        ssoForm.display_name = ssoConfig.value.display_name
+        ssoForm.issuer_url = ssoConfig.value.issuer_url
+        ssoForm.client_id = ssoConfig.value.client_id
+        ssoForm.client_secret = ''
+        ssoForm.email_domains = ssoConfig.value.email_domains.join(', ')
+        ssoForm.auto_join = ssoConfig.value.auto_join
+        ssoForm.enabled = ssoConfig.value.enabled
+      }
+    }
+    else {
+      ssoConfig.value = null
+    }
     if (canManage.value) {
       invitations.value = await agrmApi.getTeamInvitations()
     }
@@ -74,6 +105,106 @@ async function updateMfaPolicy(value: string | number | boolean) {
   }
   finally {
     updatingPolicy.value = false
+  }
+}
+
+function applySsoProviderTemplate(provider: string | number | boolean) {
+  const value = String(provider)
+  ssoForm.provider_type = value
+  if (value === 'google') {
+    ssoForm.display_name = 'Google Workspace'
+    ssoForm.issuer_url = 'https://accounts.google.com'
+  }
+  else if (value === 'entra') {
+    ssoForm.display_name = 'Microsoft Entra ID'
+    if (ssoForm.issuer_url === 'https://accounts.google.com') {
+      ssoForm.issuer_url = ''
+    }
+  }
+  else if (!ssoForm.display_name.trim()) {
+    ssoForm.display_name = 'Enterprise SSO'
+  }
+}
+
+async function saveSso() {
+  if (currentRole.value !== 'owner') {
+    return
+  }
+  const domains = ssoForm.email_domains
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+  if (!ssoForm.issuer_url.trim() || !ssoForm.client_id.trim() || !domains.length) {
+    ElMessage.warning('Issuer URL, Client ID and at least one email domain are required')
+    return
+  }
+  savingSso.value = true
+  try {
+    ssoConfig.value = await agrmApi.updateWorkspaceSsoConfig({
+      provider_type: ssoForm.provider_type,
+      display_name: ssoForm.display_name.trim(),
+      issuer_url: ssoForm.issuer_url.trim(),
+      client_id: ssoForm.client_id.trim(),
+      ...(ssoForm.client_secret.trim()
+        ? { client_secret: ssoForm.client_secret.trim() }
+        : {}),
+      email_domains: domains,
+      auto_join: ssoForm.auto_join,
+      enabled: ssoForm.enabled,
+    })
+    ssoForm.client_secret = ''
+    ElMessage.success(
+      ssoConfig.value.verified_at
+        ? 'SSO configuration saved'
+        : 'SSO configuration saved. Test sign-in before enforcement.',
+    )
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to save SSO configuration')
+  }
+  finally {
+    savingSso.value = false
+  }
+}
+
+async function testSso() {
+  if (!ssoConfig.value?.enabled || !profile.value) {
+    ElMessage.warning('Save and enable the SSO configuration first')
+    return
+  }
+  testingSso.value = true
+  try {
+    const started = await agrmApi.startSso(
+      profile.value.workspace.id,
+      profile.value.user.email,
+    )
+    window.location.assign(started.authorization_url)
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Unable to start SSO test')
+    testingSso.value = false
+  }
+}
+
+async function updateSsoEnforcement(value: string | number | boolean) {
+  if (currentRole.value !== 'owner') {
+    return
+  }
+  const enabled = value === true
+  updatingSsoEnforcement.value = true
+  try {
+    ssoConfig.value = await agrmApi.updateWorkspaceSsoEnforcement(enabled)
+    ElMessage.success(
+      enabled
+        ? 'Enterprise SSO is now required for human access'
+        : 'Enterprise SSO enforcement disabled',
+    )
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to update SSO enforcement')
+  }
+  finally {
+    updatingSsoEnforcement.value = false
   }
 }
 
@@ -245,6 +376,115 @@ onMounted(load)
         :closable="false"
         title="All current members must enable MFA before this policy can be turned on."
       />
+    </el-card>
+
+    <el-card v-if="currentRole === 'owner'" shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span class="font-medium">Enterprise SSO</span>
+            <div class="text-xs text-muted-foreground mt-1">
+              Google Workspace, Microsoft Entra ID, or any RS256 OpenID Connect provider.
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <el-tag v-if="ssoConfig?.verified_at" type="success">Verified</el-tag>
+            <el-tag v-else type="info">Not verified</el-tag>
+            <el-tag v-if="ssoConfig?.enforce_sso" type="warning">Required</el-tag>
+          </div>
+        </div>
+      </template>
+
+      <el-form label-position="top" class="max-w-3xl">
+        <div class="grid md:grid-cols-2 gap-x-4">
+          <el-form-item label="Provider">
+            <el-select
+              :model-value="ssoForm.provider_type"
+              class="w-full"
+              @change="applySsoProviderTemplate"
+            >
+              <el-option label="Google Workspace" value="google" />
+              <el-option label="Microsoft Entra ID" value="entra" />
+              <el-option label="Generic OIDC" value="oidc" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="Display name">
+            <el-input v-model="ssoForm.display_name" />
+          </el-form-item>
+        </div>
+
+        <el-form-item label="Issuer URL">
+          <el-input
+            v-model="ssoForm.issuer_url"
+            placeholder="https://login.microsoftonline.com/<tenant-id>/v2.0"
+          />
+          <div class="text-xs text-muted-foreground mt-1">
+            Entra must use a tenant-specific v2.0 issuer. Google uses https://accounts.google.com.
+          </div>
+        </el-form-item>
+
+        <div class="grid md:grid-cols-2 gap-x-4">
+          <el-form-item label="Client ID">
+            <el-input v-model="ssoForm.client_id" />
+          </el-form-item>
+          <el-form-item label="Client secret">
+            <el-input
+              v-model="ssoForm.client_secret"
+              type="password"
+              show-password
+              autocomplete="new-password"
+              :placeholder="ssoConfig ? 'Leave blank to keep current secret' : 'Required on first save'"
+            />
+          </el-form-item>
+        </div>
+
+        <el-form-item label="Allowed email domains">
+          <el-input
+            v-model="ssoForm.email_domains"
+            placeholder="example.com, subsidiary.example.com"
+          />
+        </el-form-item>
+
+        <div class="flex flex-wrap gap-5 mb-5">
+          <el-checkbox v-model="ssoForm.auto_join">
+            JIT-create unknown users as Viewer
+          </el-checkbox>
+          <el-checkbox v-model="ssoForm.enabled">
+            Enable this SSO connection
+          </el-checkbox>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <el-button type="primary" :loading="savingSso" @click="saveSso">
+            Save SSO
+          </el-button>
+          <el-button
+            :disabled="!ssoConfig?.enabled"
+            :loading="testingSso"
+            @click="testSso"
+          >
+            Test SSO
+          </el-button>
+        </div>
+      </el-form>
+
+      <el-divider />
+
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div class="font-medium">Require Enterprise SSO</div>
+          <div class="text-sm text-muted-foreground mt-1">
+            Enforcement can only be enabled after a successful Owner SSO test.
+            A team-manage API key may disable enforcement as a break-glass recovery path.
+          </div>
+        </div>
+        <el-switch
+          :model-value="ssoConfig?.enforce_sso || false"
+          :disabled="!ssoConfig?.enabled || !ssoConfig?.verified_at"
+          :loading="updatingSsoEnforcement"
+          @change="updateSsoEnforcement"
+        />
+      </div>
     </el-card>
 
     <el-card shadow="never">
