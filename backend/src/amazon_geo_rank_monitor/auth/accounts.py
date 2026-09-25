@@ -10,6 +10,14 @@ from datetime import UTC, datetime, timedelta
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
+from amazon_geo_rank_monitor.auth.mfa import (
+    MfaCrypto,
+    generate_recovery_codes,
+    new_mfa_challenge_token,
+    new_trusted_device_token,
+    normalize_recovery_code,
+)
+
 ROLES = frozenset({"owner", "admin", "analyst", "viewer"})
 INVITABLE_ROLES = frozenset({"admin", "analyst", "viewer"})
 
@@ -18,6 +26,7 @@ logger = logging.getLogger("amazon_geo_rank_monitor.accounts")
 
 class AccountLockedError(ValueError):
     pass
+
 
 ROLE_SCOPES: dict[str, frozenset[str]] = {
     "owner": frozenset({"*"}),
@@ -74,6 +83,9 @@ class HumanPrincipal:
     workspace_name: str
     csrf_hash: str
     email_verified_at: datetime | None
+    mfa_enabled_at: datetime | None
+    mfa_authenticated_at: datetime | None
+    workspace_require_mfa: bool
     auth_type: str = "session"
     key_id: None = None
 
@@ -87,6 +99,14 @@ class SessionCreation:
     csrf_token: str
     expires_at: datetime
     principal: HumanPrincipal
+    trusted_device_token: str | None = None
+    trusted_device_expires_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class MfaChallenge:
+    plaintext: str
+    expires_at: datetime
 
 
 @dataclass(frozen=True)
@@ -111,6 +131,10 @@ class AccountService:
         login_lock_minutes: int = 15,
         email_sender=None,
         public_web_url: str = "http://localhost:5173",
+        mfa_encryption_key: str = "development-only-change-me",
+        mfa_issuer: str = "Amazon Geo Rank Monitor",
+        mfa_challenge_minutes: int = 5,
+        trusted_device_days: int = 30,
     ) -> None:
         if session_ttl_hours < 1:
             raise ValueError("session_ttl_hours must be at least 1")
@@ -124,6 +148,10 @@ class AccountService:
             raise ValueError("login_max_failures must be at least 1")
         if login_lock_minutes < 1:
             raise ValueError("login_lock_minutes must be at least 1")
+        if mfa_challenge_minutes < 1:
+            raise ValueError("mfa_challenge_minutes must be at least 1")
+        if trusted_device_days < 1:
+            raise ValueError("trusted_device_days must be at least 1")
         self._repository = repository
         self._passwords = PasswordHasher()
         self._session_ttl = timedelta(hours=session_ttl_hours)
@@ -134,6 +162,12 @@ class AccountService:
         self._login_lock = timedelta(minutes=login_lock_minutes)
         self._email_sender = email_sender
         self._public_web_url = public_web_url.rstrip("/")
+        self._mfa = MfaCrypto(
+            encryption_key=mfa_encryption_key,
+            issuer=mfa_issuer,
+        )
+        self._mfa_challenge_ttl = timedelta(minutes=mfa_challenge_minutes)
+        self._trusted_device_ttl = timedelta(days=trusted_device_days)
 
     @staticmethod
     def normalize_email(email: str) -> str:
@@ -274,7 +308,8 @@ class AccountService:
         workspace_id: str | None = None,
         client_ip: str | None = None,
         user_agent: str | None = None,
-    ) -> SessionCreation:
+        trusted_device_token: str | None = None,
+    ) -> SessionCreation | MfaChallenge:
         normalized_email = self.normalize_email(email)
         user = self._repository.find_user_by_email(normalized_email)
         if user is None or user["disabled_at"] is not None:
@@ -328,10 +363,66 @@ class AccountService:
                 raise AccountLockedError("account temporarily locked") from None
             raise ValueError("invalid email or password") from None
 
+        memberships = self._repository.list_memberships(user_id=user["id"])
+        if not memberships:
+            raise ValueError("account has no workspace membership")
+        membership = (
+            next((item for item in memberships if item["owner_id"] == workspace_id), None)
+            if workspace_id
+            else memberships[0]
+        )
+        if membership is None:
+            raise ValueError("workspace membership not found")
+
         self._repository.record_login_success(
             user_id=user["id"],
             client_ip=client_ip,
         )
+
+        if user["mfa_enabled_at"] is not None:
+            trusted = None
+            if trusted_device_token and trusted_device_token.startswith("agrd_"):
+                trusted = self._repository.authenticate_trusted_device(
+                    user_id=user["id"],
+                    token_hash=self._token_hash(trusted_device_token),
+                )
+            if trusted is not None:
+                self._repository.record_auth_event(
+                    email=normalized_email,
+                    event_type="login_succeeded",
+                    success=True,
+                    user_id=user["id"],
+                    client_ip=client_ip,
+                    user_agent=user_agent,
+                    details={"mfa": "trusted_device"},
+                )
+                return self._issue_session(
+                    user_id=user["id"],
+                    owner_id=membership["owner_id"],
+                    client_ip=client_ip,
+                    user_agent=user_agent,
+                    mfa_authenticated=True,
+                )
+
+            challenge = new_mfa_challenge_token()
+            expires_at = now + self._mfa_challenge_ttl
+            self._repository.create_account_token(
+                user_id=user["id"],
+                token_type="mfa_login",
+                token_hash=self._token_hash(challenge),
+                expires_at=expires_at,
+                details={"owner_id": membership["owner_id"]},
+            )
+            self._repository.record_auth_event(
+                email=normalized_email,
+                event_type="mfa_challenge_issued",
+                success=True,
+                user_id=user["id"],
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
+            return MfaChallenge(plaintext=challenge, expires_at=expires_at)
+
         self._repository.record_auth_event(
             email=normalized_email,
             event_type="login_succeeded",
@@ -339,30 +430,83 @@ class AccountService:
             user_id=user["id"],
             client_ip=client_ip,
             user_agent=user_agent,
+            details={"mfa": "not_enabled"},
         )
-
-        memberships = self._repository.list_memberships(user_id=user["id"])
-        if not memberships:
-            raise ValueError("account has no workspace membership")
-        membership = (
-            next(
-                (
-                    item
-                    for item in memberships
-                    if item["owner_id"] == workspace_id
-                ),
-                None,
-            )
-            if workspace_id
-            else memberships[0]
-        )
-        if membership is None:
-            raise ValueError("workspace membership not found")
         return self._issue_session(
             user_id=user["id"],
             owner_id=membership["owner_id"],
             client_ip=client_ip,
             user_agent=user_agent,
+        )
+
+    def complete_mfa_login(
+        self,
+        *,
+        challenge_token: str,
+        code: str,
+        remember_device: bool,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> SessionCreation:
+        if not challenge_token.startswith("agrmfa_"):
+            raise ValueError("invalid or expired MFA challenge")
+        try:
+            challenge = self._repository.get_account_token(
+                token_type="mfa_login",
+                token_hash=self._token_hash(challenge_token),
+            )
+        except KeyError:
+            raise ValueError("invalid or expired MFA challenge") from None
+
+        user = self._repository.get_user(challenge["user_id"])
+        if user["mfa_enabled_at"] is None or not self._verify_mfa_code(user, code):
+            self._repository.record_auth_event(
+                email=user["email"],
+                event_type="mfa_failed",
+                success=False,
+                user_id=user["id"],
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
+            raise ValueError("invalid MFA code")
+
+        self._repository.consume_account_token(challenge["id"])
+        self._repository.mark_mfa_verified(user_id=user["id"])
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="login_succeeded",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+            details={"mfa": "totp_or_recovery"},
+        )
+        session = self._issue_session(
+            user_id=user["id"],
+            owner_id=challenge["details"]["owner_id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+            mfa_authenticated=True,
+        )
+        if not remember_device:
+            return session
+
+        trusted_token = new_trusted_device_token()
+        trusted_expires_at = datetime.now(UTC) + self._trusted_device_ttl
+        self._repository.create_trusted_device(
+            user_id=user["id"],
+            token_hash=self._token_hash(trusted_token),
+            expires_at=trusted_expires_at,
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        return SessionCreation(
+            plaintext=session.plaintext,
+            csrf_token=session.csrf_token,
+            expires_at=session.expires_at,
+            principal=session.principal,
+            trusted_device_token=trusted_token,
+            trusted_device_expires_at=trusted_expires_at,
         )
 
     def authenticate_session(
@@ -374,9 +518,7 @@ class AccountService:
         if not plaintext.startswith("agrs_"):
             return None
         try:
-            row = self._repository.get_session_by_hash(
-                self._token_hash(plaintext)
-            )
+            row = self._repository.get_session_by_hash(self._token_hash(plaintext))
         except KeyError:
             return None
         self._repository.touch_session(row["id"], client_ip=client_ip)
@@ -393,16 +535,14 @@ class AccountService:
         client_ip: str | None = None,
         user_agent: str | None = None,
     ) -> SessionCreation:
-        self._repository.get_membership(
-            user_id=principal.user_id,
-            owner_id=owner_id,
-        )
+        self._repository.get_membership(user_id=principal.user_id, owner_id=owner_id)
         self._repository.revoke_session(principal.session_id)
         return self._issue_session(
             user_id=principal.user_id,
             owner_id=owner_id,
             client_ip=client_ip,
             user_agent=user_agent,
+            mfa_authenticated=principal.mfa_authenticated_at is not None,
         )
 
     def profile(self, principal: HumanPrincipal) -> dict:
@@ -413,16 +553,160 @@ class AccountService:
                 "display_name": principal.display_name,
                 "email_verified": principal.email_verified_at is not None,
                 "email_verified_at": principal.email_verified_at,
+                "mfa_enabled": principal.mfa_enabled_at is not None,
+                "mfa_authenticated": principal.mfa_authenticated_at is not None,
+                "recovery_codes_remaining": self._repository.count_recovery_codes(
+                    user_id=principal.user_id
+                ),
             },
             "workspace": {
                 "id": principal.owner_id,
                 "name": principal.workspace_name,
                 "role": principal.role,
+                "require_mfa": principal.workspace_require_mfa,
+                "mfa_setup_required": (
+                    principal.workspace_require_mfa
+                    and principal.mfa_enabled_at is None
+                ),
             },
             "memberships": self._repository.list_memberships(
                 user_id=principal.user_id
             ),
         }
+
+    def begin_mfa_enrollment(self, *, principal: HumanPrincipal) -> dict:
+        user = self._repository.get_user(principal.user_id)
+        if user["email_verified_at"] is None:
+            raise ValueError("verify your email before enabling MFA")
+        if user["mfa_enabled_at"] is not None:
+            raise ValueError("MFA is already enabled")
+        enrollment = self._mfa.begin_enrollment(email=user["email"])
+        self._repository.set_mfa_secret(
+            user_id=user["id"],
+            encrypted_secret=enrollment.encrypted_secret,
+        )
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="mfa_enrollment_started",
+            success=True,
+            user_id=user["id"],
+        )
+        return {
+            "secret": enrollment.secret,
+            "provisioning_uri": enrollment.provisioning_uri,
+        }
+
+    def confirm_mfa_enrollment(
+        self,
+        *,
+        principal: HumanPrincipal,
+        code: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> list[str]:
+        user = self._repository.get_user(principal.user_id)
+        encrypted = user["mfa_secret_encrypted"]
+        if not encrypted or not self._mfa.verify_totp(
+            encrypted_secret=encrypted,
+            code=code,
+        ):
+            raise ValueError("invalid TOTP code")
+
+        self._repository.enable_mfa(user_id=user["id"])
+        self._repository.mark_session_mfa_authenticated(
+            session_id=principal.session_id
+        )
+        recovery_codes = generate_recovery_codes()
+        self._repository.replace_recovery_codes(
+            user_id=user["id"],
+            code_hashes=[
+                self._token_hash(normalize_recovery_code(item))
+                for item in recovery_codes
+            ],
+        )
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="mfa_enabled",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+        return recovery_codes
+
+    def regenerate_recovery_codes(
+        self,
+        *,
+        principal: HumanPrincipal,
+        code: str,
+    ) -> list[str]:
+        user = self._repository.get_user(principal.user_id)
+        if user["mfa_enabled_at"] is None or not self._verify_mfa_code(user, code):
+            raise ValueError("valid MFA code required")
+        recovery_codes = generate_recovery_codes()
+        self._repository.replace_recovery_codes(
+            user_id=user["id"],
+            code_hashes=[
+                self._token_hash(normalize_recovery_code(item))
+                for item in recovery_codes
+            ],
+        )
+        return recovery_codes
+
+    def disable_mfa(
+        self,
+        *,
+        principal: HumanPrincipal,
+        password: str,
+        code: str,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        memberships = self._repository.list_memberships(user_id=principal.user_id)
+        if any(item.get("require_mfa") for item in memberships):
+            raise ValueError("leave or disable workspace MFA policy before disabling MFA")
+        user = self._repository.get_user(principal.user_id)
+        try:
+            self._passwords.verify(user["password_hash"], password)
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            raise ValueError("current password is invalid") from None
+        if user["mfa_enabled_at"] is None or not self._verify_mfa_code(user, code):
+            raise ValueError("valid MFA code required")
+        self._repository.disable_mfa(user_id=user["id"])
+        self._repository.clear_recovery_codes(user_id=user["id"])
+        self._repository.revoke_trusted_devices(user_id=user["id"])
+        self._repository.revoke_other_sessions(
+            user_id=user["id"],
+            keep_session_id=principal.session_id,
+        )
+        self._repository.record_auth_event(
+            email=user["email"],
+            event_type="mfa_disabled",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+
+    def set_workspace_mfa_policy(
+        self,
+        *,
+        principal: HumanPrincipal,
+        require_mfa: bool,
+    ) -> dict:
+        if principal.role != "owner":
+            raise PermissionError("only workspace owners can change MFA policy")
+        if require_mfa:
+            members = self._repository.list_members(owner_id=principal.owner_id)
+            missing = [item for item in members if not item.get("mfa_enabled")]
+            if missing:
+                raise ValueError(
+                    f"{len(missing)} workspace member(s) must enable MFA first"
+                )
+        return self._repository.set_workspace_require_mfa(
+            owner_id=principal.owner_id,
+            require_mfa=require_mfa,
+        )
 
     def create_invitation(
         self,
@@ -495,6 +779,7 @@ class AccountService:
             owner_id=membership["owner_id"],
             client_ip=client_ip,
             user_agent=user_agent,
+            mfa_authenticated=principal.mfa_authenticated_at is not None,
         )
 
     def resend_verification(
@@ -602,6 +887,7 @@ class AccountService:
         )
         self._repository.reset_login_security(user_id=user["id"])
         revoked = self._repository.revoke_all_sessions(user_id=user["id"])
+        self._repository.revoke_trusted_devices(user_id=user["id"])
         self._repository.record_auth_event(
             email=user["email"],
             event_type="password_reset_completed",
@@ -653,6 +939,7 @@ class AccountService:
         )
 
     def logout_all(self, principal: HumanPrincipal) -> int:
+        self._repository.revoke_trusted_devices(user_id=principal.user_id)
         return self._repository.revoke_all_sessions(user_id=principal.user_id)
 
     def change_password(
@@ -674,6 +961,7 @@ class AccountService:
             user_id=principal.user_id,
             password_hash=self._passwords.hash(new_password),
         )
+        self._repository.revoke_trusted_devices(user_id=principal.user_id)
         return self._repository.revoke_other_sessions(
             user_id=principal.user_id,
             keep_session_id=principal.session_id,
@@ -692,6 +980,22 @@ class AccountService:
             owner_id=principal.owner_id,
             client_ip=client_ip,
             user_agent=user_agent,
+            mfa_authenticated=principal.mfa_authenticated_at is not None,
+        )
+
+    def _verify_mfa_code(self, user: dict, code: str) -> bool:
+        encrypted = user["mfa_secret_encrypted"]
+        if encrypted and self._mfa.verify_totp(
+            encrypted_secret=encrypted,
+            code=code,
+        ):
+            return True
+        normalized = normalize_recovery_code(code)
+        if len(normalized) < 8:
+            return False
+        return self._repository.consume_recovery_code(
+            user_id=user["id"],
+            code_hash=self._token_hash(normalized),
         )
 
     def _send_verification(self, user: dict) -> None:
@@ -769,6 +1073,7 @@ class AccountService:
         owner_id: str,
         client_ip: str | None = None,
         user_agent: str | None = None,
+        mfa_authenticated: bool = False,
     ) -> SessionCreation:
         plaintext = f"agrs_{secrets.token_urlsafe(32)}"
         csrf_token = f"agrc_{secrets.token_urlsafe(24)}"
@@ -781,6 +1086,7 @@ class AccountService:
             expires_at=expires_at,
             client_ip=client_ip,
             user_agent=user_agent,
+            mfa_authenticated=mfa_authenticated,
         )
         return SessionCreation(
             plaintext=plaintext,
@@ -805,4 +1111,7 @@ class AccountService:
             workspace_name=row["workspace_name"],
             csrf_hash=row["csrf_hash"],
             email_verified_at=row["email_verified_at"],
+            mfa_enabled_at=row["mfa_enabled_at"],
+            mfa_authenticated_at=row["mfa_authenticated_at"],
+            workspace_require_mfa=bool(row["workspace_require_mfa"]),
         )
