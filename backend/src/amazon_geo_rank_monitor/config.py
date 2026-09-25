@@ -52,6 +52,9 @@ class AppSettings(BaseSettings):
     mfa_challenge_minutes: int = 5
     trusted_device_days: int = 30
     trusted_device_cookie_name: str = "agrm_trusted_device"
+    sso_encryption_key: str | None = None
+    sso_callback_url: str = "http://localhost:8000/api/v1/auth/sso/callback"
+    sso_transaction_minutes: int = 5
     session_cookie_name: str = "agrm_session"
     csrf_cookie_name: str = "agrm_csrf"
     session_cookie_secure: bool = False
