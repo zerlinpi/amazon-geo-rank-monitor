@@ -56,6 +56,10 @@ function monitorName(id: string) {
   return monitors.value.find(item => item.id === id)?.name || id
 }
 
+function reportMonitorNames(ids: string[]) {
+  return ids.map(id => monitorName(id)).join(', ')
+}
+
 function geoName(id: string) {
   return geos.value.find(item => item.id === id)?.name || id
 }
@@ -509,7 +513,7 @@ onMounted(load)
           <el-table-column prop="name" label="Report" min-width="180" />
           <el-table-column label="Monitors" min-width="190">
             <template #default="{ row }">
-              {{ row.monitor_target_ids.map((id: string) => monitorName(id)).join(', ') }}
+              {{ reportMonitorNames(row.monitor_target_ids) }}
             </template>
           </el-table-column>
           <el-table-column prop="schedule" label="UTC cron" min-width="130" />
