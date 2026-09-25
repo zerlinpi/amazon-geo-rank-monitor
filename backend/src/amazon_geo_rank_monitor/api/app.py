@@ -92,7 +92,8 @@ def create_app(
             scheme, _, credential = authorization.partition(" ")
             if scheme.lower() == "bearer" and credential:
                 bearer_token = credential
-        rate_credential = api_key or bearer_token
+        session_cookie = request.cookies.get(services.session_cookie_name)
+        rate_credential = api_key or bearer_token or session_cookie
         public_auth = request.url.path in {
             "/api/v1/auth/login",
             "/api/v1/auth/register",
