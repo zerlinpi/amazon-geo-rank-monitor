@@ -19,11 +19,13 @@ from amazon_geo_rank_monitor.monitor.service import RankMonitorService
 from amazon_geo_rank_monitor.probe_cache import ProbeCacheService
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
+from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base, TenantRow
 from amazon_geo_rank_monitor.repositories.probe_cache_repository import (
     ProbeCacheRepository,
 )
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
+from amazon_geo_rank_monitor.workers.rank_worker import RankWorker
 
 
 class CountingProvider:
@@ -276,6 +278,64 @@ async def test_full_cache_hit_runs_with_zero_available_credits() -> None:
     assert len(provider.calls) == 1
     assert second.upstream_probe_count == 0
     assert second.cache_hit_count == 1
+    assert billing.get_balance("tenant-a") == {
+        "balance": 0,
+        "reserved": 0,
+        "available": 0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_worker_cache_hit_succeeds_after_credits_are_exhausted() -> None:
+    db = engine()
+    provider = CountingProvider()
+    jobs = JobRepository(db)
+    ranks = RankRepository(db)
+    billing = BillingRepository(db)
+    cache = cache_service(db)
+    billing.grant(
+        owner_id="tenant-a",
+        credits=1,
+        idempotency_key="grant:worker-cache",
+    )
+    worker = RankWorker(
+        job_repository=jobs,
+        rank_repository=ranks,
+        provider_registry=ProviderRegistry(
+            managed=provider,
+            strict=provider,
+        ),
+        billing_repository=billing,
+        rate_card=RateCard(managed_serp=1, browser_verified_serp=5),
+        probe_cache=cache,
+    )
+    payload = request(geo()).model_dump(mode="json")
+
+    first_job = jobs.enqueue(
+        owner_id="tenant-a",
+        provider_mode="managed",
+        request_payload=payload,
+    )
+    first = await worker.run_once()
+    assert first["id"] == first_job["id"]
+    assert first["status"] == "succeeded"
+    assert billing.get_balance("tenant-a")["available"] == 0
+    assert len(provider.calls) == 1
+
+    second_job = jobs.enqueue(
+        owner_id="tenant-a",
+        provider_mode="managed",
+        request_payload=payload,
+    )
+    second = await worker.run_once()
+    assert second["id"] == second_job["id"]
+    assert second["status"] == "succeeded"
+    assert len(provider.calls) == 1
+
+    saved = ranks.get_run(second["run_id"], owner_id="tenant-a")
+    assert saved["settled_probe_count"] == 0
+    assert saved["cache_hit_count"] == 1
+    assert saved["observations"][0]["probe_source"] == "cache"
     assert billing.get_balance("tenant-a") == {
         "balance": 0,
         "reserved": 0,
