@@ -1524,3 +1524,91 @@ Existing production databases should run:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## Billing-aware SERP probe cache
+
+Phase 19 implements the reusable SERP probe cache from the original SaaS design. Cache reuse happens before ASIN matching, because the billable/upstream unit is the SERP probe rather than an individual ASIN.
+
+A cache identity contains the fields that materially affect the upstream SERP:
+
+- tenant / workspace;
+- provider mode, provider name and verification level;
+- marketplace and keyword;
+- requested IP country/state/city/postal code;
+- Amazon delivery country/postal code;
+- device;
+- search depth.
+
+Geo Profile display name, profile ID and weighting are deliberately excluded from the cache identity. This means a weight-only edit can reuse the same compatible SERP and recalculate weighted rank, while an IP location, delivery location, device, search-depth or provider change produces a cache miss.
+
+Cache entries are tenant-scoped and are never shared across workspaces.
+
+### Default cache policy
+
+```env
+PROBE_CACHE_MANAGED_TTL_SECONDS=300
+PROBE_CACHE_STRICT_TTL_SECONDS=0
+PROBE_CACHE_RETENTION_HOURS=24
+```
+
+Managed probes reuse a compatible result for five minutes by default. Strict browser verification is uncached by default so an explicit strict verification continues to perform a fresh residential/browser probe. Strict caching can be enabled intentionally by setting a positive strict TTL.
+
+The cache is an optimization rather than a correctness dependency. Cache lookup/store failures fail open and the normal provider path continues.
+
+### Billing behavior
+
+Before a paid request or scheduled worker run, the application preflights fresh compatible cache entries.
+
+Only expected cache misses are included in the credit reservation. After execution, settlement charges only successfully completed upstream probes.
+
+Therefore:
+
+- cache hits do not consume credits as new upstream probes;
+- a fully cached request creates no credit reservation;
+- a fully cached request can run even when the workspace has zero available credits;
+- if another worker fills a cache entry after preflight, the unused reservation is released during settlement;
+- provider failures are not converted into cache hits and are not cached.
+
+For rank runs, `settled_probe_count` now explicitly represents successfully completed upstream/billable probes. `cache_hit_count` records reused probes separately.
+
+### Provenance and transparency
+
+Every request still creates a new RankRun and new RankObservation / RankSnapshot rows so historical analytics remain continuous.
+
+Each observation exposes:
+
+- `probe_source=upstream|cache`;
+- `cache_age_seconds` for cached observations;
+- the original `observed_at` fetch timestamp.
+
+Direct REST/MCP rank-check responses also expose:
+
+```json
+{
+  "usage": {
+    "requested_probe_count": 5,
+    "upstream_probe_count": 2,
+    "cache_hit_count": 3,
+    "billable_probe_count": 2
+  }
+}
+```
+
+Fantastic Admin Rank Explorer and Run History display the same usage/provenance so cache savings are visible rather than implicit.
+
+## Phase 19 migration
+
+Schema revision `20260925_0013` adds:
+
+- `serp_probe_cache`;
+- `rank_runs.cache_hit_count`;
+- `rank_observations.probe_source`;
+- `rank_observations.cache_age_seconds`.
+
+Upgrade existing deployments with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
