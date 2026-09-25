@@ -5,7 +5,6 @@ import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
 
-
 logger = logging.getLogger("amazon_geo_rank_monitor.email")
 
 
