@@ -78,7 +78,7 @@ function ruleTypeLabel(type: string) {
   return ruleTypes.find(item => item.value === type)?.label || type
 }
 
-function channelText(row: AlertRule) {
+function channelText(row: any) {
   const channels = []
   if (row.channels.email_count) {
     channels.push(`Email ×${row.channels.email_count}`)
