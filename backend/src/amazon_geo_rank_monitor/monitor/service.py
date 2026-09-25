@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from amazon_geo_rank_monitor.domain.errors import RankMonitorError
@@ -13,13 +14,24 @@ from amazon_geo_rank_monitor.domain.models import (
 from amazon_geo_rank_monitor.ranking.matcher import match_asins
 from amazon_geo_rank_monitor.ranking.weighted import calculate_weighted_rank
 
+logger = logging.getLogger("amazon_geo_rank_monitor.rank")
+
 
 class RankMonitorService:
     """Orchestrate one SERP probe per geo and fan it out to every requested ASIN."""
 
-    def __init__(self, *, provider: Any, repository: Any) -> None:
+    def __init__(
+        self,
+        *,
+        provider: Any,
+        repository: Any,
+        probe_cache=None,
+        provider_mode: str | None = None,
+    ) -> None:
         self._provider = provider
         self._repository = repository
+        self._probe_cache = probe_cache
+        self._provider_mode = provider_mode
 
     async def check(self, request: RankCheckRequest) -> list[RankSnapshot]:
         return (await self.check_with_result(request)).snapshots
@@ -42,19 +54,63 @@ class RankMonitorService:
         observations: list[RankObservation] = []
         errors: list[str] = []
         successful_probe_count = 0
+        upstream_probe_count = 0
+        cache_hit_count = 0
 
         for geo_profile in request.geo_profiles:
-            try:
-                result = await self._provider.search(
-                    marketplace=request.marketplace,
-                    keyword=request.keyword,
-                    geo_profile=geo_profile,
-                    device=geo_profile.device,
-                    search_depth=request.search_depth,
-                )
-            except RankMonitorError as exc:
-                errors.append(f"{geo_profile.id}: {exc}")
-                continue
+            cache_hit = None
+            if self._probe_cache is not None and self._provider_mode is not None:
+                try:
+                    cache_hit = self._probe_cache.lookup(
+                        owner_id=owner_id,
+                        provider_mode=self._provider_mode,
+                        provider=self._provider,
+                        marketplace=request.marketplace,
+                        keyword=request.keyword,
+                        geo_profile=geo_profile,
+                        search_depth=request.search_depth,
+                    )
+                except Exception:
+                    logger.exception(
+                        "probe_cache_lookup_failed owner_id=%s geo_profile_id=%s",
+                        owner_id,
+                        geo_profile.id,
+                    )
+
+            if cache_hit is not None:
+                result = cache_hit.result
+                cache_hit_count += 1
+            else:
+                try:
+                    result = await self._provider.search(
+                        marketplace=request.marketplace,
+                        keyword=request.keyword,
+                        geo_profile=geo_profile,
+                        device=geo_profile.device,
+                        search_depth=request.search_depth,
+                    )
+                except RankMonitorError as exc:
+                    errors.append(f"{geo_profile.id}: {exc}")
+                    continue
+                upstream_probe_count += 1
+                if self._probe_cache is not None and self._provider_mode is not None:
+                    try:
+                        self._probe_cache.store(
+                            owner_id=owner_id,
+                            provider_mode=self._provider_mode,
+                            provider=self._provider,
+                            marketplace=request.marketplace,
+                            keyword=request.keyword,
+                            geo_profile=geo_profile,
+                            search_depth=request.search_depth,
+                            result=result,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "probe_cache_store_failed owner_id=%s geo_profile_id=%s",
+                            owner_id,
+                            geo_profile.id,
+                        )
 
             provider_name = getattr(
                 self._provider,
@@ -74,6 +130,17 @@ class RankMonitorService:
                 provider=provider_name,
                 verification_level=verification_level,
             )
+            if cache_hit is not None:
+                geo_observations = [
+                    observation.model_copy(
+                        update={
+                            "observed_at": cache_hit.fetched_at,
+                            "probe_source": "cache",
+                            "cache_age_seconds": cache_hit.age_seconds,
+                        }
+                    )
+                    for observation in geo_observations
+                ]
             self._repository.save_observations(run_id, geo_observations)
             observations.extend(geo_observations)
             successful_probe_count += 1
@@ -100,7 +167,8 @@ class RankMonitorService:
         self._repository.complete_run(
             run_id,
             status=status,
-            settled_probe_count=successful_probe_count,
+            settled_probe_count=upstream_probe_count,
+            cache_hit_count=cache_hit_count,
             error_summary="; ".join(errors) if errors else None,
         )
         return RankExecutionResult(
@@ -109,4 +177,7 @@ class RankMonitorService:
             observations=observations,
             snapshots=snapshots,
             errors=errors,
+            requested_probe_count=len(request.geo_profiles),
+            upstream_probe_count=upstream_probe_count,
+            cache_hit_count=cache_hit_count,
         )
