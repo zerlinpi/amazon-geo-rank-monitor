@@ -5,11 +5,11 @@ from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from amazon_geo_rank_monitor.alerts import AlertService
 from amazon_geo_rank_monitor.api.app import AppServices
 from amazon_geo_rank_monitor.api.rate_limit import build_rate_limiter
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.auth.accounts import AccountService
-from amazon_geo_rank_monitor.alerts import AlertService
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
 from amazon_geo_rank_monitor.auth.scim import ScimService
 from amazon_geo_rank_monitor.auth.sso import OidcSsoService
