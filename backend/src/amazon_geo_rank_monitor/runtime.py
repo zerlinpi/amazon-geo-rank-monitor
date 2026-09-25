@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
 from amazon_geo_rank_monitor.alerts import AlertService
+from amazon_geo_rank_monitor.analytics import AnalyticsService
 from amazon_geo_rank_monitor.api.app import AppServices
 from amazon_geo_rank_monitor.api.rate_limit import build_rate_limiter
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
@@ -27,8 +28,10 @@ from amazon_geo_rank_monitor.providers.playwright_amazon import (
     PlaywrightAmazonBrowserClient,
 )
 from amazon_geo_rank_monitor.providers.strict_browser import StrictBrowserRankProvider
+from amazon_geo_rank_monitor.reports import ReportService
 from amazon_geo_rank_monitor.repositories.account_repository import AccountRepository
 from amazon_geo_rank_monitor.repositories.alert_repository import AlertRepository
+from amazon_geo_rank_monitor.repositories.analytics_repository import AnalyticsRepository
 from amazon_geo_rank_monitor.repositories.audit_repository import AuditRepository
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
@@ -36,6 +39,7 @@ from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
 from amazon_geo_rank_monitor.repositories.monitor_repository import MonitorRepository
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
+from amazon_geo_rank_monitor.repositories.report_repository import ReportRepository
 from amazon_geo_rank_monitor.repositories.scim_repository import ScimRepository
 from amazon_geo_rank_monitor.repositories.sso_repository import SsoRepository
 from amazon_geo_rank_monitor.repositories.tenant_repository import TenantRepository
@@ -157,6 +161,8 @@ def build_services(settings: AppSettings) -> AppServices:
         default_max_attempts=settings.job_max_attempts,
     )
     rank_repository = RankRepository(engine)
+    analytics_repository = AnalyticsRepository(engine)
+    report_repository = ReportRepository(engine)
     accounts_repository = AccountRepository(engine)
     alert_repository = AlertRepository(engine)
     sso_repository = SsoRepository(engine)
@@ -198,6 +204,21 @@ def build_services(settings: AppSettings) -> AppServices:
         repository=scim_repository,
         pepper=settings.scim_token_pepper or settings.api_key_pepper,
     )
+    analytics = AnalyticsService(
+        repository=analytics_repository,
+        monitor_repository=monitor_repository,
+    )
+    reports = ReportService(
+        repository=report_repository,
+        analytics=analytics,
+        monitor_repository=monitor_repository,
+        email_sender=email_sender,
+        encryption_key=(
+            settings.report_encryption_key
+            or settings.mfa_encryption_key
+            or settings.api_key_pepper
+        ),
+    )
     alerts = AlertService(
         repository=alert_repository,
         rank_repository=rank_repository,
@@ -230,6 +251,10 @@ def build_services(settings: AppSettings) -> AppServices:
         ),
         alert_repository=alert_repository,
         alerts=alerts,
+        analytics_repository=analytics_repository,
+        analytics=analytics,
+        report_repository=report_repository,
+        reports=reports,
         billing_repository=billing,
         rate_card=RateCard(
             managed_serp=settings.managed_serp_credit_cost,
