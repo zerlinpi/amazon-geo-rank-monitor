@@ -150,10 +150,20 @@ def build_services(settings: AppSettings) -> AppServices:
         Base.metadata.create_all(engine)
 
     tenants = TenantRepository(engine)
+    geo_repository = GeoRepository(engine)
+    monitor_repository = MonitorRepository(engine)
+    job_repository = JobRepository(
+        engine,
+        default_max_attempts=settings.job_max_attempts,
+    )
+    rank_repository = RankRepository(engine)
     accounts_repository = AccountRepository(engine)
     alert_repository = AlertRepository(engine)
     sso_repository = SsoRepository(engine)
     scim_repository = ScimRepository(engine)
+    worker_status_repository = WorkerStatusRepository(engine)
+    audit_repository = AuditRepository(engine)
+
     email_sender = build_email_sender(settings)
     accounts = AccountService(
         repository=accounts_repository,
@@ -190,14 +200,9 @@ def build_services(settings: AppSettings) -> AppServices:
     )
     alerts = AlertService(
         repository=alert_repository,
-        rank_repository=RankRepository(engine),
-        alert_repository=alert_repository,
-        alerts=alerts,
-        job_repository=JobRepository(
-            engine,
-            default_max_attempts=settings.job_max_attempts,
-        ),
-        monitor_repository=MonitorRepository(engine),
+        rank_repository=rank_repository,
+        job_repository=job_repository,
+        monitor_repository=monitor_repository,
         email_sender=email_sender,
         encryption_key=(
             settings.alert_encryption_key
@@ -206,21 +211,25 @@ def build_services(settings: AppSettings) -> AppServices:
         ),
         webhook_allowed_hosts=settings.alert_webhook_allowed_host_list,
     )
+
     billing = BillingRepository(engine)
     _seed_credit_packs(billing, settings)
     return AppServices(
         tenant_repository=tenants,
-        geo_repository=GeoRepository(engine),
-        monitor_repository=MonitorRepository(engine),
-        job_repository=JobRepository(
-            engine,
-            default_max_attempts=settings.job_max_attempts,
-        ),
-        rank_repository=RankRepository(engine),
+        geo_repository=geo_repository,
+        monitor_repository=monitor_repository,
+        job_repository=job_repository,
+        rank_repository=rank_repository,
         api_keys=ApiKeyService(
             repository=tenants,
             pepper=settings.api_key_pepper,
         ),
+        provider_registry=ProviderRegistry(
+            managed=_managed_provider(settings),
+            strict=_strict_provider(settings),
+        ),
+        alert_repository=alert_repository,
+        alerts=alerts,
         billing_repository=billing,
         rate_card=RateCard(
             managed_serp=settings.managed_serp_credit_cost,
@@ -228,8 +237,8 @@ def build_services(settings: AppSettings) -> AppServices:
         ),
         stripe_billing=_stripe_billing(billing, settings),
         database_engine=engine,
-        worker_status_repository=WorkerStatusRepository(engine),
-        audit_repository=AuditRepository(engine),
+        worker_status_repository=worker_status_repository,
+        audit_repository=audit_repository,
         account_repository=accounts_repository,
         accounts=accounts,
         sso_repository=sso_repository,
@@ -251,9 +260,5 @@ def build_services(settings: AppSettings) -> AppServices:
             requests_per_minute=settings.auth_rate_limit_per_minute,
             redis_url=settings.redis_url,
             namespace="agrm:auth",
-        ),
-        provider_registry=ProviderRegistry(
-            managed=_managed_provider(settings),
-            strict=_strict_provider(settings),
         ),
     )
