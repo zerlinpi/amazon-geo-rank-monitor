@@ -329,3 +329,27 @@ def test_mfa_cannot_be_disabled_while_workspace_requires_it() -> None:
     )
     assert disabled.status_code == 422
     assert "workspace MFA policy" in disabled.json()["detail"]
+
+
+def test_workspace_mfa_policy_does_not_block_api_keys() -> None:
+    client, services = build_client()
+    registered = register_owner(client)
+    enable_mfa(client, services)
+
+    policy = client.patch(
+        "/api/v1/team/security-policy",
+        headers=csrf_headers(client),
+        json={"require_mfa": True},
+    )
+    assert policy.status_code == 200
+
+    key = services.api_keys.create(
+        owner_id=registered["workspace"]["id"],
+        name="automation",
+    )
+    machine = client_for(services)
+    response = machine.get(
+        "/api/v1/geo-profiles",
+        headers={"X-API-Key": key.plaintext},
+    )
+    assert response.status_code == 200
