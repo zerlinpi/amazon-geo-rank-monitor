@@ -29,6 +29,9 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "auth_events",
         "mfa_recovery_codes",
         "trusted_devices",
+        "workspace_sso_configs",
+        "sso_login_transactions",
+        "sso_identities",
     } <= tables
     inspector = inspect(create_engine(database_url))
     api_key_columns = {
