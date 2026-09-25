@@ -52,6 +52,8 @@ class AppServices:
     allow_public_signup: bool = True
     session_cookie_name: str = "agrm_session"
     csrf_cookie_name: str = "agrm_csrf"
+    trusted_device_cookie_name: str = "agrm_trusted_device"
+    trusted_device_days: int = 30
     session_cookie_secure: bool = False
     session_cookie_samesite: str = "lax"
 
@@ -100,6 +102,7 @@ def create_app(
             "/api/v1/auth/forgot-password",
             "/api/v1/auth/reset-password",
             "/api/v1/auth/verify-email",
+            "/api/v1/auth/mfa/complete",
         }
         if public_auth and request.method == "POST":
             auth_limiter = request.app.state.auth_rate_limiter
