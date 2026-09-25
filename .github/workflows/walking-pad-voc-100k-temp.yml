@@ -21,24 +21,26 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
-      - name: Collect general treadmill benchmark
+          pip install openpyxl requests
+      - name: Collect walking pad VOC 100K
         env:
           TARGET_REVIEWS: "100000"
-          OUTDIR: "general_treadmill_output"
-        run: python scripts/general_treadmill_benchmark.py
+          MIN_VALID: "100000"\n          OUTDIR: "voc_output"
+        run: python scripts/walking_pad_voc_10k.py
       - name: Show stats
         if: always()
         run: |
-          find general_treadmill_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
-          cat general_treadmill_output/stats.json || true
-      - name: Upload benchmark artifact
+          find voc_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
+          cat voc_output/stats.json || true
+      - name: Upload walking pad VOC artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: walking-pad-voc-general-treadmill-2023
-          path: general_treadmill_output/
+          name: walking-pad-voc-100k
+          path: voc_output/
           if-no-files-found: warn
           retention-days: 7
 
 # rerun-100k-2
+
+# true-walking-pad-100k
