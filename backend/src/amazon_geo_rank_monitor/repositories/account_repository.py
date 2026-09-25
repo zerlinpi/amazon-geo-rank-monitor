@@ -17,6 +17,7 @@ from .models import (
     UserSessionRow,
     WorkspaceInvitationRow,
     WorkspaceMembershipRow,
+    WorkspaceSsoConfigRow,
 )
 
 
@@ -264,6 +265,8 @@ class AccountRepository:
         client_ip: str | None = None,
         user_agent: str | None = None,
         mfa_authenticated: bool = False,
+        auth_method: str = "local",
+        sso_owner_id: str | None = None,
     ) -> dict:
         session_id = str(uuid4())
         with self._sessions.begin() as session:
@@ -280,6 +283,8 @@ class AccountRepository:
                 mfa_authenticated_at=(
                     datetime.now(UTC) if mfa_authenticated else None
                 ),
+                auth_method=auth_method,
+                sso_owner_id=sso_owner_id,
             )
             session.add(row)
         return self.get_session_by_hash(token_hash)
@@ -293,6 +298,7 @@ class AccountRepository:
                     UserRow,
                     WorkspaceMembershipRow,
                     TenantRow,
+                    WorkspaceSsoConfigRow,
                 )
                 .join(UserRow, UserRow.id == UserSessionRow.user_id)
                 .join(
@@ -301,6 +307,10 @@ class AccountRepository:
                     & (WorkspaceMembershipRow.owner_id == UserSessionRow.owner_id),
                 )
                 .join(TenantRow, TenantRow.id == UserSessionRow.owner_id)
+                .outerjoin(
+                    WorkspaceSsoConfigRow,
+                    WorkspaceSsoConfigRow.owner_id == UserSessionRow.owner_id,
+                )
                 .where(
                     UserSessionRow.token_hash == token_hash,
                     UserSessionRow.revoked_at.is_(None),
@@ -310,7 +320,7 @@ class AccountRepository:
             ).first()
             if result is None:
                 raise KeyError("session not found")
-            session_row, user, membership, tenant = result
+            session_row, user, membership, tenant, sso_config = result
             return {
                 "id": session_row.id,
                 "user_id": session_row.user_id,
@@ -320,6 +330,8 @@ class AccountRepository:
                 "created_at": session_row.created_at,
                 "expires_at": session_row.expires_at,
                 "mfa_authenticated_at": session_row.mfa_authenticated_at,
+                "auth_method": session_row.auth_method,
+                "sso_owner_id": session_row.sso_owner_id,
                 "last_seen_at": session_row.last_seen_at,
                 "created_ip": session_row.created_ip,
                 "last_seen_ip": session_row.last_seen_ip,
@@ -331,6 +343,11 @@ class AccountRepository:
                 "mfa_enabled_at": user.mfa_enabled_at,
                 "workspace_name": tenant.name,
                 "workspace_require_mfa": tenant.require_mfa,
+                "workspace_enforce_sso": bool(
+                    sso_config
+                    and sso_config.enabled
+                    and sso_config.enforce_sso
+                ),
             }
 
     def touch_session(
@@ -365,6 +382,8 @@ class AccountRepository:
                     "created_at": row.created_at,
                     "expires_at": row.expires_at,
                     "mfa_authenticated_at": row.mfa_authenticated_at,
+                    "auth_method": row.auth_method,
+                    "sso_owner_id": row.sso_owner_id,
                     "last_seen_at": row.last_seen_at,
                     "created_ip": row.created_ip,
                     "last_seen_ip": row.last_seen_ip,
