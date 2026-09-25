@@ -58,6 +58,7 @@ class AppSettings(BaseSettings):
     sso_transaction_minutes: int = 5
     alert_encryption_key: str | None = None
     alert_webhook_allowed_hosts: str = ""
+    report_encryption_key: str | None = None
     session_cookie_name: str = "agrm_session"
     csrf_cookie_name: str = "agrm_csrf"
     session_cookie_secure: bool = False

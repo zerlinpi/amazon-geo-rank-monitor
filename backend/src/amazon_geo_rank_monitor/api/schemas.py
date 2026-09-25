@@ -180,3 +180,23 @@ class AlertRuleUpdate(BaseModel):
     channels: AlertChannelsInput | None = None
     cooldown_minutes: int | None = Field(default=None, ge=0, le=10080)
     enabled: bool | None = None
+
+
+class ReportScheduleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    monitor_target_ids: list[str] = Field(min_length=1)
+    recipients: list[str] = Field(min_length=1)
+    schedule: str = Field(min_length=1, max_length=128)
+    lookback_hours: int = Field(default=168, ge=1, le=8760)
+    include_csv: bool = True
+    enabled: bool = True
+
+
+class ReportScheduleUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    monitor_target_ids: list[str] | None = Field(default=None, min_length=1)
+    recipients: list[str] | None = Field(default=None, min_length=1)
+    schedule: str | None = Field(default=None, min_length=1, max_length=128)
+    lookback_hours: int | None = Field(default=None, ge=1, le=8760)
+    include_csv: bool | None = None
+    enabled: bool | None = None

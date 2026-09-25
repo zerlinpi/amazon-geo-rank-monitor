@@ -38,6 +38,8 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "rank_alert_rules",
         "rank_alert_events",
         "rank_alert_deliveries",
+        "report_schedules",
+        "report_deliveries",
     } <= tables
     inspector = inspect(create_engine(database_url))
     api_key_columns = {

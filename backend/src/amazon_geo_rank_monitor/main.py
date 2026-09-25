@@ -13,6 +13,7 @@ from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 from amazon_geo_rank_monitor.mcp.server import build_local_mcp_server
 from amazon_geo_rank_monitor.mcp.tools import RankMcpTools
 from amazon_geo_rank_monitor.runtime import build_services
+from amazon_geo_rank_monitor.scheduling.reports import ReportScheduler
 from amazon_geo_rank_monitor.scheduling.service import MonitorScheduler
 from amazon_geo_rank_monitor.workers.rank_worker import RankWorker
 
@@ -86,6 +87,7 @@ async def _scheduler_loop(*, once: bool) -> None:
     settings = AppSettings()
     services = build_services(settings)
     scheduler = MonitorScheduler(services=services)
+    report_scheduler = ReportScheduler(services=services)
     scheduler_id = settings.scheduler_id or f"scheduler-{socket.gethostname()}"
 
     while True:
@@ -94,8 +96,18 @@ async def _scheduler_loop(*, once: bool) -> None:
             worker_type="scheduler",
             status="running",
         )
-        outcomes = scheduler.run_once()
+        monitor_outcomes = scheduler.run_once()
+        report_outcomes = report_scheduler.run_once()
+        outcomes = [
+            *({"type": "monitor", **item} for item in monitor_outcomes),
+            *({"type": "report", **item} for item in report_outcomes),
+        ]
         successful = [item for item in outcomes if item.get("job_id")]
+        processed = [
+            item
+            for item in outcomes
+            if item.get("job_id") or item.get("delivery_id")
+        ]
         errors = [item for item in outcomes if item.get("error")]
         services.worker_status_repository.heartbeat(
             worker_id=scheduler_id,
@@ -103,7 +115,7 @@ async def _scheduler_loop(*, once: bool) -> None:
             status="error" if errors else "idle",
             last_job_id=successful[-1]["job_id"] if successful else None,
             last_error=errors[0]["error"] if errors else None,
-            processed_delta=len(successful),
+            processed_delta=len(processed),
         )
         if outcomes:
             print(json.dumps(outcomes, default=str))
@@ -113,7 +125,9 @@ async def _scheduler_loop(*, once: bool) -> None:
 
 
 def scheduler_main() -> None:
-    parser = argparse.ArgumentParser(description="Dispatch due monitor schedules")
+    parser = argparse.ArgumentParser(
+        description="Dispatch due monitor and report schedules"
+    )
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     asyncio.run(_scheduler_loop(once=args.once))

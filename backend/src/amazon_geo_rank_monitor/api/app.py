@@ -21,12 +21,14 @@ from .errors import (
 from .rate_limit import build_rate_limiter, rate_limit_identity
 from .routes import (
     alerts_router,
+    analytics_router,
     api_keys_router,
     auth_router,
     billing_router,
     geo_profiles_router,
     monitors_router,
     rank_router,
+    reports_router,
     scim_router,
     system_router,
     team_router,
@@ -44,6 +46,10 @@ class AppServices:
     provider_registry: Any
     alert_repository: Any | None = None
     alerts: Any | None = None
+    analytics_repository: Any | None = None
+    analytics: Any | None = None
+    report_repository: Any | None = None
+    reports: Any | None = None
     billing_repository: Any | None = None
     rate_card: Any | None = None
     stripe_billing: Any | None = None
@@ -251,10 +257,12 @@ def create_app(
 
     app.include_router(auth_router)
     app.include_router(alerts_router)
+    app.include_router(analytics_router)
     app.include_router(team_router)
     app.include_router(geo_profiles_router)
     app.include_router(monitors_router)
     app.include_router(rank_router)
+    app.include_router(reports_router)
     app.include_router(scim_router)
     app.include_router(api_keys_router)
     app.include_router(billing_router)

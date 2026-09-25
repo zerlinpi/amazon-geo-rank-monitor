@@ -603,6 +603,63 @@ class RankAlertDeliveryRow(Base):
     )
 
 
+class ReportScheduleRow(Base):
+    __tablename__ = "report_schedules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    monitor_target_ids: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    recipients_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    schedule: Mapped[str] = mapped_column(String(128), nullable=False)
+    lookback_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=168)
+    include_csv: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ReportDeliveryRow(Base):
+    __tablename__ = "report_deliveries"
+    __table_args__ = (
+        UniqueConstraint(
+            "schedule_id",
+            "scheduled_for",
+            name="uq_report_schedule_delivery_slot",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    schedule_id: Mapped[str] = mapped_column(
+        ForeignKey("report_schedules.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    scheduled_for: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sent_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    subject: Mapped[str] = mapped_column(String(300), nullable=False)
+    summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class RankJobRow(Base):
     __tablename__ = "rank_jobs"
 
