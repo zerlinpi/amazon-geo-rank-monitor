@@ -50,6 +50,10 @@ class AppServices:
     account_repository: Any | None = None
     accounts: Any | None = None
     allow_public_signup: bool = True
+    session_cookie_name: str = "agrm_session"
+    csrf_cookie_name: str = "agrm_csrf"
+    session_cookie_secure: bool = False
+    session_cookie_samesite: str = "lax"
 
 
 def create_app(
@@ -187,7 +191,7 @@ def create_app(
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cors_origins,
-            allow_credentials=False,
+            allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
         )
