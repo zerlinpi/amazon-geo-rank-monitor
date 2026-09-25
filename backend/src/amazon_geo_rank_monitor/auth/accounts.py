@@ -28,6 +28,10 @@ class AccountLockedError(ValueError):
     pass
 
 
+class SsoRequiredError(ValueError):
+    pass
+
+
 ROLE_SCOPES: dict[str, frozenset[str]] = {
     "owner": frozenset({"*"}),
     "admin": frozenset(
@@ -135,6 +139,7 @@ class AccountService:
         mfa_issuer: str = "Amazon Geo Rank Monitor",
         mfa_challenge_minutes: int = 5,
         trusted_device_days: int = 30,
+        sso_repository=None,
     ) -> None:
         if session_ttl_hours < 1:
             raise ValueError("session_ttl_hours must be at least 1")
@@ -168,6 +173,7 @@ class AccountService:
         )
         self._mfa_challenge_ttl = timedelta(minutes=mfa_challenge_minutes)
         self._trusted_device_ttl = timedelta(days=trusted_device_days)
+        self._sso_repository = sso_repository
 
     @staticmethod
     def normalize_email(email: str) -> str:
@@ -374,6 +380,22 @@ class AccountService:
         if membership is None:
             raise ValueError("workspace membership not found")
 
+        if self._sso_repository is not None:
+            sso_config = self._sso_repository.get_config(
+                owner_id=membership["owner_id"]
+            )
+            if sso_config and sso_config["enabled"] and sso_config["enforce_sso"]:
+                self._repository.record_auth_event(
+                    email=normalized_email,
+                    event_type="password_login_blocked_by_sso",
+                    success=False,
+                    user_id=user["id"],
+                    client_ip=client_ip,
+                    user_agent=user_agent,
+                    details={"owner_id": membership["owner_id"]},
+                )
+                raise SsoRequiredError("SSO is required for this workspace")
+
         self._repository.record_login_success(
             user_id=user["id"],
             client_ip=client_ip,
@@ -507,6 +529,53 @@ class AccountService:
             principal=session.principal,
             trusted_device_token=trusted_token,
             trusted_device_expires_at=trusted_expires_at,
+        )
+
+    def create_sso_account(
+        self,
+        *,
+        owner_id: str,
+        email: str,
+        display_name: str,
+    ) -> tuple[dict, dict]:
+        normalized_email = self.normalize_email(email)
+        user = self._repository.find_user_by_email(normalized_email)
+        if user is None:
+            user = self._repository.create_user(
+                email=normalized_email,
+                password_hash=self._passwords.hash(secrets.token_urlsafe(48)),
+                display_name=display_name.strip() or normalized_email.split("@", 1)[0],
+            )
+            self._repository.mark_email_verified(user_id=user["id"])
+            user = self._repository.get_user(user["id"])
+        try:
+            membership = self._repository.get_membership(
+                user_id=user["id"],
+                owner_id=owner_id,
+            )
+        except KeyError:
+            membership = self._repository.create_membership(
+                owner_id=owner_id,
+                user_id=user["id"],
+                role="viewer",
+            )
+        return user, membership
+
+    def issue_sso_session(
+        self,
+        *,
+        user_id: str,
+        owner_id: str,
+        mfa_authenticated: bool,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> SessionCreation:
+        return self._issue_session(
+            user_id=user_id,
+            owner_id=owner_id,
+            client_ip=client_ip,
+            user_agent=user_agent,
+            mfa_authenticated=mfa_authenticated,
         )
 
     def authenticate_session(
