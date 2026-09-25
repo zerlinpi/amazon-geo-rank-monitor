@@ -10,6 +10,7 @@ from amazon_geo_rank_monitor.api.rate_limit import build_rate_limiter
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.auth.accounts import AccountService
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
+from amazon_geo_rank_monitor.auth.sso import OidcSsoService
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.billing.stripe_service import StripeBillingService
 from amazon_geo_rank_monitor.config import (
@@ -32,6 +33,7 @@ from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
 from amazon_geo_rank_monitor.repositories.monitor_repository import MonitorRepository
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
+from amazon_geo_rank_monitor.repositories.sso_repository import SsoRepository
 from amazon_geo_rank_monitor.repositories.tenant_repository import TenantRepository
 from amazon_geo_rank_monitor.repositories.worker_status_repository import (
     WorkerStatusRepository,
@@ -145,6 +147,32 @@ def build_services(settings: AppSettings) -> AppServices:
 
     tenants = TenantRepository(engine)
     accounts_repository = AccountRepository(engine)
+    sso_repository = SsoRepository(engine)
+    accounts = AccountService(
+        repository=accounts_repository,
+        session_ttl_hours=settings.session_ttl_hours,
+        invitation_ttl_hours=settings.invitation_ttl_hours,
+        verification_ttl_hours=settings.email_verification_ttl_hours,
+        password_reset_ttl_minutes=settings.password_reset_ttl_minutes,
+        login_max_failures=settings.login_max_failures,
+        login_lock_minutes=settings.login_lock_minutes,
+        email_sender=build_email_sender(settings),
+        public_web_url=settings.public_web_url,
+        mfa_encryption_key=settings.mfa_encryption_key or settings.api_key_pepper,
+        mfa_issuer=settings.mfa_issuer,
+        mfa_challenge_minutes=settings.mfa_challenge_minutes,
+        trusted_device_days=settings.trusted_device_days,
+        sso_repository=sso_repository,
+    )
+    sso = OidcSsoService(
+        repository=sso_repository,
+        account_repository=accounts_repository,
+        accounts=accounts,
+        encryption_key=settings.sso_encryption_key or settings.mfa_encryption_key or settings.api_key_pepper,
+        callback_url=settings.sso_callback_url,
+        public_web_url=settings.public_web_url,
+        transaction_minutes=settings.sso_transaction_minutes,
+    )
     billing = BillingRepository(engine)
     _seed_credit_packs(billing, settings)
     return AppServices(
@@ -170,21 +198,9 @@ def build_services(settings: AppSettings) -> AppServices:
         worker_status_repository=WorkerStatusRepository(engine),
         audit_repository=AuditRepository(engine),
         account_repository=accounts_repository,
-        accounts=AccountService(
-            repository=accounts_repository,
-            session_ttl_hours=settings.session_ttl_hours,
-            invitation_ttl_hours=settings.invitation_ttl_hours,
-            verification_ttl_hours=settings.email_verification_ttl_hours,
-            password_reset_ttl_minutes=settings.password_reset_ttl_minutes,
-            login_max_failures=settings.login_max_failures,
-            login_lock_minutes=settings.login_lock_minutes,
-            email_sender=build_email_sender(settings),
-            public_web_url=settings.public_web_url,
-            mfa_encryption_key=settings.mfa_encryption_key or settings.api_key_pepper,
-            mfa_issuer=settings.mfa_issuer,
-            mfa_challenge_minutes=settings.mfa_challenge_minutes,
-            trusted_device_days=settings.trusted_device_days,
-        ),
+        accounts=accounts,
+        sso_repository=sso_repository,
+        sso=sso,
         allow_public_signup=settings.allow_public_signup,
         session_cookie_name=settings.session_cookie_name,
         csrf_cookie_name=settings.csrf_cookie_name,
