@@ -7,8 +7,11 @@ from amazon_geo_rank_monitor.api.dependencies import (
 from amazon_geo_rank_monitor.api.schemas import (
     AccountLogin,
     AccountRegister,
+    EmailVerificationRequest,
+    ForgotPasswordRequest,
     InvitationAccept,
     PasswordChange,
+    PasswordResetRequest,
     WorkspaceSwitch,
 )
 from amazon_geo_rank_monitor.api.session_cookies import (
@@ -16,6 +19,7 @@ from amazon_geo_rank_monitor.api.session_cookies import (
     session_payload,
     set_session_cookies,
 )
+from amazon_geo_rank_monitor.auth.accounts import AccountLockedError
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -63,10 +67,87 @@ def login(body: AccountLogin, request: Request, response: Response):
             workspace_id=body.workspace_id,
             **_client_context(request),
         )
+    except AccountLockedError as exc:
+        raise HTTPException(status_code=423, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     set_session_cookies(response, services, created)
     return session_payload(services, created)
+
+
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
+def forgot_password(body: ForgotPasswordRequest, request: Request):
+    services = get_services(request)
+    try:
+        services.accounts.forgot_password(
+            email=body.email,
+            **_client_context(request),
+        )
+    except ValueError:
+        pass
+    return {
+        "accepted": True,
+        "message": "If the account exists, a password reset email will be sent.",
+    }
+
+
+@router.post("/reset-password")
+def reset_password(
+    body: PasswordResetRequest,
+    request: Request,
+    response: Response,
+):
+    services = get_services(request)
+    try:
+        revoked = services.accounts.reset_password(
+            token=body.token,
+            new_password=body.new_password,
+            **_client_context(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    clear_session_cookies(response, services)
+    return {"reset": True, "revoked_sessions": revoked}
+
+
+@router.post("/verify-email")
+def verify_email(body: EmailVerificationRequest, request: Request):
+    try:
+        user = get_services(request).accounts.verify_email(
+            token=body.token,
+            **_client_context(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "verified": True,
+        "email": user["email"],
+        "email_verified_at": user["email_verified_at"],
+    }
+
+
+@router.post("/resend-verification")
+def resend_verification(
+    request: Request,
+    principal: HumanPrincipalDependency,
+):
+    sent = get_services(request).accounts.resend_verification(
+        principal=principal,
+        **_client_context(request),
+    )
+    return {"sent": sent}
+
+
+@router.get("/security-events")
+def security_events(
+    request: Request,
+    principal: HumanPrincipalDependency,
+    limit: int = 100,
+):
+    return get_services(request).accounts.list_auth_events(
+        principal=principal,
+        limit=limit,
+    )
 
 
 @router.get("/me")
