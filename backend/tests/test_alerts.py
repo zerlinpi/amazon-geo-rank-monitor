@@ -10,7 +10,6 @@ from amazon_geo_rank_monitor.notifications.email import MemoryEmailSender
 from amazon_geo_rank_monitor.repositories.alert_repository import AlertRepository
 from amazon_geo_rank_monitor.repositories.models import Base
 
-
 OWNER_ID = "owner-1"
 MONITOR_ID = "monitor-1"
 ASIN = "B000TEST01"
