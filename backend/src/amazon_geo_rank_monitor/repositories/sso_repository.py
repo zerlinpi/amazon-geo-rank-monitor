@@ -67,6 +67,7 @@ class SsoRepository:
                     or row.client_id != client_id
                     or row.client_secret_encrypted != client_secret_encrypted
                 )
+                changed_domains = row.email_domains != email_domains
                 row.provider_type = provider_type
                 row.display_name = display_name
                 row.issuer_url = issuer_url
@@ -77,6 +78,7 @@ class SsoRepository:
                 row.enabled = enabled
                 if changed_identity:
                     row.verified_at = None
+                if changed_identity or changed_domains:
                     row.enforce_sso = False
                 if not enabled:
                     row.enforce_sso = False
