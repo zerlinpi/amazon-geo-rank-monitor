@@ -250,7 +250,11 @@ class ScimService:
                 if "displayName" in value:
                     display_name = str(value["displayName"])
                 if "externalId" in value:
-                    external_id = self._optional_string(value["externalId"])
+                    external_id = (
+                        ""
+                        if value["externalId"] is None
+                        else self._optional_string(value["externalId"])
+                    )
                 if "userName" in value:
                     self._reject_username_change(
                         existing["email"],
@@ -410,7 +414,11 @@ class ScimService:
                 if "displayName" in value:
                     display_name = str(value["displayName"])
                 if "externalId" in value:
-                    external_id = self._optional_string(value["externalId"])
+                    external_id = (
+                        ""
+                        if value["externalId"] is None
+                        else self._optional_string(value["externalId"])
+                    )
                 if "members" in value:
                     replace_ids = self._member_ids(value["members"])
                 continue
@@ -422,7 +430,7 @@ class ScimService:
                     raise ValueError("SCIM group displayName cannot be removed")
                 display_name = str(value or "")
             elif normalized_path == "externalid":
-                external_id = None if op == "remove" else self._optional_string(value)
+                external_id = "" if op == "remove" else self._optional_string(value)
             elif normalized_path == "members":
                 ids = self._member_ids(value)
                 if op == "remove":
