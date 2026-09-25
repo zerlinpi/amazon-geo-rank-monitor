@@ -221,6 +221,11 @@ class WorkspaceMembershipRow(Base):
     __tablename__ = "workspace_memberships"
     __table_args__ = (
         UniqueConstraint("owner_id", "user_id", name="uq_workspace_membership"),
+        UniqueConstraint(
+            "owner_id",
+            "scim_external_id",
+            name="uq_workspace_scim_external_id",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
