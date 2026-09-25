@@ -41,6 +41,7 @@ services:
       DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
       AUTO_CREATE_SCHEMA: "false"
       API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
+      SCIM_TOKEN_PEPPER: ${SCIM_TOKEN_PEPPER:-}
       API_HOST: 0.0.0.0
       API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-120}
       AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}
