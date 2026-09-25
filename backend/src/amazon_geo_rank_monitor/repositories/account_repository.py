@@ -286,6 +286,7 @@ class AccountRepository:
                 "role": membership.role,
                 "email": user.email,
                 "display_name": user.display_name,
+                "email_verified_at": user.email_verified_at,
                 "workspace_name": tenant.name,
             }
 
