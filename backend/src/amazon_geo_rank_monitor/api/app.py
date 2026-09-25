@@ -15,6 +15,7 @@ from sqlalchemy import text
 from .errors import (
     error_payload,
     http_exception_handler,
+    scim_error_payload,
     validation_exception_handler,
 )
 from .rate_limit import build_rate_limiter, rate_limit_identity
@@ -25,6 +26,7 @@ from .routes import (
     geo_profiles_router,
     monitors_router,
     rank_router,
+    scim_router,
     system_router,
     team_router,
 )
@@ -51,6 +53,8 @@ class AppServices:
     accounts: Any | None = None
     sso_repository: Any | None = None
     sso: Any | None = None
+    scim_repository: Any | None = None
+    scim: Any | None = None
     allow_public_signup: bool = True
     session_cookie_name: str = "agrm_session"
     csrf_cookie_name: str = "agrm_csrf"
@@ -139,19 +143,32 @@ def create_app(
                 rate_limit_identity(rate_credential)
             )
             if not allowed:
+                is_scim = request.url.path.startswith("/scim/v2")
                 response = JSONResponse(
                     status_code=429,
-                    content=error_payload(
-                        request,
-                        status_code=429,
-                        detail="API rate limit exceeded",
-                        code="RATE_LIMITED",
+                    content=(
+                        scim_error_payload(
+                            status_code=429,
+                            detail="SCIM rate limit exceeded",
+                        )
+                        if is_scim
+                        else error_payload(
+                            request,
+                            status_code=429,
+                            detail="API rate limit exceeded",
+                            code="RATE_LIMITED",
+                        )
                     ),
                     headers={
                         "Retry-After": str(retry_after),
                         "X-RateLimit-Limit": str(limiter.limit),
                         "X-RateLimit-Remaining": "0",
                     },
+                    media_type=(
+                        "application/scim+json"
+                        if is_scim
+                        else "application/json"
+                    ),
                 )
                 response.headers["X-Request-ID"] = request_id
                 return response
@@ -168,7 +185,10 @@ def create_app(
         if (
             principal is not None
             and services.audit_repository is not None
-            and request.url.path.startswith("/api/v1/")
+            and (
+                request.url.path.startswith("/api/v1/")
+                or request.url.path.startswith("/scim/v2")
+            )
         ):
             try:
                 services.audit_repository.record(
@@ -231,6 +251,7 @@ def create_app(
     app.include_router(geo_profiles_router)
     app.include_router(monitors_router)
     app.include_router(rank_router)
+    app.include_router(scim_router)
     app.include_router(api_keys_router)
     app.include_router(billing_router)
     app.include_router(system_router)

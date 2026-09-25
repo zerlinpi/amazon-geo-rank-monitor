@@ -326,11 +326,16 @@ class OidcSsoService:
                 except KeyError:
                     if not config["auto_join"]:
                         raise ValueError("account is not a member of this workspace") from None
-                    membership = self._account_repository.create_membership(
-                        owner_id=config["owner_id"],
-                        user_id=user["id"],
-                        role="viewer",
-                    )
+                    try:
+                        membership = self._account_repository.create_membership(
+                            owner_id=config["owner_id"],
+                            user_id=user["id"],
+                            role="viewer",
+                        )
+                    except PermissionError:
+                        raise ValueError(
+                            "account is suspended from this workspace"
+                        ) from None
             else:
                 if not config["auto_join"]:
                     raise ValueError("account is not provisioned for this workspace")

@@ -1085,3 +1085,196 @@ Upgrade with:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## SCIM 2.0 provisioning
+
+Phase 16 adds workspace-scoped SCIM 2.0 provisioning for enterprise identity providers.
+
+SCIM complements Enterprise SSO rather than replacing it:
+
+- OIDC SSO controls how human users authenticate.
+- SCIM controls user lifecycle, workspace membership state and IdP-driven role assignment.
+- API keys, MCP and CI automation remain separate machine-authentication paths.
+
+### Supported SCIM surface
+
+The SCIM base path is:
+
+```text
+https://<api-origin>/scim/v2
+```
+
+The service supports:
+
+- `GET /ServiceProviderConfig`
+- `GET /ResourceTypes`
+- `GET /Schemas`
+- `GET /Users`
+- `POST /Users`
+- `GET /Users/{id}`
+- `PUT /Users/{id}`
+- `PATCH /Users/{id}`
+- `DELETE /Users/{id}`
+- `GET /Groups`
+- `POST /Groups`
+- `GET /Groups/{id}`
+- `PUT /Groups/{id}`
+- `PATCH /Groups/{id}`
+- `DELETE /Groups/{id}`
+
+Responses use `application/scim+json`. SCIM errors use the standard
+`urn:ietf:params:scim:api:messages:2.0:Error` envelope.
+
+Supported filters include the common provisioning forms:
+
+```text
+userName eq "person@example.com"
+externalId eq "idp-user-id"
+id eq "<scim-resource-id>"
+displayName eq "Engineering"
+```
+
+Pagination uses `startIndex` and `count`, with a maximum page size of 200.
+
+Bulk and sort are intentionally not advertised as supported.
+
+### Provisioning token
+
+Workspace Owners configure SCIM in **Workspace → Team → SCIM provisioning**.
+
+Generate a provisioning token and configure the IdP with:
+
+```http
+Authorization: Bearer agrscim_...
+```
+
+The plaintext token is shown once. The database stores only a token prefix and
+an HMAC hash. Rotating the token immediately invalidates the previous token.
+
+Recommended production configuration:
+
+```env
+SCIM_TOKEN_PEPPER=<independent high-entropy secret>
+```
+
+For backward-compatible deployments, `SCIM_TOKEN_PEPPER` falls back to
+`API_KEY_PEPPER` when unset. Production should use a dedicated value.
+
+### User lifecycle semantics
+
+A SCIM User maps to one workspace membership, not to the global user identity.
+
+This distinction is deliberate: a person may belong to multiple workspaces.
+Deprovisioning from one enterprise must not disable their unrelated workspace
+access.
+
+When a SCIM user is deactivated or deleted:
+
+- the workspace membership is marked suspended;
+- every active browser session for that user in that workspace is revoked;
+- the global user record remains intact;
+- memberships and sessions in other workspaces remain untouched;
+- normal workspace switching, SSO login and existing-session validation reject
+  the suspended membership.
+
+SCIM `DELETE /Users/{id}` therefore behaves as a reversible workspace-level
+deprovision operation. Re-provisioning or setting `active=true` can reactivate
+the same membership.
+
+SCIM-created users receive a high-entropy random local password hash and their
+email is treated as verified for the trusted provisioning flow.
+
+### Stable user identity
+
+The SCIM resource `id` is the workspace membership ID. `externalId` may be
+stored per workspace.
+
+`userName` must currently be an email address. Changing `userName` through
+SCIM is deliberately rejected because the underlying user identity can be
+shared across multiple workspaces. This avoids one enterprise IdP silently
+rewriting another workspace's login identity.
+
+### Ownership protection
+
+SCIM can assign only:
+
+- `admin`
+- `analyst`
+- `viewer`
+
+SCIM can never create, promote, demote or take over a Workspace Owner.
+Ownership remains an explicit human administrative boundary.
+
+### Group-driven roles
+
+IdP groups synchronized through `/Groups` appear in the Team SCIM console.
+Workspace Owners can map each group to:
+
+- Admin
+- Analyst
+- Viewer
+- no mapping
+
+If a SCIM-managed user belongs to multiple mapped groups, role precedence is:
+
+```text
+Admin > Analyst > Viewer
+```
+
+If no mapped group applies, the workspace SCIM default role is used. Changing
+the default role immediately recomputes SCIM-managed memberships that are not
+overridden by a higher mapped-group role.
+
+Manual role controls are disabled in the Team UI for SCIM-managed members to
+avoid configuration fights between the application and the identity provider.
+
+### SCIM authentication, rate limiting and audit
+
+SCIM requests use a dedicated Bearer token. They still pass through the normal
+API request boundary:
+
+- request IDs are returned in `X-Request-ID`;
+- the configured API rate limiter applies;
+- rate-limit failures use SCIM error JSON;
+- successful authenticated SCIM requests are recorded in the audit log with
+  `actor_type=scim`.
+
+### Identity-provider setup
+
+The exact administrator UI varies by identity provider, but the application
+side is always:
+
+1. As a Workspace Owner, open **Workspace → Team → SCIM provisioning**.
+2. Choose the default workspace role and enable SCIM.
+3. Generate or rotate the provisioning token.
+4. Configure the IdP provisioning base URL as
+   `https://<api-origin>/scim/v2`.
+5. Configure the generated Bearer token.
+6. Enable user and, if desired, group provisioning in the IdP.
+7. After groups synchronize, map IdP groups to workspace roles in the Team page.
+
+The generated token is not stored in browser local storage and cannot be
+retrieved again after the one-time display dialog is closed.
+
+### Phase 16 migration
+
+Alembic revision `20260925_0010` adds:
+
+- `workspace_scim_configs`;
+- `scim_groups`;
+- `scim_group_members`;
+- `workspace_memberships.suspended_at`;
+- `workspace_memberships.scim_managed`;
+- `workspace_memberships.scim_external_id`;
+- `workspace_memberships.updated_at`;
+- a workspace-scoped unique constraint for SCIM external IDs.
+
+Existing memberships remain active and non-SCIM-managed after migration.
+
+Upgrade with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```

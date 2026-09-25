@@ -25,6 +25,15 @@ def error_code(status_code: int, detail: object) -> str:
     return f"HTTP_{status_code}"
 
 
+def scim_error_payload(*, status_code: int, detail: object) -> dict:
+    message = detail if isinstance(detail, str) else str(detail)
+    return {
+        "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
+        "status": str(status_code),
+        "detail": message,
+    }
+
+
 def error_payload(
     request: Request,
     *,
@@ -45,6 +54,16 @@ def error_payload(
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    if request.url.path.startswith("/scim/v2"):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=scim_error_payload(
+                status_code=exc.status_code,
+                detail=exc.detail,
+            ),
+            headers=exc.headers,
+            media_type="application/scim+json",
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content=error_payload(
@@ -60,6 +79,15 @@ async def validation_exception_handler(
     request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
+    if request.url.path.startswith("/scim/v2"):
+        return JSONResponse(
+            status_code=422,
+            content=scim_error_payload(
+                status_code=422,
+                detail=exc.errors(),
+            ),
+            media_type="application/scim+json",
+        )
     return JSONResponse(
         status_code=422,
         content=jsonable_encoder(

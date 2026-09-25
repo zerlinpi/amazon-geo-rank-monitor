@@ -10,6 +10,7 @@ from amazon_geo_rank_monitor.api.rate_limit import build_rate_limiter
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.auth.accounts import AccountService
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
+from amazon_geo_rank_monitor.auth.scim import ScimService
 from amazon_geo_rank_monitor.auth.sso import OidcSsoService
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.billing.stripe_service import StripeBillingService
@@ -33,6 +34,7 @@ from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
 from amazon_geo_rank_monitor.repositories.monitor_repository import MonitorRepository
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
+from amazon_geo_rank_monitor.repositories.scim_repository import ScimRepository
 from amazon_geo_rank_monitor.repositories.sso_repository import SsoRepository
 from amazon_geo_rank_monitor.repositories.tenant_repository import TenantRepository
 from amazon_geo_rank_monitor.repositories.worker_status_repository import (
@@ -148,6 +150,7 @@ def build_services(settings: AppSettings) -> AppServices:
     tenants = TenantRepository(engine)
     accounts_repository = AccountRepository(engine)
     sso_repository = SsoRepository(engine)
+    scim_repository = ScimRepository(engine)
     accounts = AccountService(
         repository=accounts_repository,
         session_ttl_hours=settings.session_ttl_hours,
@@ -177,6 +180,10 @@ def build_services(settings: AppSettings) -> AppServices:
         public_web_url=settings.public_web_url,
         transaction_minutes=settings.sso_transaction_minutes,
     )
+    scim = ScimService(
+        repository=scim_repository,
+        pepper=settings.scim_token_pepper or settings.api_key_pepper,
+    )
     billing = BillingRepository(engine)
     _seed_credit_packs(billing, settings)
     return AppServices(
@@ -205,6 +212,8 @@ def build_services(settings: AppSettings) -> AppServices:
         accounts=accounts,
         sso_repository=sso_repository,
         sso=sso,
+        scim_repository=scim_repository,
+        scim=scim,
         allow_public_signup=settings.allow_public_signup,
         session_cookie_name=settings.session_cookie_name,
         csrf_cookie_name=settings.csrf_cookie_name,

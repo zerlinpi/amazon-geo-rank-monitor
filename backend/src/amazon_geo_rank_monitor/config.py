@@ -28,6 +28,8 @@ class AppSettings(BaseSettings):
     residential_proxy_password: str | None = None
     residential_proxy_server: str = "http://pr.oxylabs.io:7777"
     api_key_pepper: str | None = None
+    scim_token_pepper: str | None = None
+    scim_token_pepper: str | None = None
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_rate_limit_per_minute: int = 120

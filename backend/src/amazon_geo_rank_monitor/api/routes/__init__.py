@@ -4,6 +4,7 @@ from .billing import router as billing_router
 from .geo_profiles import router as geo_profiles_router
 from .monitors import router as monitors_router
 from .rank import router as rank_router
+from .scim import router as scim_router
 from .system import router as system_router
 from .team import router as team_router
 
@@ -14,6 +15,7 @@ __all__ = [
     "geo_profiles_router",
     "monitors_router",
     "rank_router",
+    "scim_router",
     "system_router",
     "team_router",
 ]

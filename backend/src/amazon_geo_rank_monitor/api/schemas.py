@@ -141,3 +141,12 @@ class WorkspaceSsoConfigUpdate(BaseModel):
 
 class WorkspaceSsoEnforcementUpdate(BaseModel):
     enforce_sso: bool
+
+
+class WorkspaceScimConfigUpdate(BaseModel):
+    enabled: bool
+    default_role: str = Field(default="viewer", min_length=1, max_length=32)
+
+
+class ScimGroupRoleUpdate(BaseModel):
+    mapped_role: str | None = Field(default=None, max_length=32)

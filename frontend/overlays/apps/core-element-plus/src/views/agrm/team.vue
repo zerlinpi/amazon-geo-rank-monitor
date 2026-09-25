@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type {
   AccountProfile,
+  ScimAdminGroup,
   TeamMember,
   WorkspaceInvitation,
+  WorkspaceScimConfig,
   WorkspaceSsoConfig,
 } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -26,6 +28,14 @@ const ssoConfig = ref<WorkspaceSsoConfig | null>(null)
 const savingSso = ref(false)
 const updatingSsoEnforcement = ref(false)
 const testingSso = ref(false)
+const scimConfig = ref<WorkspaceScimConfig>()
+const scimGroups = ref<ScimAdminGroup[]>([])
+const scimEnabled = ref(false)
+const scimDefaultRole = ref('viewer')
+const savingScim = ref(false)
+const rotatingScimToken = ref(false)
+const scimTokenDialog = ref(false)
+const scimToken = ref('')
 const ssoForm = reactive({
   provider_type: 'oidc',
   display_name: 'Enterprise SSO',
@@ -57,7 +67,16 @@ async function load() {
     const policy = await agrmApi.getWorkspaceSecurityPolicy()
     requireMfa.value = policy.require_mfa
     if (currentRole.value === 'owner') {
-      ssoConfig.value = await agrmApi.getWorkspaceSsoConfig()
+      const [loadedSso, loadedScim, loadedScimGroups] = await Promise.all([
+        agrmApi.getWorkspaceSsoConfig(),
+        agrmApi.getWorkspaceScimConfig(),
+        agrmApi.getScimGroups(),
+      ])
+      ssoConfig.value = loadedSso
+      scimConfig.value = loadedScim
+      scimGroups.value = loadedScimGroups
+      scimEnabled.value = loadedScim.enabled
+      scimDefaultRole.value = loadedScim.default_role
       if (ssoConfig.value) {
         ssoForm.provider_type = ssoConfig.value.provider_type
         ssoForm.display_name = ssoConfig.value.display_name
@@ -71,6 +90,8 @@ async function load() {
     }
     else {
       ssoConfig.value = null
+      scimConfig.value = undefined
+      scimGroups.value = []
     }
     if (canManage.value) {
       invitations.value = await agrmApi.getTeamInvitations()
@@ -205,6 +226,82 @@ async function updateSsoEnforcement(value: string | number | boolean) {
   }
   finally {
     updatingSsoEnforcement.value = false
+  }
+}
+
+async function saveScim() {
+  if (currentRole.value !== 'owner') {
+    return
+  }
+  savingScim.value = true
+  try {
+    scimConfig.value = await agrmApi.updateWorkspaceScimConfig(
+      scimEnabled.value,
+      scimDefaultRole.value,
+    )
+    ElMessage.success(
+      scimConfig.value.enabled
+        ? 'SCIM provisioning enabled'
+        : 'SCIM provisioning disabled',
+    )
+    await load()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to update SCIM provisioning')
+  }
+  finally {
+    savingScim.value = false
+  }
+}
+
+async function rotateScimToken() {
+  if (currentRole.value !== 'owner') {
+    return
+  }
+  try {
+    if (scimConfig.value?.has_token) {
+      await ElMessageBox.confirm(
+        'Rotating the SCIM token immediately invalidates the previous provisioning token. Update your identity provider after rotation.',
+        'Rotate SCIM token',
+        { type: 'warning', confirmButtonText: 'Rotate token' },
+      )
+    }
+    rotatingScimToken.value = true
+    const result = await agrmApi.rotateScimToken()
+    scimToken.value = result.token
+    scimTokenDialog.value = true
+    scimEnabled.value = true
+    await load()
+  }
+  catch (error: any) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(error.response?.data?.detail || 'Failed to rotate SCIM token')
+  }
+  finally {
+    rotatingScimToken.value = false
+  }
+}
+
+async function copyScimToken() {
+  if (!scimToken.value) {
+    return
+  }
+  await navigator.clipboard.writeText(scimToken.value)
+  ElMessage.success('SCIM token copied')
+}
+
+async function mapScimGroupRole(group: ScimAdminGroup, role: string) {
+  try {
+    await agrmApi.mapScimGroupRole(group.id, role || null)
+    ElMessage.success(role ? `Group mapped to ${role}` : 'Group role mapping cleared')
+    scimGroups.value = await agrmApi.getScimGroups()
+    members.value = await agrmApi.getTeamMembers()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to map SCIM group role')
+    scimGroups.value = await agrmApi.getScimGroups().catch(() => scimGroups.value)
   }
 }
 
@@ -487,6 +584,115 @@ onMounted(load)
       </div>
     </el-card>
 
+    <el-card v-if="currentRole === 'owner'" shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span class="font-medium">SCIM provisioning</span>
+            <div class="text-xs text-muted-foreground mt-1">
+              Automate employee onboarding, offboarding and group-driven workspace roles.
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <el-tag :type="scimConfig?.enabled ? 'success' : 'info'">
+              {{ scimConfig?.enabled ? 'Enabled' : 'Disabled' }}
+            </el-tag>
+            <el-tag v-if="scimConfig?.has_token" type="info">
+              Token {{ scimConfig.token_prefix }}
+            </el-tag>
+          </div>
+        </div>
+      </template>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="space-y-4">
+          <el-alert
+            type="info"
+            :closable="false"
+            title="Provisioning endpoint"
+          >
+            <div class="mt-2 font-mono text-xs break-all">/scim/v2</div>
+            <div class="text-xs mt-2">
+              Configure your identity provider with the API origin plus this path and the Bearer token generated below.
+            </div>
+          </el-alert>
+
+          <el-form label-position="top">
+            <el-form-item label="Default workspace role">
+              <el-select v-model="scimDefaultRole" class="w-full">
+                <el-option label="Viewer" value="viewer" />
+                <el-option label="Analyst" value="analyst" />
+                <el-option label="Admin" value="admin" />
+              </el-select>
+              <div class="text-xs text-muted-foreground mt-1">
+                Used when no SCIM group with a mapped role applies. SCIM can never grant Owner.
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-checkbox v-model="scimEnabled">
+                Enable SCIM provisioning
+              </el-checkbox>
+            </el-form-item>
+          </el-form>
+
+          <div class="flex flex-wrap gap-2">
+            <el-button type="primary" :loading="savingScim" @click="saveScim">
+              Save SCIM settings
+            </el-button>
+            <el-button :loading="rotatingScimToken" @click="rotateScimToken">
+              {{ scimConfig?.has_token ? 'Rotate token' : 'Generate token' }}
+            </el-button>
+          </div>
+
+          <el-alert
+            v-if="scimConfig?.has_token"
+            type="warning"
+            :closable="false"
+            title="Provisioning tokens are shown only once."
+            description="Rotating the token immediately invalidates the previous Bearer token."
+          />
+        </div>
+
+        <div>
+          <div class="font-medium mb-1">IdP groups → workspace roles</div>
+          <div class="text-sm text-muted-foreground mb-3">
+            Groups appear here after your identity provider syncs them through SCIM.
+            If a user belongs to multiple mapped groups, Admin wins over Analyst, then Viewer.
+          </div>
+          <el-table :data="scimGroups" empty-text="No SCIM groups synced yet" max-height="360">
+            <el-table-column prop="display_name" label="Group" min-width="160">
+              <template #default="{ row }">
+                <div>{{ row.display_name }}</div>
+                <div v-if="row.external_id" class="text-xs text-muted-foreground">
+                  {{ row.external_id }}
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="Members" width="90">
+              <template #default="{ row }">
+                {{ row.members?.length || 0 }}
+              </template>
+            </el-table-column>
+            <el-table-column label="Role mapping" min-width="150">
+              <template #default="{ row }">
+                <el-select
+                  :model-value="row.mapped_role || ''"
+                  size="small"
+                  class="w-full"
+                  @change="(value: string) => mapScimGroupRole(row as ScimAdminGroup, value)"
+                >
+                  <el-option label="No mapping" value="" />
+                  <el-option label="Viewer" value="viewer" />
+                  <el-option label="Analyst" value="analyst" />
+                  <el-option label="Admin" value="admin" />
+                </el-select>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+    </el-card>
+
     <el-card shadow="never">
       <template #header>
         <div class="flex items-center justify-between">
@@ -497,6 +703,15 @@ onMounted(load)
       <el-table :data="members" empty-text="No members">
         <el-table-column prop="display_name" label="Name" min-width="170" />
         <el-table-column prop="email" label="Email" min-width="220" />
+        <el-table-column label="Access" width="130">
+          <template #default="{ row }">
+            <div class="flex flex-wrap gap-1">
+              <el-tag v-if="row.scim_managed" type="primary" size="small">SCIM</el-tag>
+              <el-tag v-if="row.suspended_at" type="danger" size="small">Suspended</el-tag>
+              <el-tag v-if="!row.scim_managed && !row.suspended_at" type="info" size="small">Manual</el-tag>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="MFA" width="100">
           <template #default="{ row }">
             <el-tag :type="row.mfa_enabled ? 'success' : 'info'" size="small">
@@ -507,7 +722,7 @@ onMounted(load)
         <el-table-column label="Role" width="150">
           <template #default="{ row }">
             <el-select
-              v-if="canManage && (currentRole === 'owner' || !['owner', 'admin'].includes(row.role))"
+              v-if="canManage && !row.scim_managed && !row.suspended_at && (currentRole === 'owner' || !['owner', 'admin'].includes(row.role))"
               :model-value="row.role"
               size="small"
               @change="(value: string) => changeRole(row as TeamMember, value)"
@@ -563,6 +778,30 @@ onMounted(load)
         </el-table-column>
       </el-table>
     </el-card>
+
+    <el-dialog
+      v-model="scimTokenDialog"
+      title="SCIM provisioning token"
+      width="min(620px, 94vw)"
+      :close-on-click-modal="false"
+      @closed="scimToken = ''"
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        title="Copy this token now"
+        description="The plaintext token is not stored in the browser and cannot be shown again after this dialog is closed."
+      />
+      <div class="mt-4 flex gap-2">
+        <el-input :model-value="scimToken" readonly type="textarea" :rows="3" />
+        <el-button @click="copyScimToken">Copy</el-button>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="scimTokenDialog = false">
+          I saved the token
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="inviteDialog" title="Invite member" width="min(480px, 92vw)">
       <el-form label-position="top">

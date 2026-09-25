@@ -141,6 +141,37 @@ export interface SsoStartResult {
   expires_at: string
 }
 
+export interface WorkspaceScimConfig {
+  owner_id: string
+  enabled: boolean
+  default_role: 'admin' | 'analyst' | 'viewer'
+  token_prefix?: string | null
+  has_token: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface ScimTokenResult {
+  token: string
+  prefix: string
+}
+
+export interface ScimAdminGroup {
+  id: string
+  owner_id: string
+  external_id?: string | null
+  display_name: string
+  mapped_role?: 'admin' | 'analyst' | 'viewer' | null
+  created_at: string
+  updated_at: string
+  members: {
+    membership_id: string
+    user_id: string
+    email: string
+    display_name: string
+  }[]
+}
+
 export interface AuthSecurityEvent {
   id: string
   user_id?: string | null
@@ -171,6 +202,10 @@ export interface TeamMember extends WorkspaceMembership {
   display_name: string
   disabled_at?: string | null
   mfa_enabled?: boolean
+  suspended_at?: string | null
+  scim_managed?: boolean
+  scim_external_id?: string | null
+  updated_at?: string | null
 }
 
 export interface WorkspaceInvitation {
@@ -426,6 +461,21 @@ export const agrmApi = {
   ),
   updateWorkspaceSsoEnforcement: (enforce_sso: boolean) => data<WorkspaceSsoConfig>(
     client.patch('/api/v1/team/sso-config/enforcement', { enforce_sso }),
+  ),
+  getWorkspaceScimConfig: () => data<WorkspaceScimConfig>(
+    client.get('/api/v1/team/scim-config'),
+  ),
+  updateWorkspaceScimConfig: (enabled: boolean, default_role: string) => data<WorkspaceScimConfig>(
+    client.patch('/api/v1/team/scim-config', { enabled, default_role }),
+  ),
+  rotateScimToken: () => data<ScimTokenResult>(
+    client.post('/api/v1/team/scim-token/rotate'),
+  ),
+  getScimGroups: () => data<ScimAdminGroup[]>(
+    client.get('/api/v1/team/scim-groups'),
+  ),
+  mapScimGroupRole: (groupId: string, mapped_role: string | null) => data<ScimAdminGroup>(
+    client.patch('/api/v1/team/scim-groups/' + groupId, { mapped_role }),
   ),
   getTeamInvitations: () => data<WorkspaceInvitation[]>(
     client.get('/api/v1/team/invitations'),
