@@ -403,14 +403,6 @@ class AlertService:
         run_id: str,
         candidate: dict,
     ) -> dict | None:
-        if self._repository.cooldown_active(
-            rule_id=rule["id"],
-            asin=candidate["asin"],
-            geo_profile_id=candidate["geo_profile_id"],
-            event_type=candidate["event_type"],
-            cooldown_minutes=rule["cooldown_minutes"],
-        ):
-            return None
         raw = "|".join(
             [
                 rule["id"],
@@ -421,7 +413,7 @@ class AlertService:
             ]
         )
         fingerprint = hashlib.sha256(raw.encode()).hexdigest()
-        event = self._repository.create_event(
+        event = self._repository.create_event_if_not_cooling(
             owner_id=rule["owner_id"],
             rule_id=rule["id"],
             monitor_target_id=monitor_target_id,
@@ -433,6 +425,7 @@ class AlertService:
             previous_value=candidate["previous_value"],
             current_value=candidate["current_value"],
             details=candidate["details"],
+            cooldown_minutes=rule["cooldown_minutes"],
         )
         if event is None:
             return None
