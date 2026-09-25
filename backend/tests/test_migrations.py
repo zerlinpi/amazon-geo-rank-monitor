@@ -32,6 +32,9 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "workspace_sso_configs",
         "sso_login_transactions",
         "sso_identities",
+        "workspace_scim_configs",
+        "scim_groups",
+        "scim_group_members",
     } <= tables
     inspector = inspect(create_engine(database_url))
     api_key_columns = {
@@ -67,6 +70,22 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "auth_method",
         "sso_owner_id",
     } <= session_columns
+    membership_columns = {
+        column["name"]
+        for column in inspector.get_columns("workspace_memberships")
+    }
+    assert {
+        "suspended_at",
+        "scim_managed",
+        "scim_external_id",
+        "updated_at",
+    } <= membership_columns
+    membership_constraints = {
+        item["name"]
+        for item in inspector.get_unique_constraints("workspace_memberships")
+    }
+    assert "uq_workspace_scim_external_id" in membership_constraints
+
     tenant_columns = {
         column["name"] for column in inspector.get_columns("tenants")
     }
