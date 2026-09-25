@@ -258,11 +258,68 @@ class AccountService:
         normalized_email = self.normalize_email(email)
         user = self._repository.find_user_by_email(normalized_email)
         if user is None or user["disabled_at"] is not None:
+            self._repository.record_auth_event(
+                email=normalized_email,
+                event_type="login_failed",
+                success=False,
+                user_id=user["id"] if user else None,
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
             raise ValueError("invalid email or password")
+
+        now = datetime.now(UTC)
+        locked_until = user["locked_until"]
+        if locked_until is not None:
+            if locked_until.tzinfo is None:
+                locked_until = locked_until.replace(tzinfo=UTC)
+            if locked_until > now:
+                self._repository.record_auth_event(
+                    email=normalized_email,
+                    event_type="login_locked",
+                    success=False,
+                    user_id=user["id"],
+                    client_ip=client_ip,
+                    user_agent=user_agent,
+                    details={"locked_until": locked_until.isoformat()},
+                )
+                raise AccountLockedError("account temporarily locked")
+            self._repository.reset_login_security(user_id=user["id"])
+
         try:
             self._passwords.verify(user["password_hash"], password)
         except (VerifyMismatchError, VerificationError, InvalidHashError):
+            updated = self._repository.register_login_failure(
+                user_id=user["id"],
+                max_failures=self._login_max_failures,
+                lock_until=now + self._login_lock,
+            )
+            newly_locked = updated["locked_until"] is not None
+            self._repository.record_auth_event(
+                email=normalized_email,
+                event_type="login_locked" if newly_locked else "login_failed",
+                success=False,
+                user_id=user["id"],
+                client_ip=client_ip,
+                user_agent=user_agent,
+                details={"failed_login_count": updated["failed_login_count"]},
+            )
+            if newly_locked:
+                raise AccountLockedError("account temporarily locked") from None
             raise ValueError("invalid email or password") from None
+
+        self._repository.record_login_success(
+            user_id=user["id"],
+            client_ip=client_ip,
+        )
+        self._repository.record_auth_event(
+            email=normalized_email,
+            event_type="login_succeeded",
+            success=True,
+            user_id=user["id"],
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
 
         memberships = self._repository.list_memberships(user_id=user["id"])
         if not memberships:
