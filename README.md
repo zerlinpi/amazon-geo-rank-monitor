@@ -833,3 +833,90 @@ Upgrade with:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## TOTP MFA, recovery codes and trusted devices
+
+Phase 14 adds human-account multi-factor authentication without changing machine authentication.
+
+Human browser accounts can enroll a standard TOTP authenticator from **Workspace → Account Security**. The TOTP secret is encrypted at rest with Fernet. Recovery codes are high-entropy one-time codes stored only as SHA-256 hashes.
+
+Password login for an MFA-enabled user is now two-stage:
+
+1. email/password is validated;
+2. the API returns a short-lived `agrmfa_...` challenge instead of creating a session;
+3. `POST /api/v1/auth/mfa/complete` accepts a TOTP or unused recovery code;
+4. only successful second-factor verification creates the normal HttpOnly browser session.
+
+A user may mark the browser as trusted. The trusted-device credential is a separate high-entropy `agrd_...` HttpOnly cookie. The database stores only its hash. Trusted-device bypasses are revoked when the user changes or resets the password, disables MFA, or signs out everywhere.
+
+Default MFA settings:
+
+```env
+MFA_ENCRYPTION_KEY=
+MFA_ISSUER=Amazon Geo Rank Monitor
+MFA_CHALLENGE_MINUTES=5
+TRUSTED_DEVICE_DAYS=30
+TRUSTED_DEVICE_COOKIE_NAME=agrm_trusted_device
+```
+
+When `MFA_ENCRYPTION_KEY` is empty, the service derives the encryption key from `API_KEY_PEPPER` for backward-compatible deployment. Production deployments should set a dedicated, stable `MFA_ENCRYPTION_KEY` and protect it like any other encryption secret. Changing that key without re-enrollment makes existing encrypted TOTP secrets unreadable.
+
+### MFA API
+
+Authenticated account setup endpoints:
+
+- `POST /api/v1/auth/mfa/enroll`
+- `POST /api/v1/auth/mfa/enroll/verify`
+- `POST /api/v1/auth/mfa/recovery-codes/regenerate`
+- `POST /api/v1/auth/mfa/disable`
+
+Password-login second step:
+
+- `POST /api/v1/auth/mfa/complete`
+
+Enrollment requires a verified email address. Recovery codes are returned in plaintext only when MFA is enabled or codes are regenerated. Each recovery code can be consumed once.
+
+### Workspace-required MFA
+
+Workspace Owners can manage the policy through:
+
+- `GET /api/v1/team/security-policy`
+- `PATCH /api/v1/team/security-policy`
+
+When `require_mfa=true`:
+
+- human sessions must have completed MFA before any scoped workspace API can be used;
+- Account Security remains reachable so a newly invited member can enroll MFA;
+- enabling the policy requires every current member to already have MFA enabled;
+- future invited members may join, but remain restricted until enrollment is complete;
+- a user cannot disable MFA while any workspace membership requires it;
+- API keys, MCP and CI integrations remain independent from the human MFA policy.
+
+The Team page shows every member's MFA state and exposes the policy switch to Workspace Owners.
+
+### Session and recovery security
+
+MFA-authenticated sessions record `mfa_authenticated_at`. Workspace switching preserves the current session's MFA-authenticated state. Password reset and password change revoke trusted devices. `logout-all` also revokes trusted-device bypasses.
+
+The login UI accepts either a 6-digit TOTP or a recovery code. A required-MFA session is automatically redirected to **Workspace → Account Security** instead of failing repeatedly on business APIs.
+
+## Phase 14 migration
+
+Schema revision `20260925_0008` adds:
+
+- `tenants.require_mfa`;
+- `users.mfa_secret_encrypted`;
+- `users.mfa_enabled_at`;
+- `users.mfa_last_verified_at`;
+- `user_sessions.mfa_authenticated_at`;
+- `account_tokens.details`;
+- `mfa_recovery_codes`;
+- `trusted_devices`.
+
+Upgrade with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
