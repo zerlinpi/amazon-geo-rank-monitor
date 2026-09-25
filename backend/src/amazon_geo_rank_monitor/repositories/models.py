@@ -232,6 +232,8 @@ class UserSessionRow(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     mfa_authenticated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    auth_method: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    sso_owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
