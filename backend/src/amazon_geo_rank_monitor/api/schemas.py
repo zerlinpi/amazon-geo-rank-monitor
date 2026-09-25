@@ -121,3 +121,23 @@ class MfaDisableRequest(BaseModel):
 
 class WorkspaceMfaPolicyUpdate(BaseModel):
     require_mfa: bool
+
+
+class SsoStartRequest(BaseModel):
+    workspace_id: str = Field(min_length=1)
+    email: str | None = Field(default=None, min_length=3, max_length=320)
+
+
+class WorkspaceSsoConfigUpdate(BaseModel):
+    provider_type: str = Field(default="oidc", min_length=1, max_length=32)
+    display_name: str = Field(default="Enterprise SSO", min_length=1, max_length=200)
+    issuer_url: str = Field(min_length=8, max_length=512)
+    client_id: str = Field(min_length=1, max_length=512)
+    client_secret: str | None = Field(default=None, max_length=2048)
+    email_domains: list[str] = Field(min_length=1)
+    auto_join: bool = False
+    enabled: bool = True
+
+
+class WorkspaceSsoEnforcementUpdate(BaseModel):
+    enforce_sso: bool
