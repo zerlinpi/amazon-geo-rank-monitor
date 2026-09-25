@@ -200,6 +200,8 @@ def test_owner_sso_verifies_config_and_enforcement_blocks_password_login() -> No
     )
     assert completion.workspace_id == owner_id
     assert completion.session.principal.email == "owner@example.com"
+    assert completion.session.principal.auth_method == "sso"
+    assert completion.session.principal.sso_owner_id == owner_id
     assert sso_repository.get_config(owner_id=owner_id)["verified_at"] is not None
 
     enforced = sso.set_enforcement(owner_id=owner_id, enforce_sso=True)
