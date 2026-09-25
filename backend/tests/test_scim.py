@@ -383,3 +383,39 @@ def test_scim_config_hides_hash_and_external_id_can_be_removed() -> None:
     )
     assert replaced.status_code == 200
     assert "externalId" not in replaced.json()
+
+
+def test_scim_default_role_change_recomputes_unmapped_members() -> None:
+    client, services = build_client()
+    owner = register_owner(client)
+    owner_id = owner["workspace"]["id"]
+
+    configured = client.patch(
+        "/api/v1/team/scim-config",
+        headers=csrf_headers(client),
+        json={"enabled": True, "default_role": "viewer"},
+    )
+    assert configured.status_code == 200
+    token = rotate_scim_token(client)
+    create_scim_user(client, token)
+
+    provisioned = services.account_repository.find_user_by_email(
+        "viewer@example.com"
+    )
+    membership = services.account_repository.get_membership(
+        user_id=provisioned["id"],
+        owner_id=owner_id,
+    )
+    assert membership["role"] == "viewer"
+
+    updated = client.patch(
+        "/api/v1/team/scim-config",
+        headers=csrf_headers(client),
+        json={"enabled": True, "default_role": "analyst"},
+    )
+    assert updated.status_code == 200
+    membership = services.account_repository.get_membership(
+        user_id=provisioned["id"],
+        owner_id=owner_id,
+    )
+    assert membership["role"] == "analyst"
