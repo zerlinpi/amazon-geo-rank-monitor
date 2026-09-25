@@ -8,6 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from .models import (
+    AccountTokenRow,
+    AuthEventRow,
     TenantRow,
     UserRow,
     UserSessionRow,
@@ -385,6 +387,164 @@ class AccountRepository:
                 raise KeyError("user not found")
             row.password_hash = password_hash
 
+    def create_account_token(
+        self,
+        *,
+        user_id: str,
+        token_type: str,
+        token_hash: str,
+        expires_at: datetime,
+    ) -> dict:
+        now = datetime.now(UTC)
+        token_id = str(uuid4())
+        with self._sessions.begin() as session:
+            existing = session.scalars(
+                select(AccountTokenRow).where(
+                    AccountTokenRow.user_id == user_id,
+                    AccountTokenRow.token_type == token_type,
+                    AccountTokenRow.used_at.is_(None),
+                )
+            ).all()
+            for row in existing:
+                row.used_at = now
+            created = AccountTokenRow(
+                id=token_id,
+                user_id=user_id,
+                token_type=token_type,
+                token_hash=token_hash,
+                expires_at=expires_at,
+            )
+            session.add(created)
+            session.flush()
+            return self._serialize_account_token(created)
+
+    def get_account_token(
+        self,
+        *,
+        token_type: str,
+        token_hash: str,
+    ) -> dict:
+        now = datetime.now(UTC)
+        with self._sessions() as session:
+            row = session.scalar(
+                select(AccountTokenRow).where(
+                    AccountTokenRow.token_type == token_type,
+                    AccountTokenRow.token_hash == token_hash,
+                    AccountTokenRow.used_at.is_(None),
+                )
+            )
+            if row is None:
+                raise KeyError("account token not found")
+            expires_at = row.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at <= now:
+                raise KeyError("account token not found")
+            return self._serialize_account_token(row)
+
+    def consume_account_token(self, token_id: str) -> dict:
+        now = datetime.now(UTC)
+        with self._sessions.begin() as session:
+            row = session.get(AccountTokenRow, token_id)
+            if row is None or row.used_at is not None:
+                raise KeyError("account token not found")
+            expires_at = row.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            if expires_at <= now:
+                raise KeyError("account token not found")
+            row.used_at = now
+            session.flush()
+            return self._serialize_account_token(row)
+
+    def mark_email_verified(self, *, user_id: str) -> dict:
+        with self._sessions.begin() as session:
+            row = session.get(UserRow, user_id)
+            if row is None:
+                raise KeyError("user not found")
+            if row.email_verified_at is None:
+                row.email_verified_at = datetime.now(UTC)
+            session.flush()
+            return self._serialize_user(row)
+
+    def register_login_failure(
+        self,
+        *,
+        user_id: str,
+        max_failures: int,
+        lock_until: datetime,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            row = session.get(UserRow, user_id)
+            if row is None:
+                raise KeyError("user not found")
+            row.failed_login_count += 1
+            if row.failed_login_count >= max_failures:
+                row.locked_until = lock_until
+            session.flush()
+            return self._serialize_user(row)
+
+    def record_login_success(
+        self,
+        *,
+        user_id: str,
+        client_ip: str | None,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            row = session.get(UserRow, user_id)
+            if row is None:
+                raise KeyError("user not found")
+            row.failed_login_count = 0
+            row.locked_until = None
+            row.last_login_at = datetime.now(UTC)
+            row.last_login_ip = client_ip[:64] if client_ip else None
+            session.flush()
+            return self._serialize_user(row)
+
+    def reset_login_security(self, *, user_id: str) -> None:
+        with self._sessions.begin() as session:
+            row = session.get(UserRow, user_id)
+            if row is None:
+                raise KeyError("user not found")
+            row.failed_login_count = 0
+            row.locked_until = None
+
+    def record_auth_event(
+        self,
+        *,
+        email: str,
+        event_type: str,
+        success: bool,
+        user_id: str | None = None,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+        details: dict | None = None,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            row = AuthEventRow(
+                id=str(uuid4()),
+                user_id=user_id,
+                email=email[:320],
+                event_type=event_type[:64],
+                success=success,
+                client_ip=client_ip[:64] if client_ip else None,
+                user_agent=user_agent[:512] if user_agent else None,
+                details=details,
+            )
+            session.add(row)
+            session.flush()
+            return self._serialize_auth_event(row)
+
+    def list_auth_events(self, *, user_id: str, limit: int = 100) -> list[dict]:
+        with self._sessions() as session:
+            rows = session.scalars(
+                select(AuthEventRow)
+                .where(AuthEventRow.user_id == user_id)
+                .order_by(AuthEventRow.created_at.desc(), AuthEventRow.id.desc())
+                .limit(min(max(limit, 1), 500))
+            ).all()
+            return [self._serialize_auth_event(row) for row in rows]
+
     def create_invitation(
         self,
         *,
@@ -480,8 +640,39 @@ class AccountRepository:
             "email": row.email,
             "password_hash": row.password_hash,
             "display_name": row.display_name,
+            "email_verified_at": row.email_verified_at,
+            "failed_login_count": row.failed_login_count,
+            "locked_until": row.locked_until,
+            "last_login_at": row.last_login_at,
+            "last_login_ip": row.last_login_ip,
             "created_at": row.created_at,
             "disabled_at": row.disabled_at,
+        }
+
+    @staticmethod
+    def _serialize_account_token(row: AccountTokenRow) -> dict:
+        return {
+            "id": row.id,
+            "user_id": row.user_id,
+            "token_type": row.token_type,
+            "token_hash": row.token_hash,
+            "created_at": row.created_at,
+            "expires_at": row.expires_at,
+            "used_at": row.used_at,
+        }
+
+    @staticmethod
+    def _serialize_auth_event(row: AuthEventRow) -> dict:
+        return {
+            "id": row.id,
+            "user_id": row.user_id,
+            "email": row.email,
+            "event_type": row.event_type,
+            "success": row.success,
+            "client_ip": row.client_ip,
+            "user_agent": row.user_agent,
+            "details": row.details,
+            "created_at": row.created_at,
         }
 
     @staticmethod
