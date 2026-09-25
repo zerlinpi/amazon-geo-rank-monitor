@@ -64,6 +64,8 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "last_seen_ip",
         "user_agent",
         "mfa_authenticated_at",
+        "auth_method",
+        "sso_owner_id",
     } <= session_columns
     tenant_columns = {
         column["name"] for column in inspector.get_columns("tenants")
