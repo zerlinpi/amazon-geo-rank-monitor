@@ -182,7 +182,7 @@ def build_services(settings: AppSettings) -> AppServices:
     )
     scim = ScimService(
         repository=scim_repository,
-        pepper=settings.api_key_pepper,
+        pepper=settings.scim_token_pepper or settings.api_key_pepper,
     )
     billing = BillingRepository(engine)
     _seed_credit_packs(billing, settings)
