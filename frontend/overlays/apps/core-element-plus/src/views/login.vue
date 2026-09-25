@@ -213,7 +213,7 @@ async function submitApiKey() {
                 />
               </el-form-item>
               <el-checkbox v-model="rememberDevice" class="mb-4">
-                Trust this device for 30 days
+                Trust this device
               </el-checkbox>
               <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitMfa">
                 Verify and sign in
