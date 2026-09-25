@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,12 @@ from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatc
 
 ROLES = frozenset({"owner", "admin", "analyst", "viewer"})
 INVITABLE_ROLES = frozenset({"admin", "analyst", "viewer"})
+
+logger = logging.getLogger("amazon_geo_rank_monitor.accounts")
+
+
+class AccountLockedError(ValueError):
+    pass
 
 ROLE_SCOPES: dict[str, frozenset[str]] = {
     "owner": frozenset({"*"}),
@@ -66,6 +73,7 @@ class HumanPrincipal:
     display_name: str
     workspace_name: str
     csrf_hash: str
+    email_verified_at: datetime | None
     auth_type: str = "session"
     key_id: None = None
 
@@ -97,15 +105,35 @@ class AccountService:
         repository,
         session_ttl_hours: int = 720,
         invitation_ttl_hours: int = 168,
+        verification_ttl_hours: int = 24,
+        password_reset_ttl_minutes: int = 30,
+        login_max_failures: int = 5,
+        login_lock_minutes: int = 15,
+        email_sender=None,
+        public_web_url: str = "http://localhost:5173",
     ) -> None:
         if session_ttl_hours < 1:
             raise ValueError("session_ttl_hours must be at least 1")
         if invitation_ttl_hours < 1:
             raise ValueError("invitation_ttl_hours must be at least 1")
+        if verification_ttl_hours < 1:
+            raise ValueError("verification_ttl_hours must be at least 1")
+        if password_reset_ttl_minutes < 5:
+            raise ValueError("password_reset_ttl_minutes must be at least 5")
+        if login_max_failures < 1:
+            raise ValueError("login_max_failures must be at least 1")
+        if login_lock_minutes < 1:
+            raise ValueError("login_lock_minutes must be at least 1")
         self._repository = repository
         self._passwords = PasswordHasher()
         self._session_ttl = timedelta(hours=session_ttl_hours)
         self._invitation_ttl = timedelta(hours=invitation_ttl_hours)
+        self._verification_ttl = timedelta(hours=verification_ttl_hours)
+        self._password_reset_ttl = timedelta(minutes=password_reset_ttl_minutes)
+        self._login_max_failures = login_max_failures
+        self._login_lock = timedelta(minutes=login_lock_minutes)
+        self._email_sender = email_sender
+        self._public_web_url = public_web_url.rstrip("/")
 
     @staticmethod
     def normalize_email(email: str) -> str:
