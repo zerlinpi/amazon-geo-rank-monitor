@@ -175,6 +175,10 @@ def build_services(settings: AppSettings) -> AppServices:
             invitation_ttl_hours=settings.invitation_ttl_hours,
         ),
         allow_public_signup=settings.allow_public_signup,
+        session_cookie_name=settings.session_cookie_name,
+        csrf_cookie_name=settings.csrf_cookie_name,
+        session_cookie_secure=settings.session_cookie_secure,
+        session_cookie_samesite=settings.session_cookie_samesite,
         rate_limiter=build_rate_limiter(
             requests_per_minute=settings.api_rate_limit_per_minute,
             redis_url=settings.redis_url,
