@@ -292,6 +292,121 @@ export interface RankObservation {
   page: number | null
 }
 
+export interface AnalyticsAggregatePoint {
+  run_id: string
+  completed_at: string
+  run_status: string
+  asin: string
+  weighted_rank: string | number
+  found_weight: string | number
+  missing_weight: string | number
+  confidence: string | number
+}
+
+export interface AnalyticsGeoPoint {
+  run_id: string
+  completed_at: string
+  run_status: string
+  asin: string
+  geo_profile_id: string
+  found: boolean
+  organic_rank?: number | null
+  absolute_rank?: number | null
+  sponsored_rank?: number | null
+  effective_rank: number
+  provider: string
+  verification_level: string
+}
+
+export interface AnalyticsTrend {
+  monitor: {
+    id: string
+    name: string
+    marketplace: string
+    keyword: string
+    asins: string[]
+    geo_profile_ids: string[]
+  }
+  window: {
+    start: string
+    end: string
+    hours: number
+  }
+  aggregate: AnalyticsAggregatePoint[]
+  geo: AnalyticsGeoPoint[]
+}
+
+export interface AnalyticsAsinSummary {
+  asin: string
+  run_count: number
+  first_rank: string | number
+  latest_rank: string | number
+  change: string | number
+  best_rank: string | number
+  worst_rank: string | number
+  average_rank: string | number
+  average_confidence: string | number
+  average_found_rate: string | number
+}
+
+export interface AnalyticsGeoSummary {
+  asin: string
+  geo_profile_id: string
+  observation_count: number
+  found_count: number
+  found_rate: string | number
+  best_effective_rank: string | number
+  worst_effective_rank: string | number
+  average_effective_rank: string | number
+}
+
+export interface AnalyticsSummary {
+  monitor: AnalyticsTrend['monitor']
+  window: AnalyticsTrend['window']
+  run_count: number
+  asins: AnalyticsAsinSummary[]
+  geos: AnalyticsGeoSummary[]
+}
+
+export interface ReportSchedule {
+  id: string
+  owner_id: string
+  name: string
+  monitor_target_ids: string[]
+  recipients: string[]
+  schedule: string
+  lookback_hours: number
+  include_csv: boolean
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ReportSchedulePayload {
+  name: string
+  monitor_target_ids: string[]
+  recipients: string[]
+  schedule: string
+  lookback_hours: number
+  include_csv: boolean
+  enabled: boolean
+}
+
+export interface ReportDelivery {
+  id: string
+  owner_id: string
+  schedule_id: string
+  scheduled_for: string
+  status: 'sent' | 'partially_failed' | 'failed' | 'sending' | string
+  recipient_count: number
+  sent_count: number
+  subject: string
+  summary: Record<string, any>
+  error?: string | null
+  created_at: string
+  completed_at?: string | null
+}
+
 export interface AlertRule {
   id: string
   owner_id: string
@@ -564,6 +679,52 @@ export const agrmApi = {
   getGeoProfiles: () => data<GeoProfile[]>(client.get('/api/v1/geo-profiles')),
   createGeoProfile: (payload: Omit<GeoProfile, 'id'>) => data<GeoProfile>(
     client.post('/api/v1/geo-profiles', payload),
+  ),
+  getMonitorTrend: (
+    monitorId: string,
+    hours = 168,
+    asin?: string,
+    geo_profile_id?: string,
+  ) => data<AnalyticsTrend>(
+    client.get('/api/v1/analytics/monitors/' + monitorId + '/trend', {
+      params: { hours, asin, geo_profile_id },
+    }),
+  ),
+  getMonitorAnalyticsSummary: (monitorId: string, hours = 168) => data<AnalyticsSummary>(
+    client.get('/api/v1/analytics/monitors/' + monitorId + '/summary', {
+      params: { hours },
+    }),
+  ),
+  exportMonitorCsv: (
+    monitorId: string,
+    hours = 168,
+    granularity: 'aggregate' | 'geo' = 'aggregate',
+  ) => data<Blob>(
+    client.get('/api/v1/analytics/monitors/' + monitorId + '/export.csv', {
+      params: { hours, granularity },
+      responseType: 'blob',
+    }),
+  ),
+  getReportSchedules: () => data<ReportSchedule[]>(
+    client.get('/api/v1/reports/schedules'),
+  ),
+  createReportSchedule: (payload: ReportSchedulePayload) => data<ReportSchedule>(
+    client.post('/api/v1/reports/schedules', payload),
+  ),
+  updateReportSchedule: (
+    id: string,
+    payload: Partial<ReportSchedulePayload>,
+  ) => data<ReportSchedule>(
+    client.patch('/api/v1/reports/schedules/' + id, payload),
+  ),
+  deleteReportSchedule: (id: string) => data<void>(
+    client.delete('/api/v1/reports/schedules/' + id),
+  ),
+  sendReportNow: (id: string) => data<ReportDelivery>(
+    client.post('/api/v1/reports/schedules/' + id + '/send'),
+  ),
+  getReportDeliveries: (limit = 100) => data<ReportDelivery[]>(
+    client.get('/api/v1/reports/deliveries', { params: { limit } }),
   ),
   getAlertRules: () => data<AlertRule[]>(client.get('/api/v1/alerts/rules')),
   createAlertRule: (payload: AlertRulePayload) => data<AlertRule>(
