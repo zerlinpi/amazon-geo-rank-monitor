@@ -22,21 +22,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install openpyxl requests
-      - name: Collect Amazon 2018 supplement
+      - name: Collect adjacent compact treadmill supplement
         env:
-          TARGET_REVIEWS: "50000"
-          OUTDIR: "voc2018_output"
-        run: python scripts/walking_pad_voc_2018.py
+          TARGET_REVIEWS: "40000"
+          OUTDIR: "adjacent_output"
+        run: python scripts/walking_pad_voc_adjacent.py
       - name: Show stats
         if: always()
         run: |
-          find voc2018_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
-          cat voc2018_output/stats.json || true
+          find adjacent_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
+          cat adjacent_output/stats.json || true
       - name: Upload supplement artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: walking-pad-voc-2018-supplement
-          path: voc2018_output/
+          name: walking-pad-voc-adjacent-2023
+          path: adjacent_output/
           if-no-files-found: warn
           retention-days: 7
