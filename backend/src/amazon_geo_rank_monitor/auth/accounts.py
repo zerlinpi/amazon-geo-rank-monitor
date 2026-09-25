@@ -425,6 +425,21 @@ class AccountService:
             keep_session_id=principal.session_id,
         )
 
+    def rotate_session(
+        self,
+        *,
+        principal: HumanPrincipal,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> SessionCreation:
+        self._repository.revoke_session(principal.session_id)
+        return self._issue_session(
+            user_id=principal.user_id,
+            owner_id=principal.owner_id,
+            client_ip=client_ip,
+            user_agent=user_agent,
+        )
+
     def _load_invitation(self, plaintext: str) -> dict:
         if not plaintext.startswith("agri_"):
             raise ValueError("invalid invitation")
