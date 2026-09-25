@@ -290,6 +290,24 @@ export interface RankObservation {
   sponsored_rank: number | null
   effective_rank: number
   page: number | null
+  probe_source: 'upstream' | 'cache'
+  cache_age_seconds?: number | null
+}
+
+export interface RankUsage {
+  requested_probe_count: number
+  upstream_probe_count: number
+  cache_hit_count: number
+  billable_probe_count: number
+}
+
+export interface RankCheckResult {
+  run_id: string
+  status: string
+  errors: string[]
+  usage: RankUsage
+  observations: RankObservation[]
+  snapshots: RankSnapshot[]
 }
 
 export interface AnalyticsAggregatePoint {
@@ -479,6 +497,7 @@ export interface RankRun {
   status: string
   requested_probe_count: number
   settled_probe_count: number
+  cache_hit_count: number
   error_summary?: string | null
   started_at: string
   completed_at?: string | null
@@ -754,7 +773,7 @@ export const agrmApi = {
     geo_profile_ids: string[]
     search_depth: number
     provider_mode: 'managed' | 'strict'
-  }) => data<any>(client.post('/api/v1/rank/check', payload)),
+  }) => data<RankCheckResult>(client.post('/api/v1/rank/check', payload)),
   getRuns: (limit = 50) => data<RankRun[]>(client.get('/api/v1/runs', { params: { limit } })),
   getRun: (id: string) => data<RankRun>(client.get('/api/v1/runs/' + id)),
   getApiKeys: () => data<ApiKeyRow[]>(client.get('/api/v1/api-keys')),
