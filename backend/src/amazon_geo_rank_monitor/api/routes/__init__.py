@@ -1,22 +1,26 @@
 from .alerts import router as alerts_router
+from .analytics import router as analytics_router
 from .api_keys import router as api_keys_router
 from .auth import router as auth_router
 from .billing import router as billing_router
 from .geo_profiles import router as geo_profiles_router
 from .monitors import router as monitors_router
 from .rank import router as rank_router
+from .reports import router as reports_router
 from .scim import router as scim_router
 from .system import router as system_router
 from .team import router as team_router
 
 __all__ = [
     "alerts_router",
+    "analytics_router",
     "api_keys_router",
     "auth_router",
     "billing_router",
     "geo_profiles_router",
     "monitors_router",
     "rank_router",
+    "reports_router",
     "scim_router",
     "system_router",
     "team_router",
