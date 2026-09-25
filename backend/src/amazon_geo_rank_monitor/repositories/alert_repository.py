@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -67,7 +67,10 @@ class AlertRepository:
         with self._sessions() as session:
             rows = session.scalars(
                 select(RankAlertRuleRow)
-                .where(RankAlertRuleRow.owner_id == owner_id)
+                .where(
+                    RankAlertRuleRow.owner_id == owner_id,
+                    RankAlertRuleRow.deleted_at.is_(None),
+                )
                 .order_by(RankAlertRuleRow.created_at, RankAlertRuleRow.id)
             ).all()
             return [self._serialize_rule(row) for row in rows]
@@ -84,6 +87,7 @@ class AlertRepository:
                 .where(
                     RankAlertRuleRow.owner_id == owner_id,
                     RankAlertRuleRow.enabled.is_(True),
+                    RankAlertRuleRow.deleted_at.is_(None),
                 )
                 .order_by(RankAlertRuleRow.created_at, RankAlertRuleRow.id)
             ).all()
@@ -125,21 +129,9 @@ class AlertRepository:
             )
             if row is None:
                 raise KeyError("alert rule not found")
-            session.execute(
-                delete(RankAlertDeliveryRow).where(
-                    RankAlertDeliveryRow.event_id.in_(
-                        select(RankAlertEventRow.id).where(
-                            RankAlertEventRow.rule_id == rule_id
-                        )
-                    )
-                )
-            )
-            session.execute(
-                delete(RankAlertEventRow).where(
-                    RankAlertEventRow.rule_id == rule_id
-                )
-            )
-            session.delete(row)
+            row.enabled = False
+            row.deleted_at = datetime.now(UTC)
+            row.updated_at = datetime.now(UTC)
 
     def cooldown_active(
         self,
@@ -270,6 +262,7 @@ class AlertRepository:
             "enabled": row.enabled,
             "created_at": row.created_at,
             "updated_at": row.updated_at,
+            "deleted_at": row.deleted_at,
         }
 
     @staticmethod
