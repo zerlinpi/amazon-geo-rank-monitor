@@ -21,7 +21,7 @@ client.interceptors.request.use((config) => {
   }
   const method = (config.method || 'get').toLowerCase()
   if (!['get', 'head', 'options'].includes(method)) {
-    const csrf = readCookie('agrm_csrf')
+    const csrf = readCookie(import.meta.env.VITE_AGRM_CSRF_COOKIE_NAME || 'agrm_csrf')
     if (csrf) {
       config.headers['X-CSRF-Token'] = csrf
     }
