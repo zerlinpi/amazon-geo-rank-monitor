@@ -5,7 +5,6 @@ import hashlib
 import ipaddress
 import json
 import logging
-from datetime import UTC, datetime
 from decimal import Decimal
 from urllib.parse import urlparse
 
