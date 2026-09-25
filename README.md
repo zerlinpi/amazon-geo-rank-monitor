@@ -1382,3 +1382,145 @@ Upgrade with:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## Historical analytics and scheduled reports
+
+Phase 18 adds monitor-scoped historical analytics, CSV export and scheduled stakeholder email reports.
+
+Analytics are derived directly from completed rank jobs and their existing rank runs, snapshots and geographic observations. The system does not maintain a second analytics copy of ranking results, so the underlying rank run remains the source of truth.
+
+### Historical analytics
+
+Analytics queries are always scoped by both workspace and Monitor. A run belonging to another tenant or another Monitor cannot become part of the same trend even when the keyword or ASIN is identical.
+
+Supported windows are 1 hour through 1 year.
+
+Monitor analytics include:
+
+- weighted aggregate rank history per ASIN;
+- first and latest rank in the selected window;
+- rank change, where a negative value means improvement;
+- best, worst and average weighted rank;
+- average confidence;
+- aggregate found rate;
+- geographic effective-rank averages;
+- geographic best/worst rank;
+- geographic found rate and observation count.
+
+REST endpoints:
+
+```http
+GET /api/v1/analytics/monitors/{monitor_id}/trend?hours=168
+GET /api/v1/analytics/monitors/{monitor_id}/summary?hours=168
+GET /api/v1/analytics/monitors/{monitor_id}/export.csv?hours=168&granularity=aggregate
+GET /api/v1/analytics/monitors/{monitor_id}/export.csv?hours=168&granularity=geo
+```
+
+These endpoints require `rank:read`.
+
+The CSV export is generated on demand from the same tenant-scoped historical query used by the UI. Aggregate exports contain weighted snapshots; geographic exports contain individual regional observations.
+
+### Scheduled reports
+
+Workspace administrators can create reports that combine one or more Monitors and deliver a text summary by email. Reports can optionally attach one aggregate CSV file per Monitor.
+
+Each schedule contains:
+
+- report name;
+- one or more Monitor IDs;
+- recipient email addresses;
+- a standard five-field UTC cron expression;
+- a lookback window;
+- CSV attachment on/off;
+- enabled state.
+
+Report schedule configuration and delivery history use `system:read`; creating, changing, archiving or manually sending reports uses `system:write`.
+
+REST endpoints:
+
+```http
+GET    /api/v1/reports/schedules
+POST   /api/v1/reports/schedules
+PATCH  /api/v1/reports/schedules/{schedule_id}
+DELETE /api/v1/reports/schedules/{schedule_id}
+POST   /api/v1/reports/schedules/{schedule_id}/send
+GET    /api/v1/reports/deliveries
+```
+
+### Report scheduling semantics
+
+The existing scheduler process dispatches both Monitor rank jobs and scheduled reports.
+
+Like Monitor schedules, reports use five-field cron expressions interpreted in UTC. The scheduler considers only the latest due slot and does not replay every missed historical slot after downtime.
+
+Before sending, the scheduler reserves a `report_deliveries` row. The database unique constraint on `schedule_id + scheduled_for` makes a cron slot idempotent across repeated scans and multiple scheduler replicas.
+
+A delivery records:
+
+- scheduled time;
+- status: `sent`, `partially_failed` or `failed`;
+- recipient count;
+- successful send count;
+- subject;
+- bounded error text;
+- a compact stored rank summary.
+
+One failed recipient does not erase successful recipient deliveries, and report delivery failures never alter underlying rank jobs or rank runs.
+
+### Recipient encryption
+
+Report recipient lists are encrypted with Fernet before storage.
+
+Production should set a stable independent key:
+
+```env
+REPORT_ENCRYPTION_KEY=<stable high-entropy secret>
+```
+
+If omitted, the runtime falls back to `MFA_ENCRYPTION_KEY` and then `API_KEY_PEPPER` for deployment compatibility.
+
+API and scheduler processes must use the same effective encryption key. Do not rotate `REPORT_ENCRYPTION_KEY` without a migration/re-encryption plan; existing encrypted recipient lists cannot be decrypted with a different key.
+
+The scheduler also requires the same SMTP configuration already used by account emails:
+
+```env
+SMTP_HOST=...
+SMTP_PORT=587
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_FROM_EMAIL=...
+SMTP_STARTTLS=true
+```
+
+### Fantastic Admin
+
+The console exposes **Rank Monitoring → Analytics & Reports**.
+
+The page includes:
+
+- Monitor and time-window selection;
+- per-ASIN trend sparklines;
+- current/change/best/worst/average rank cards;
+- geographic performance table;
+- aggregate and geographic CSV export;
+- Admin report schedule creation/editing;
+- manual **Send now**;
+- delivery history.
+
+Users without report-management permissions can still use historical analytics and CSV export when they have rank read access.
+
+## Phase 18 migration
+
+Alembic revision `20260925_0012` adds:
+
+- `report_schedules`;
+- `report_deliveries`;
+- the unique report schedule/slot idempotency constraint.
+
+Existing production databases should run:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
