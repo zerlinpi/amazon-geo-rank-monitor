@@ -10,7 +10,6 @@ from argon2 import PasswordHasher
 
 from amazon_geo_rank_monitor.repositories.scim_repository import SCIM_ROLES
 
-
 SCIM_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User"
 SCIM_GROUP_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Group"
 SCIM_LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
