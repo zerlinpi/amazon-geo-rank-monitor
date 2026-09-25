@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from amazon_geo_rank_monitor.alerts import AlertService
 from amazon_geo_rank_monitor.api.app import AppServices
 from amazon_geo_rank_monitor.api.rate_limit import build_rate_limiter
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
@@ -27,6 +28,7 @@ from amazon_geo_rank_monitor.providers.playwright_amazon import (
 )
 from amazon_geo_rank_monitor.providers.strict_browser import StrictBrowserRankProvider
 from amazon_geo_rank_monitor.repositories.account_repository import AccountRepository
+from amazon_geo_rank_monitor.repositories.alert_repository import AlertRepository
 from amazon_geo_rank_monitor.repositories.audit_repository import AuditRepository
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
@@ -148,9 +150,21 @@ def build_services(settings: AppSettings) -> AppServices:
         Base.metadata.create_all(engine)
 
     tenants = TenantRepository(engine)
+    geo_repository = GeoRepository(engine)
+    monitor_repository = MonitorRepository(engine)
+    job_repository = JobRepository(
+        engine,
+        default_max_attempts=settings.job_max_attempts,
+    )
+    rank_repository = RankRepository(engine)
     accounts_repository = AccountRepository(engine)
+    alert_repository = AlertRepository(engine)
     sso_repository = SsoRepository(engine)
     scim_repository = ScimRepository(engine)
+    worker_status_repository = WorkerStatusRepository(engine)
+    audit_repository = AuditRepository(engine)
+
+    email_sender = build_email_sender(settings)
     accounts = AccountService(
         repository=accounts_repository,
         session_ttl_hours=settings.session_ttl_hours,
@@ -159,7 +173,7 @@ def build_services(settings: AppSettings) -> AppServices:
         password_reset_ttl_minutes=settings.password_reset_ttl_minutes,
         login_max_failures=settings.login_max_failures,
         login_lock_minutes=settings.login_lock_minutes,
-        email_sender=build_email_sender(settings),
+        email_sender=email_sender,
         public_web_url=settings.public_web_url,
         mfa_encryption_key=settings.mfa_encryption_key or settings.api_key_pepper,
         mfa_issuer=settings.mfa_issuer,
@@ -184,21 +198,38 @@ def build_services(settings: AppSettings) -> AppServices:
         repository=scim_repository,
         pepper=settings.scim_token_pepper or settings.api_key_pepper,
     )
+    alerts = AlertService(
+        repository=alert_repository,
+        rank_repository=rank_repository,
+        job_repository=job_repository,
+        monitor_repository=monitor_repository,
+        email_sender=email_sender,
+        encryption_key=(
+            settings.alert_encryption_key
+            or settings.mfa_encryption_key
+            or settings.api_key_pepper
+        ),
+        webhook_allowed_hosts=settings.alert_webhook_allowed_host_list,
+    )
+
     billing = BillingRepository(engine)
     _seed_credit_packs(billing, settings)
     return AppServices(
         tenant_repository=tenants,
-        geo_repository=GeoRepository(engine),
-        monitor_repository=MonitorRepository(engine),
-        job_repository=JobRepository(
-            engine,
-            default_max_attempts=settings.job_max_attempts,
-        ),
-        rank_repository=RankRepository(engine),
+        geo_repository=geo_repository,
+        monitor_repository=monitor_repository,
+        job_repository=job_repository,
+        rank_repository=rank_repository,
         api_keys=ApiKeyService(
             repository=tenants,
             pepper=settings.api_key_pepper,
         ),
+        provider_registry=ProviderRegistry(
+            managed=_managed_provider(settings),
+            strict=_strict_provider(settings),
+        ),
+        alert_repository=alert_repository,
+        alerts=alerts,
         billing_repository=billing,
         rate_card=RateCard(
             managed_serp=settings.managed_serp_credit_cost,
@@ -206,8 +237,8 @@ def build_services(settings: AppSettings) -> AppServices:
         ),
         stripe_billing=_stripe_billing(billing, settings),
         database_engine=engine,
-        worker_status_repository=WorkerStatusRepository(engine),
-        audit_repository=AuditRepository(engine),
+        worker_status_repository=worker_status_repository,
+        audit_repository=audit_repository,
         account_repository=accounts_repository,
         accounts=accounts,
         sso_repository=sso_repository,
@@ -229,9 +260,5 @@ def build_services(settings: AppSettings) -> AppServices:
             requests_per_minute=settings.auth_rate_limit_per_minute,
             redis_url=settings.redis_url,
             namespace="agrm:auth",
-        ),
-        provider_registry=ProviderRegistry(
-            managed=_managed_provider(settings),
-            strict=_strict_provider(settings),
         ),
     )

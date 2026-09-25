@@ -150,3 +150,33 @@ class WorkspaceScimConfigUpdate(BaseModel):
 
 class ScimGroupRoleUpdate(BaseModel):
     mapped_role: str | None = Field(default=None, max_length=32)
+
+
+class AlertChannelsInput(BaseModel):
+    emails: list[str] = Field(default_factory=list)
+    slack_webhook_url: str | None = Field(default=None, max_length=2048)
+    webhook_url: str | None = Field(default=None, max_length=2048)
+
+
+class AlertRuleCreate(BaseModel):
+    monitor_target_id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=200)
+    rule_type: str = Field(min_length=1, max_length=32)
+    threshold: float | None = None
+    asin: str | None = Field(default=None, max_length=32)
+    geo_profile_id: str | None = Field(default=None, max_length=128)
+    channels: AlertChannelsInput
+    cooldown_minutes: int = Field(default=60, ge=0, le=10080)
+    enabled: bool = True
+
+
+class AlertRuleUpdate(BaseModel):
+    monitor_target_id: str | None = Field(default=None, min_length=1)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    rule_type: str | None = Field(default=None, min_length=1, max_length=32)
+    threshold: float | None = None
+    asin: str | None = Field(default=None, max_length=32)
+    geo_profile_id: str | None = Field(default=None, max_length=128)
+    channels: AlertChannelsInput | None = None
+    cooldown_minutes: int | None = Field(default=None, ge=0, le=10080)
+    enabled: bool | None = None

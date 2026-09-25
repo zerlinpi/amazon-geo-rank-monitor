@@ -35,6 +35,12 @@ const routes: RouteRecordRaw = {
       meta: { title: 'API Keys', icon: 'i-lucide:key-round' },
     },
     {
+      path: 'alerts',
+      name: 'rankAlerts',
+      component: () => import('@/views/agrm/alerts.vue'),
+      meta: { title: 'Rank Alerts', icon: 'i-lucide:bell-ring' },
+    },
+    {
       path: 'system-status',
       name: 'systemStatus',
       component: () => import('@/views/agrm/system-status.vue'),

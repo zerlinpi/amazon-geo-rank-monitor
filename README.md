@@ -1278,3 +1278,107 @@ Upgrade with:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## Rank alerts and notifications
+
+Phase 17 adds proactive ranking alerts on top of completed monitor runs. Alert evaluation happens only after a rank job has reached a successful or partially successful terminal state. Provider retries and failed rank jobs do not emit ranking-change alerts.
+
+Supported rule types:
+
+- `rank_drop`: weighted aggregate rank becomes worse by at least N positions compared with the previous completed run for the same Monitor.
+- `rank_improve`: weighted aggregate rank improves by at least N positions.
+- `enters_top_n`: weighted rank crosses from below the configured Top N boundary into it.
+- `exits_top_n`: weighted rank crosses out of the configured Top N boundary.
+- `not_found`: the ASIN has zero aggregate found weight in the current run.
+- `geo_not_found`: the ASIN is not found for a matching geographic observation.
+- `geo_rank_above`: a geographic observation has an effective rank worse than the configured threshold.
+
+Rules are always evaluated against the same `monitor_target_id`; a run from another Monitor with the same keyword cannot become the comparison baseline.
+
+### Cooldown and deduplication
+
+Each rule has `cooldown_minutes`. Cooldown is scoped to the rule + ASIN + geo + event type, which suppresses repeated identical alerts while allowing unrelated ASINs or geographies to notify independently.
+
+Each emitted event also has a deterministic per-run fingerprint. Re-evaluating the same run cannot create duplicate event rows.
+
+Archiving a rule is a soft delete. Historical alert events and delivery records are retained for incident review and audit.
+
+### Notification channels
+
+A rule may contain one or more of:
+
+- email recipients;
+- Slack Incoming Webhook;
+- generic HTTPS webhook.
+
+Email uses the same SMTP sender configured for account verification/recovery.
+
+Slack webhook URLs are restricted to official Slack webhook hosts.
+
+Generic webhooks are disabled unless the destination hostname is explicitly present in:
+
+```env
+ALERT_WEBHOOK_ALLOWED_HOSTS=alerts.example.com,automation.example.com
+```
+
+Private/loopback/link-local IP literal destinations are rejected. For production, network-level egress policy should still restrict worker outbound traffic to the intended notification destinations.
+
+Generic webhooks include:
+
+- `event=rank_alert.triggered`;
+- stable `event_id`;
+- rule, Monitor and run IDs;
+- ASIN and geo;
+- previous/current values;
+- event details.
+
+The request also carries `X-AGRM-Event-ID` so receivers can implement idempotency.
+
+### Destination secret encryption
+
+Notification channel configuration is encrypted with Fernet before storage. Slack and generic webhook secret URLs are never returned by the API after creation.
+
+Production should configure a dedicated stable key:
+
+```env
+ALERT_ENCRYPTION_KEY=<stable high-entropy secret>
+ALERT_WEBHOOK_ALLOWED_HOSTS=
+```
+
+If `ALERT_ENCRYPTION_KEY` is omitted, the runtime falls back to `MFA_ENCRYPTION_KEY` and then `API_KEY_PEPPER` for deployment compatibility. API and worker processes must use the same effective key.
+
+Do not rotate `ALERT_ENCRYPTION_KEY` without a migration/re-encryption plan; existing channel configuration cannot be decrypted by a different key.
+
+### Delivery failure semantics
+
+Notification delivery is best-effort after the rank job is completed. Email, Slack or webhook failures are stored as `rank_alert_deliveries.status=failed` with a bounded error message.
+
+A notification outage never changes an already completed rank job back to failed/retry. Ranking data remains authoritative even when a downstream notification channel is unavailable.
+
+### Alert API
+
+Read access uses the existing `monitors:read` scope. Rule mutation uses `monitors:write`.
+
+- `GET /api/v1/alerts/rules`
+- `POST /api/v1/alerts/rules`
+- `PATCH /api/v1/alerts/rules/{rule_id}`
+- `DELETE /api/v1/alerts/rules/{rule_id}` (archive)
+- `GET /api/v1/alerts/events`
+
+Fantastic Admin exposes **Workspace → Rank Alerts**, including rule configuration, Monitor/ASIN/Geo scoping, cooldown, channel state, alert event history and delivery status. The Monitors screen also links directly into alert creation for a selected Monitor.
+
+## Phase 17 migration
+
+Schema revision `20260925_0011` adds:
+
+- `rank_alert_rules`;
+- `rank_alert_events`;
+- `rank_alert_deliveries`.
+
+Upgrade with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```

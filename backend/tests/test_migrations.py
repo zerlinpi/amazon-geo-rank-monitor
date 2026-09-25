@@ -35,6 +35,9 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "workspace_scim_configs",
         "scim_groups",
         "scim_group_members",
+        "rank_alert_rules",
+        "rank_alert_events",
+        "rank_alert_deliveries",
     } <= tables
     inspector = inspect(create_engine(database_url))
     api_key_columns = {
@@ -103,3 +106,13 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "lease_expires_at",
         "max_attempts",
     } <= rank_job_columns
+
+
+    alert_rule_columns = {
+        column["name"] for column in inspector.get_columns("rank_alert_rules")
+    }
+    assert {
+        "channels_encrypted",
+        "cooldown_minutes",
+        "deleted_at",
+    } <= alert_rule_columns

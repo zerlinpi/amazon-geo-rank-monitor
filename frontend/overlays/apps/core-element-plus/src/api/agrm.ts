@@ -292,6 +292,71 @@ export interface RankObservation {
   page: number | null
 }
 
+export interface AlertRule {
+  id: string
+  owner_id: string
+  monitor_target_id: string
+  name: string
+  rule_type: 'rank_drop' | 'rank_improve' | 'enters_top_n' | 'exits_top_n' | 'not_found' | 'geo_not_found' | 'geo_rank_above' | string
+  threshold?: string | number | null
+  asin?: string | null
+  geo_profile_id?: string | null
+  channels: {
+    email_count: number
+    emails: string[]
+    has_slack: boolean
+    has_webhook: boolean
+  }
+  cooldown_minutes: number
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AlertChannelsInput {
+  emails: string[]
+  slack_webhook_url?: string | null
+  webhook_url?: string | null
+}
+
+export interface AlertRulePayload {
+  monitor_target_id: string
+  name: string
+  rule_type: string
+  threshold?: number | null
+  asin?: string | null
+  geo_profile_id?: string | null
+  channels: AlertChannelsInput
+  cooldown_minutes: number
+  enabled: boolean
+}
+
+export interface AlertDelivery {
+  id: string
+  event_id: string
+  channel_type: string
+  destination: string
+  status: string
+  error?: string | null
+  attempted_at: string
+}
+
+export interface AlertEvent {
+  id: string
+  owner_id: string
+  rule_id: string
+  monitor_target_id: string
+  run_id: string
+  asin: string
+  geo_profile_id?: string | null
+  event_type: string
+  previous_value?: string | number | null
+  current_value?: string | number | null
+  details: Record<string, any>
+  created_at: string
+  deliveries: AlertDelivery[]
+}
+
 export interface RankRun {
   id: string
   marketplace: string
@@ -499,6 +564,19 @@ export const agrmApi = {
   getGeoProfiles: () => data<GeoProfile[]>(client.get('/api/v1/geo-profiles')),
   createGeoProfile: (payload: Omit<GeoProfile, 'id'>) => data<GeoProfile>(
     client.post('/api/v1/geo-profiles', payload),
+  ),
+  getAlertRules: () => data<AlertRule[]>(client.get('/api/v1/alerts/rules')),
+  createAlertRule: (payload: AlertRulePayload) => data<AlertRule>(
+    client.post('/api/v1/alerts/rules', payload),
+  ),
+  updateAlertRule: (id: string, payload: Partial<AlertRulePayload>) => data<AlertRule>(
+    client.patch('/api/v1/alerts/rules/' + id, payload),
+  ),
+  deleteAlertRule: (id: string) => data<void>(
+    client.delete('/api/v1/alerts/rules/' + id),
+  ),
+  getAlertEvents: (limit = 100) => data<AlertEvent[]>(
+    client.get('/api/v1/alerts/events', { params: { limit } }),
   ),
   getMonitors: () => data<Monitor[]>(client.get('/api/v1/monitors')),
   getMonitor: (id: string) => data<Monitor>(client.get('/api/v1/monitors/' + id)),

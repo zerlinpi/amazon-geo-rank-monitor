@@ -1,3 +1,4 @@
+from .alerts import router as alerts_router
 from .api_keys import router as api_keys_router
 from .auth import router as auth_router
 from .billing import router as billing_router
@@ -9,6 +10,7 @@ from .system import router as system_router
 from .team import router as team_router
 
 __all__ = [
+    "alerts_router",
     "api_keys_router",
     "auth_router",
     "billing_router",

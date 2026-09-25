@@ -20,6 +20,7 @@ from .errors import (
 )
 from .rate_limit import build_rate_limiter, rate_limit_identity
 from .routes import (
+    alerts_router,
     api_keys_router,
     auth_router,
     billing_router,
@@ -41,6 +42,8 @@ class AppServices:
     rank_repository: Any
     api_keys: Any
     provider_registry: Any
+    alert_repository: Any | None = None
+    alerts: Any | None = None
     billing_repository: Any | None = None
     rate_card: Any | None = None
     stripe_billing: Any | None = None
@@ -247,6 +250,7 @@ def create_app(
         return {"status": "ok", "database": "ok"}
 
     app.include_router(auth_router)
+    app.include_router(alerts_router)
     app.include_router(team_router)
     app.include_router(geo_profiles_router)
     app.include_router(monitors_router)

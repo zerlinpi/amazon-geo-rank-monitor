@@ -29,7 +29,6 @@ class AppSettings(BaseSettings):
     residential_proxy_server: str = "http://pr.oxylabs.io:7777"
     api_key_pepper: str | None = None
     scim_token_pepper: str | None = None
-    scim_token_pepper: str | None = None
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     api_rate_limit_per_minute: int = 120
@@ -57,6 +56,8 @@ class AppSettings(BaseSettings):
     sso_encryption_key: str | None = None
     sso_callback_url: str = "http://localhost:8000/api/v1/auth/sso/callback"
     sso_transaction_minutes: int = 5
+    alert_encryption_key: str | None = None
+    alert_webhook_allowed_hosts: str = ""
     session_cookie_name: str = "agrm_session"
     csrf_cookie_name: str = "agrm_csrf"
     session_cookie_secure: bool = False
@@ -85,6 +86,14 @@ class AppSettings(BaseSettings):
     credit_pack_growth_amount_minor: int = 0
     credit_pack_scale_credits: int = 10000
     credit_pack_scale_amount_minor: int = 0
+
+    @property
+    def alert_webhook_allowed_host_list(self) -> list[str]:
+        return [
+            item.strip().lower()
+            for item in self.alert_webhook_allowed_hosts.split(",")
+            if item.strip()
+        ]
 
     @property
     def cors_origin_list(self) -> list[str]:
