@@ -24,6 +24,12 @@ const constantRoutes: RouteRecordRaw[] = [
     meta: { title: 'Reset password' },
   },
   {
+    path: '/sso-complete',
+    name: 'ssoComplete',
+    component: () => import('@/views/sso-complete.vue'),
+    meta: { title: 'Completing SSO' },
+  },
+  {
     path: '/:all(.*)*',
     name: 'notFound',
     component: () => import('@/views/[...all].vue'),
