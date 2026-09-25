@@ -21,22 +21,22 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install openpyxl requests
-      - name: Collect adjacent compact treadmill supplement
+          pip install requests
+      - name: Collect general treadmill benchmark
         env:
-          TARGET_REVIEWS: "40000"
-          OUTDIR: "adjacent_output"
-        run: python scripts/walking_pad_voc_adjacent.py
+          TARGET_REVIEWS: "100000"
+          OUTDIR: "general_treadmill_output"
+        run: python scripts/general_treadmill_benchmark.py
       - name: Show stats
         if: always()
         run: |
-          find adjacent_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
-          cat adjacent_output/stats.json || true
-      - name: Upload supplement artifact
+          find general_treadmill_output -maxdepth 1 -type f -printf '%f %s bytes\n' || true
+          cat general_treadmill_output/stats.json || true
+      - name: Upload benchmark artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: walking-pad-voc-adjacent-2023
-          path: adjacent_output/
+          name: walking-pad-voc-general-treadmill-2023
+          path: general_treadmill_output/
           if-no-files-found: warn
           retention-days: 7
