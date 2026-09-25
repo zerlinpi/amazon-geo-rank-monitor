@@ -1,12 +1,12 @@
 import base64
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
-import httpx
-import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+import httpx
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
@@ -15,7 +15,6 @@ from amazon_geo_rank_monitor.auth.sso import OidcSsoService
 from amazon_geo_rank_monitor.repositories.account_repository import AccountRepository
 from amazon_geo_rank_monitor.repositories.models import Base
 from amazon_geo_rank_monitor.repositories.sso_repository import SsoRepository
-
 
 ISSUER = "https://idp.example.test"
 CLIENT_ID = "agrm-client"
