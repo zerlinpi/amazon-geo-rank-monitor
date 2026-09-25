@@ -9,6 +9,7 @@ from amazon_geo_rank_monitor.api.app import AppServices
 from amazon_geo_rank_monitor.api.rate_limit import build_rate_limiter
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.auth.accounts import AccountService
+from amazon_geo_rank_monitor.alerts import AlertService
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
 from amazon_geo_rank_monitor.auth.scim import ScimService
 from amazon_geo_rank_monitor.auth.sso import OidcSsoService
@@ -27,6 +28,7 @@ from amazon_geo_rank_monitor.providers.playwright_amazon import (
 )
 from amazon_geo_rank_monitor.providers.strict_browser import StrictBrowserRankProvider
 from amazon_geo_rank_monitor.repositories.account_repository import AccountRepository
+from amazon_geo_rank_monitor.repositories.alert_repository import AlertRepository
 from amazon_geo_rank_monitor.repositories.audit_repository import AuditRepository
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
@@ -149,8 +151,10 @@ def build_services(settings: AppSettings) -> AppServices:
 
     tenants = TenantRepository(engine)
     accounts_repository = AccountRepository(engine)
+    alert_repository = AlertRepository(engine)
     sso_repository = SsoRepository(engine)
     scim_repository = ScimRepository(engine)
+    email_sender = build_email_sender(settings)
     accounts = AccountService(
         repository=accounts_repository,
         session_ttl_hours=settings.session_ttl_hours,
@@ -159,7 +163,7 @@ def build_services(settings: AppSettings) -> AppServices:
         password_reset_ttl_minutes=settings.password_reset_ttl_minutes,
         login_max_failures=settings.login_max_failures,
         login_lock_minutes=settings.login_lock_minutes,
-        email_sender=build_email_sender(settings),
+        email_sender=email_sender,
         public_web_url=settings.public_web_url,
         mfa_encryption_key=settings.mfa_encryption_key or settings.api_key_pepper,
         mfa_issuer=settings.mfa_issuer,
@@ -183,6 +187,24 @@ def build_services(settings: AppSettings) -> AppServices:
     scim = ScimService(
         repository=scim_repository,
         pepper=settings.scim_token_pepper or settings.api_key_pepper,
+    )
+    alerts = AlertService(
+        repository=alert_repository,
+        rank_repository=RankRepository(engine),
+        alert_repository=alert_repository,
+        alerts=alerts,
+        job_repository=JobRepository(
+            engine,
+            default_max_attempts=settings.job_max_attempts,
+        ),
+        monitor_repository=MonitorRepository(engine),
+        email_sender=email_sender,
+        encryption_key=(
+            settings.alert_encryption_key
+            or settings.mfa_encryption_key
+            or settings.api_key_pepper
+        ),
+        webhook_allowed_hosts=settings.alert_webhook_allowed_host_list,
     )
     billing = BillingRepository(engine)
     _seed_credit_packs(billing, settings)
