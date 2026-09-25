@@ -357,7 +357,7 @@ class ScimService:
         row = self._repository.create_group(
             owner_id=owner_id,
             display_name=display_name,
-            external_id=str(payload.get("externalId") or ""),
+            external_id=self._optional_string(payload.get("externalId")),
             membership_ids=self._member_ids(payload.get("members")),
         )
         return self.serialize_group(row)
@@ -376,7 +376,7 @@ class ScimService:
             owner_id=owner_id,
             group_id=group_id,
             display_name=display_name,
-            external_id=self._optional_string(payload.get("externalId")),
+            external_id=str(payload.get("externalId") or ""),
             membership_ids=self._member_ids(payload.get("members")),
         )
         return self.serialize_group(row)
