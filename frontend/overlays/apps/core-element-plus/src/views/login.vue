@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { SsoDiscovery } from '@/api/agrm'
 import { ElMessage } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
 import ColorScheme from '@/layouts/components/Topbar/Toolbar/ColorScheme/index.vue'
@@ -22,10 +23,34 @@ const loading = ref(false)
 const mfaChallengeToken = ref('')
 const mfaCode = ref('')
 const rememberDevice = ref(false)
+const ssoOptions = ref<SsoDiscovery[]>([])
+const ssoDialog = ref(false)
+const ssoLoading = ref(false)
 
-async function finish(result?: { workspace?: { mfa_setup_required?: boolean } }) {
+onMounted(() => {
+  const hintedEmail = route.query.email?.toString()
+  if (hintedEmail) {
+    email.value = hintedEmail
+  }
+  if (route.query.sso === 'failed') {
+    ElMessage.error('Enterprise SSO sign-in failed. Try again or contact your workspace owner.')
+  }
+  else if (route.query.sso === 'required') {
+    ElMessage.warning('This workspace requires Enterprise SSO.')
+  }
+})
+
+async function finish(result?: {
+  workspace?: {
+    mfa_setup_required?: boolean
+    mfa_session_verification_required?: boolean
+  }
+}) {
   ElMessage.success(inviteToken.value ? 'Workspace joined' : 'Signed in')
-  if (result?.workspace?.mfa_setup_required) {
+  if (
+    result?.workspace?.mfa_setup_required
+    || result?.workspace?.mfa_session_verification_required
+  ) {
     ElMessage.warning('This workspace requires MFA. Complete setup to continue.')
     await router.replace('/workspace/security')
     return
@@ -52,7 +77,14 @@ async function submitLogin() {
     await finish(result)
   }
   catch (error: any) {
-    ElMessage.error(error.response?.data?.detail || 'Email or password is invalid')
+    const detail = error.response?.data?.detail || ''
+    if (error.response?.status === 403 && detail.includes('SSO')) {
+      ElMessage.warning('This workspace requires Enterprise SSO.')
+      await submitSso()
+    }
+    else {
+      ElMessage.error(detail || 'Email or password is invalid')
+    }
   }
   finally {
     loading.value = false
@@ -114,6 +146,48 @@ async function submitRegister() {
   }
   finally {
     loading.value = false
+  }
+}
+
+async function launchSso(option: SsoDiscovery) {
+  ssoLoading.value = true
+  try {
+    const started = await agrmApi.startSso(option.workspace_id, email.value.trim())
+    window.location.assign(started.authorization_url)
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Unable to start Enterprise SSO')
+    ssoLoading.value = false
+  }
+}
+
+async function submitSso() {
+  const normalizedEmail = email.value.trim()
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    ElMessage.warning('Enter your work email first')
+    return
+  }
+  ssoLoading.value = true
+  try {
+    const options = await agrmApi.discoverSso(normalizedEmail)
+    ssoOptions.value = options
+    if (!options.length) {
+      ElMessage.info('No Enterprise SSO workspace was found for this email domain')
+      return
+    }
+    if (options.length === 1) {
+      await launchSso(options[0])
+      return
+    }
+    ssoDialog.value = true
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Unable to discover Enterprise SSO')
+  }
+  finally {
+    if (!ssoDialog.value) {
+      ssoLoading.value = false
+    }
   }
 }
 
@@ -245,6 +319,15 @@ async function submitApiKey() {
               <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitLogin">
                 Sign in
               </el-button>
+              <el-divider content-position="center">or</el-divider>
+              <el-button
+                class="w-full"
+                size="large"
+                :loading="ssoLoading"
+                @click="submitSso"
+              >
+                Continue with Enterprise SSO
+              </el-button>
               <el-button class="w-full mt-2" text @click="mode = 'forgot'">
                 Forgot password?
               </el-button>
@@ -339,6 +422,23 @@ async function submitApiKey() {
         </template>
       </div>
     </div>
+    <el-dialog v-model="ssoDialog" title="Choose workspace" width="min(460px, 92vw)">
+      <div class="space-y-2">
+        <el-button
+          v-for="option in ssoOptions"
+          :key="option.workspace_id"
+          class="w-full"
+          size="large"
+          :loading="ssoLoading"
+          @click="launchSso(option)"
+        >
+          {{ option.display_name }}
+          <span class="ml-2 text-xs text-muted-foreground">
+            {{ option.provider_type }}
+          </span>
+        </el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
