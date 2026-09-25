@@ -66,6 +66,15 @@ class ScimRepository:
                 row.default_role = default_role
                 row.updated_at = now
             session.flush()
+            membership_ids = session.scalars(
+                select(WorkspaceMembershipRow.id).where(
+                    WorkspaceMembershipRow.owner_id == owner_id,
+                    WorkspaceMembershipRow.scim_managed.is_(True),
+                )
+            ).all()
+            for membership_id in membership_ids:
+                self._recompute_role(session, owner_id, membership_id)
+            session.flush()
             return self._serialize_config(row)
 
     def set_token(
