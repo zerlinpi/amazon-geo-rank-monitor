@@ -411,6 +411,8 @@ class AccountService:
                 "id": principal.user_id,
                 "email": principal.email,
                 "display_name": principal.display_name,
+                "email_verified": principal.email_verified_at is not None,
+                "email_verified_at": principal.email_verified_at,
             },
             "workspace": {
                 "id": principal.owner_id,
@@ -444,6 +446,16 @@ class AccountService:
             created_by_user_id=principal.user_id,
             expires_at=expires_at,
         )
+        self._safe_send(
+            to=normalized_email,
+            subject=f"Join {principal.workspace_name} on Geo Rank Monitor",
+            text=(
+                f"{principal.display_name} invited you to join "
+                f"{principal.workspace_name} as {role}.\n\n"
+                f"Open: {self._public_web_url}/#/login?invite={plaintext}\n\n"
+                f"This invitation expires at {expires_at.isoformat()}."
+            ),
+        )
         return InvitationCreation(
             id=row["id"],
             email=row["email"],
@@ -466,6 +478,16 @@ class AccountService:
         membership = self._repository.accept_invitation(
             invitation_id=invitation["id"],
             user_id=principal.user_id,
+        )
+        self._repository.mark_email_verified(user_id=principal.user_id)
+        self._repository.record_auth_event(
+            email=principal.email,
+            event_type="email_verified",
+            success=True,
+            user_id=principal.user_id,
+            client_ip=client_ip,
+            user_agent=user_agent,
+            details={"verified_by": "workspace_invitation"},
         )
         self._repository.revoke_session(principal.session_id)
         return self._issue_session(
