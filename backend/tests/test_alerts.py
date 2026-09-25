@@ -195,6 +195,45 @@ def test_rank_drop_emits_email_and_cooldown_suppresses_duplicate() -> None:
     assert events[0]["deliveries"][0]["status"] == "sent"
 
 
+def test_cooldown_suppresses_distinct_run_ids() -> None:
+    runs = {
+        "run-prev": aggregate_run("run-prev", 10),
+        "run-current": aggregate_run("run-current", 25),
+        "run-next": aggregate_run("run-next", 40),
+    }
+    service, mailer = build_service(
+        runs=runs,
+        jobs=completed_jobs("run-current", "run-prev"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Rank dropped repeatedly",
+        rule_type="rank_drop",
+        threshold=Decimal("10"),
+        asin=ASIN,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=60,
+    )
+
+    first = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="run-current",
+    )
+    assert len(first) == 1
+
+    service._jobs.jobs = completed_jobs("run-next", "run-current")
+    second = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="run-next",
+    )
+    assert second == []
+    assert len(mailer.messages) == 1
+
+
 @pytest.mark.parametrize(
     ("rule_type", "previous", "current"),
     [
