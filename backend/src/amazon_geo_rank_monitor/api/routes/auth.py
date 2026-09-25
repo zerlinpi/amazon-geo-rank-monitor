@@ -89,17 +89,27 @@ def sessions(
 def change_password(
     body: PasswordChange,
     request: Request,
+    response: Response,
     principal: HumanPrincipalDependency,
 ):
+    services = get_services(request)
     try:
-        revoked = get_services(request).accounts.change_password(
+        revoked = services.accounts.change_password(
             principal=principal,
             current_password=body.current_password,
             new_password=body.new_password,
         )
+        rotated = services.accounts.rotate_session(
+            principal=principal,
+            **_client_context(request),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"revoked_other_sessions": revoked}
+    set_session_cookies(response, services, rotated)
+    return {
+        "revoked_other_sessions": revoked,
+        "expires_at": rotated.expires_at,
+    }
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
