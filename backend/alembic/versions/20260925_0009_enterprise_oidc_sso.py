@@ -20,6 +20,22 @@ def upgrade() -> None:
     bind = op.get_bind()
     tables = set(sa.inspect(bind).get_table_names())
 
+    session_columns = {
+        column["name"] for column in sa.inspect(bind).get_columns("user_sessions")
+    }
+    with op.batch_alter_table("user_sessions") as batch:
+        if "auth_method" not in session_columns:
+            batch.add_column(
+                sa.Column(
+                    "auth_method",
+                    sa.String(length=32),
+                    nullable=False,
+                    server_default="local",
+                )
+            )
+        if "sso_owner_id" not in session_columns:
+            batch.add_column(sa.Column("sso_owner_id", sa.String(length=36)))
+
     if "workspace_sso_configs" not in tables:
         op.create_table(
             "workspace_sso_configs",
@@ -161,3 +177,12 @@ def downgrade() -> None:
 
     if "workspace_sso_configs" in tables:
         op.drop_table("workspace_sso_configs")
+
+    session_columns = {
+        column["name"] for column in sa.inspect(bind).get_columns("user_sessions")
+    }
+    with op.batch_alter_table("user_sessions") as batch:
+        if "sso_owner_id" in session_columns:
+            batch.drop_column("sso_owner_id")
+        if "auth_method" in session_columns:
+            batch.drop_column("auth_method")
