@@ -32,6 +32,30 @@ class TenantRow(Base):
     )
 
 
+class WorkspaceScimConfigRow(Base):
+    __tablename__ = "workspace_scim_configs"
+
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    token_prefix: Mapped[str | None] = mapped_column(
+        String(32), unique=True, index=True, nullable=True
+    )
+    token_hash: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    default_role: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="viewer"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
 class WorkspaceSsoConfigRow(Base):
     __tablename__ = "workspace_sso_configs"
 
@@ -207,6 +231,61 @@ class WorkspaceMembershipRow(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     role: Mapped[str] = mapped_column(String(32), nullable=False)
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scim_managed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    scim_external_id: Mapped[str | None] = mapped_column(
+        String(512), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class ScimGroupRow(Base):
+    __tablename__ = "scim_groups"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_id", "external_id", name="uq_scim_group_external_id"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    external_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    mapped_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
+class ScimGroupMemberRow(Base):
+    __tablename__ = "scim_group_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "group_id", "membership_id", name="uq_scim_group_membership"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    group_id: Mapped[str] = mapped_column(
+        ForeignKey("scim_groups.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    membership_id: Mapped[str] = mapped_column(
+        ForeignKey("workspace_memberships.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
