@@ -550,7 +550,7 @@ class RankAlertRuleRow(Base):
     threshold: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     asin: Mapped[str | None] = mapped_column(String(32))
     geo_profile_id: Mapped[str | None] = mapped_column(String(128))
-    channels: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    channels_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     cooldown_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
