@@ -637,6 +637,11 @@ class AccountService:
                     principal.workspace_require_mfa
                     and principal.mfa_enabled_at is None
                 ),
+                "mfa_session_verification_required": (
+                    principal.workspace_require_mfa
+                    and principal.mfa_enabled_at is not None
+                    and principal.mfa_authenticated_at is None
+                ),
             },
             "memberships": self._repository.list_memberships(
                 user_id=principal.user_id
