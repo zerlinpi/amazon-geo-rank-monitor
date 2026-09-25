@@ -221,7 +221,10 @@ class AccountRepository:
         user_id: str,
         owner_id: str,
         token_hash: str,
+        csrf_hash: str,
         expires_at: datetime,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
     ) -> dict:
         session_id = str(uuid4())
         with self._sessions.begin() as session:
@@ -230,6 +233,10 @@ class AccountRepository:
                 user_id=user_id,
                 owner_id=owner_id,
                 token_hash=token_hash,
+                csrf_hash=csrf_hash,
+                created_ip=client_ip[:64] if client_ip else None,
+                last_seen_ip=client_ip[:64] if client_ip else None,
+                user_agent=user_agent[:512] if user_agent else None,
                 expires_at=expires_at,
             )
             session.add(row)
@@ -267,25 +274,116 @@ class AccountRepository:
                 "user_id": session_row.user_id,
                 "owner_id": session_row.owner_id,
                 "token_hash": session_row.token_hash,
+                "csrf_hash": session_row.csrf_hash,
+                "created_at": session_row.created_at,
                 "expires_at": session_row.expires_at,
                 "last_seen_at": session_row.last_seen_at,
+                "created_ip": session_row.created_ip,
+                "last_seen_ip": session_row.last_seen_ip,
+                "user_agent": session_row.user_agent,
                 "role": membership.role,
                 "email": user.email,
                 "display_name": user.display_name,
                 "workspace_name": tenant.name,
             }
 
-    def touch_session(self, session_id: str) -> None:
+    def touch_session(
+        self,
+        session_id: str,
+        *,
+        client_ip: str | None = None,
+    ) -> None:
         with self._sessions.begin() as session:
             row = session.get(UserSessionRow, session_id)
             if row is not None:
                 row.last_seen_at = datetime.now(UTC)
+                if client_ip:
+                    row.last_seen_ip = client_ip[:64]
+
+    def list_sessions(self, *, user_id: str) -> list[dict]:
+        now = datetime.now(UTC)
+        with self._sessions() as session:
+            rows = session.scalars(
+                select(UserSessionRow)
+                .where(
+                    UserSessionRow.user_id == user_id,
+                    UserSessionRow.revoked_at.is_(None),
+                    UserSessionRow.expires_at > now,
+                )
+                .order_by(UserSessionRow.last_seen_at.desc())
+            ).all()
+            return [
+                {
+                    "id": row.id,
+                    "owner_id": row.owner_id,
+                    "created_at": row.created_at,
+                    "expires_at": row.expires_at,
+                    "last_seen_at": row.last_seen_at,
+                    "created_ip": row.created_ip,
+                    "last_seen_ip": row.last_seen_ip,
+                    "user_agent": row.user_agent,
+                }
+                for row in rows
+            ]
 
     def revoke_session(self, session_id: str) -> None:
         with self._sessions.begin() as session:
             row = session.get(UserSessionRow, session_id)
             if row is not None and row.revoked_at is None:
                 row.revoked_at = datetime.now(UTC)
+
+    def revoke_user_session(self, *, user_id: str, session_id: str) -> bool:
+        with self._sessions.begin() as session:
+            row = session.scalar(
+                select(UserSessionRow).where(
+                    UserSessionRow.id == session_id,
+                    UserSessionRow.user_id == user_id,
+                    UserSessionRow.revoked_at.is_(None),
+                )
+            )
+            if row is None:
+                return False
+            row.revoked_at = datetime.now(UTC)
+            return True
+
+    def revoke_other_sessions(
+        self,
+        *,
+        user_id: str,
+        keep_session_id: str,
+    ) -> int:
+        with self._sessions.begin() as session:
+            rows = session.scalars(
+                select(UserSessionRow).where(
+                    UserSessionRow.user_id == user_id,
+                    UserSessionRow.id != keep_session_id,
+                    UserSessionRow.revoked_at.is_(None),
+                )
+            ).all()
+            now = datetime.now(UTC)
+            for row in rows:
+                row.revoked_at = now
+            return len(rows)
+
+    def revoke_all_sessions(self, *, user_id: str) -> int:
+        with self._sessions.begin() as session:
+            rows = session.scalars(
+                select(UserSessionRow).where(
+                    UserSessionRow.user_id == user_id,
+                    UserSessionRow.revoked_at.is_(None),
+                )
+            ).all()
+            now = datetime.now(UTC)
+            for row in rows:
+                row.revoked_at = now
+            return len(rows)
+
+    def update_password(self, *, user_id: str, password_hash: str) -> None:
+        with self._sessions.begin() as session:
+            row = session.get(UserRow, user_id)
+            if row is None:
+                raise KeyError("user not found")
+            row.password_hash = password_hash
 
     def create_invitation(
         self,
