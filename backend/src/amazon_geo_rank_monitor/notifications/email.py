@@ -9,28 +9,63 @@ logger = logging.getLogger("amazon_geo_rank_monitor.email")
 
 
 @dataclass(frozen=True)
+class EmailAttachment:
+    filename: str
+    content: bytes
+    content_type: str = "application/octet-stream"
+
+
+@dataclass(frozen=True)
 class SentEmail:
     to: str
     subject: str
     text: str
+    attachments: tuple[EmailAttachment, ...] = ()
 
 
 class ConsoleEmailSender:
-    def send(self, *, to: str, subject: str, text: str) -> None:
+    def send(
+        self,
+        *,
+        to: str,
+        subject: str,
+        text: str,
+        attachments: list[EmailAttachment] | None = None,
+    ) -> None:
         logger.info(
             "development_email to=%s subject=%s body=%s",
             to,
             subject,
             text.replace("\n", " | "),
         )
+        if attachments:
+            logger.info(
+                "development_email_attachments to=%s files=%s",
+                to,
+                ",".join(item.filename for item in attachments),
+            )
 
 
 class MemoryEmailSender:
     def __init__(self) -> None:
         self.messages: list[SentEmail] = []
 
-    def send(self, *, to: str, subject: str, text: str) -> None:
-        self.messages.append(SentEmail(to=to, subject=subject, text=text))
+    def send(
+        self,
+        *,
+        to: str,
+        subject: str,
+        text: str,
+        attachments: list[EmailAttachment] | None = None,
+    ) -> None:
+        self.messages.append(
+            SentEmail(
+                to=to,
+                subject=subject,
+                text=text,
+                attachments=tuple(attachments or []),
+            )
+        )
 
 
 class SmtpEmailSender:
@@ -53,12 +88,30 @@ class SmtpEmailSender:
         self._starttls = starttls
         self._timeout = timeout
 
-    def send(self, *, to: str, subject: str, text: str) -> None:
+    def send(
+        self,
+        *,
+        to: str,
+        subject: str,
+        text: str,
+        attachments: list[EmailAttachment] | None = None,
+    ) -> None:
         message = EmailMessage()
         message["From"] = self._from_email
         message["To"] = to
         message["Subject"] = subject
         message.set_content(text)
+        for attachment in attachments or []:
+            maintype, _, subtype = attachment.content_type.partition("/")
+            if not subtype:
+                maintype = "application"
+                subtype = "octet-stream"
+            message.add_attachment(
+                attachment.content,
+                maintype=maintype,
+                subtype=subtype,
+                filename=attachment.filename,
+            )
 
         with smtplib.SMTP(
             self._host,
