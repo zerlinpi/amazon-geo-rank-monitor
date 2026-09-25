@@ -104,6 +104,7 @@ def build_service(
     runs: dict[str, dict],
     jobs: list[dict],
     handler=None,
+    allowed_hosts: list[str] | None = None,
 ):
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -124,6 +125,7 @@ def build_service(
         monitor_repository=FakeMonitorRepository(),
         email_sender=mailer,
         encryption_key="alert-test-key",
+        webhook_allowed_hosts=allowed_hosts,
         http_client=http,
     )
     return service, mailer
@@ -338,6 +340,7 @@ def test_webhook_delivery_records_masked_destination() -> None:
         runs={"current": aggregate_run("current", 101, found_weight=0)},
         jobs=completed_jobs("current"),
         handler=handler,
+        allowed_hosts=["alerts.example.com"],
     )
     service.create_rule(
         owner_id=OWNER_ID,
