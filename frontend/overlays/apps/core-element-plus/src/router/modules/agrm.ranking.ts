@@ -34,6 +34,12 @@ const routes: RouteRecordRaw = {
       component: () => import('@/views/agrm/history.vue'),
       meta: { title: 'Run History', icon: 'i-lucide:history' },
     },
+    {
+      path: 'analytics',
+      name: 'analyticsReports',
+      component: () => import('@/views/agrm/analytics-reports.vue'),
+      meta: { title: 'Analytics & Reports', icon: 'i-lucide:chart-spline' },
+    },
   ],
 }
 
