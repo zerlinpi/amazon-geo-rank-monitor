@@ -41,6 +41,7 @@ class RankMonitorService:
         request: RankCheckRequest,
         *,
         owner_id: str | None = None,
+        prepared_cache: dict[str, Any] | None = None,
     ) -> RankExecutionResult:
         if not request.geo_profiles:
             raise ValueError("at least one geo profile is required")
@@ -57,9 +58,14 @@ class RankMonitorService:
         upstream_probe_count = 0
         cache_hit_count = 0
 
+        prepared_cache = prepared_cache or {}
         for geo_profile in request.geo_profiles:
-            cache_hit = None
-            if self._probe_cache is not None and self._provider_mode is not None:
+            cache_hit = prepared_cache.get(geo_profile.id)
+            if (
+                cache_hit is None
+                and self._probe_cache is not None
+                and self._provider_mode is not None
+            ):
                 try:
                     cache_hit = self._probe_cache.lookup(
                         owner_id=owner_id,
