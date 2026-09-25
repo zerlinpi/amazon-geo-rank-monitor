@@ -35,6 +35,7 @@ class AnalyticsRepository:
                 RankSnapshotRow.missing_weight,
                 RankSnapshotRow.confidence,
             )
+            .select_from(RankJobRow)
             .join(RankRunRow, RankRunRow.id == RankJobRow.run_id)
             .join(
                 RankSnapshotRow,
@@ -99,6 +100,7 @@ class AnalyticsRepository:
                 RankObservationRow.provider,
                 RankObservationRow.verification_level,
             )
+            .select_from(RankJobRow)
             .join(RankRunRow, RankRunRow.id == RankJobRow.run_id)
             .join(
                 RankObservationRow,
