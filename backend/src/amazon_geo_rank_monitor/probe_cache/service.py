@@ -89,6 +89,31 @@ class ProbeCacheService:
             age_seconds=max(int((now - fetched_at).total_seconds()), 0),
         )
 
+    def prefetch(
+        self,
+        *,
+        owner_id: str | None,
+        provider_mode: str,
+        provider,
+        request,
+    ) -> dict[str, ProbeCacheHit]:
+        hits: dict[str, ProbeCacheHit] = {}
+        if owner_id is None or self.ttl_seconds(provider_mode) <= 0:
+            return hits
+        for geo_profile in request.geo_profiles:
+            hit = self.lookup(
+                owner_id=owner_id,
+                provider_mode=provider_mode,
+                provider=provider,
+                marketplace=request.marketplace,
+                keyword=request.keyword,
+                geo_profile=geo_profile,
+                search_depth=request.search_depth,
+            )
+            if hit is not None:
+                hits[geo_profile.id] = hit
+        return hits
+
     def store(
         self,
         *,
