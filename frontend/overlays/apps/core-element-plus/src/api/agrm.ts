@@ -53,6 +53,7 @@ export interface WorkspaceMembership {
   user_id: string
   role: 'owner' | 'admin' | 'analyst' | 'viewer'
   workspace_name?: string
+  require_mfa?: boolean
   created_at: string
 }
 
@@ -63,17 +64,41 @@ export interface AccountProfile {
     display_name: string
     email_verified: boolean
     email_verified_at?: string | null
+    mfa_enabled: boolean
+    mfa_authenticated: boolean
+    recovery_codes_remaining: number
   }
   workspace: {
     id: string
     name: string
     role: 'owner' | 'admin' | 'analyst' | 'viewer'
+    require_mfa: boolean
+    mfa_setup_required: boolean
   }
   memberships: WorkspaceMembership[]
 }
 
 export interface SessionResult extends AccountProfile {
   expires_at: string
+  mfa_required?: false
+}
+
+export interface MfaChallengeResult {
+  mfa_required: true
+  challenge_token: string
+  expires_at: string
+}
+
+export type LoginResult = SessionResult | MfaChallengeResult
+
+export interface MfaEnrollmentResult {
+  secret: string
+  provisioning_uri: string
+}
+
+export interface WorkspaceSecurityPolicy {
+  owner_id: string
+  require_mfa: boolean
 }
 
 export interface AuthSecurityEvent {
@@ -98,12 +123,14 @@ export interface UserSession {
   last_seen_ip?: string | null
   user_agent?: string | null
   current: boolean
+  mfa_authenticated_at?: string | null
 }
 
 export interface TeamMember extends WorkspaceMembership {
   email: string
   display_name: string
   disabled_at?: string | null
+  mfa_enabled?: boolean
 }
 
 export interface WorkspaceInvitation {
@@ -283,7 +310,26 @@ export const agrmApi = {
     email: string
     password: string
     workspace_id?: string
-  }) => data<SessionResult>(client.post('/api/v1/auth/login', payload)),
+  }) => data<LoginResult>(client.post('/api/v1/auth/login', payload)),
+  completeMfa: (challenge_token: string, code: string, remember_device: boolean) => data<SessionResult>(
+    client.post('/api/v1/auth/mfa/complete', {
+      challenge_token,
+      code,
+      remember_device,
+    }),
+  ),
+  beginMfaEnrollment: () => data<MfaEnrollmentResult>(
+    client.post('/api/v1/auth/mfa/enroll'),
+  ),
+  confirmMfaEnrollment: (code: string) => data<{ enabled: boolean, recovery_codes: string[] }>(
+    client.post('/api/v1/auth/mfa/enroll/verify', { code }),
+  ),
+  regenerateRecoveryCodes: (code: string) => data<{ recovery_codes: string[] }>(
+    client.post('/api/v1/auth/mfa/recovery-codes/regenerate', { code }),
+  ),
+  disableMfa: (current_password: string, code: string) => data<{ enabled: boolean }>(
+    client.post('/api/v1/auth/mfa/disable', { current_password, code }),
+  ),
   getMe: () => data<AccountProfile>(client.get('/api/v1/auth/me')),
   forgotPassword: (email: string) => data<{ accepted: boolean, message: string }>(
     client.post('/api/v1/auth/forgot-password', { email }),
@@ -317,6 +363,12 @@ export const agrmApi = {
     client.post('/api/v1/auth/accept-invitation', { invitation_token }),
   ),
   getTeamMembers: () => data<TeamMember[]>(client.get('/api/v1/team/members')),
+  getWorkspaceSecurityPolicy: () => data<WorkspaceSecurityPolicy>(
+    client.get('/api/v1/team/security-policy'),
+  ),
+  updateWorkspaceSecurityPolicy: (require_mfa: boolean) => data<WorkspaceSecurityPolicy>(
+    client.patch('/api/v1/team/security-policy', { require_mfa }),
+  ),
   getTeamInvitations: () => data<WorkspaceInvitation[]>(
     client.get('/api/v1/team/invitations'),
   ),

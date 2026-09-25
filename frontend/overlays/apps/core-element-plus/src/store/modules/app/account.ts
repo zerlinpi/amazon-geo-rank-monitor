@@ -1,4 +1,4 @@
-import type { SessionResult } from '@/api/agrm'
+import type { LoginResult, SessionResult } from '@/api/agrm'
 import { agrmApi } from '@/api/agrm'
 import router from '@/router'
 
@@ -46,7 +46,19 @@ export const useAppAccountStore = defineStore('appAccount', () => {
   async function loginWithCredentials(email: string, password: string) {
     await closeExistingHumanSession()
     clearAuth()
-    const result = await agrmApi.loginAccount({ email, password })
+    const result: LoginResult = await agrmApi.loginAccount({ email, password })
+    if (!result.mfa_required) {
+      applySession(result)
+    }
+    return result
+  }
+
+  async function completeMfa(
+    challengeToken: string,
+    code: string,
+    rememberDevice: boolean,
+  ) {
+    const result = await agrmApi.completeMfa(challengeToken, code, rememberDevice)
     applySession(result)
     return result
   }
@@ -134,6 +146,12 @@ export const useAppAccountStore = defineStore('appAccount', () => {
       account.value = profile.user.display_name || profile.user.email
       localStorage.setItem('account', account.value)
       permissions.value = [profile.workspace.role]
+      if (
+        profile.workspace.mfa_setup_required
+        && router.currentRoute.value.path !== '/workspace/security'
+      ) {
+        void router.replace('/workspace/security')
+      }
     }
     catch (error) {
       clearAuth()
@@ -158,6 +176,7 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     login,
     loginWithCredentials,
     registerAccount,
+    completeMfa,
     loginWithApiKey,
     applySession,
     logout,

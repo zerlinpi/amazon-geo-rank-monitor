@@ -19,9 +19,17 @@ const displayName = ref('')
 const workspaceName = ref('')
 const apiKey = ref('')
 const loading = ref(false)
+const mfaChallengeToken = ref('')
+const mfaCode = ref('')
+const rememberDevice = ref(false)
 
-async function finish() {
+async function finish(result?: { workspace?: { mfa_setup_required?: boolean } }) {
   ElMessage.success(inviteToken.value ? 'Workspace joined' : 'Signed in')
+  if (result?.workspace?.mfa_setup_required) {
+    ElMessage.warning('This workspace requires MFA. Complete setup to continue.')
+    await router.replace('/workspace/security')
+    return
+  }
   const redirect = route.query.redirect?.toString() || appSettingsStore.settings.app.home.fullPath
   await router.replace(redirect)
 }
@@ -29,12 +37,19 @@ async function finish() {
 async function submitLogin() {
   loading.value = true
   try {
-    await appAccountStore.loginWithCredentials(email.value, password.value)
+    const result = await appAccountStore.loginWithCredentials(email.value, password.value)
+    if (result.mfa_required) {
+      mfaChallengeToken.value = result.challenge_token
+      mfaCode.value = ''
+      return
+    }
     if (inviteToken.value) {
       const accepted = await agrmApi.acceptInvitation(inviteToken.value)
       appAccountStore.applySession(accepted)
+      await finish(accepted)
+      return
     }
-    await finish()
+    await finish(result)
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Email or password is invalid')
@@ -44,10 +59,47 @@ async function submitLogin() {
   }
 }
 
+async function submitMfa() {
+  if (!mfaCode.value.trim()) {
+    ElMessage.warning('Enter your authenticator or recovery code')
+    return
+  }
+  loading.value = true
+  try {
+    await appAccountStore.completeMfa(
+      mfaChallengeToken.value,
+      mfaCode.value.trim(),
+      rememberDevice.value,
+    )
+    if (inviteToken.value) {
+      const accepted = await agrmApi.acceptInvitation(inviteToken.value)
+      appAccountStore.applySession(accepted)
+      mfaChallengeToken.value = ''
+      await finish(accepted)
+      return
+    }
+    mfaChallengeToken.value = ''
+    await finish()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Invalid MFA code')
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+function cancelMfa() {
+  mfaChallengeToken.value = ''
+  mfaCode.value = ''
+  rememberDevice.value = false
+  password.value = ''
+}
+
 async function submitRegister() {
   loading.value = true
   try {
-    await appAccountStore.registerAccount({
+    const result = await appAccountStore.registerAccount({
       email: email.value,
       password: password.value,
       display_name: displayName.value,
@@ -55,7 +107,7 @@ async function submitRegister() {
         ? { invitation_token: inviteToken.value }
         : { workspace_name: workspaceName.value }),
     })
-    await finish()
+    await finish(result)
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Unable to create account')
@@ -145,31 +197,59 @@ async function submitApiKey() {
         />
 
         <template v-if="mode === 'login'">
-          <div class="text-2xl font-semibold mb-2">Welcome back</div>
-          <div class="text-sm text-muted-foreground mb-6">
-            Sign in with your workspace account.
-          </div>
-          <el-form label-position="top" @submit.prevent="submitLogin">
-            <el-form-item label="Email">
-              <el-input v-model="email" size="large" autocomplete="email" placeholder="you@company.com" />
-            </el-form-item>
-            <el-form-item label="Password">
-              <el-input
-                v-model="password"
-                size="large"
-                type="password"
-                show-password
-                autocomplete="current-password"
-                @keyup.enter="submitLogin"
-              />
-            </el-form-item>
-            <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitLogin">
-              Sign in
-            </el-button>
-            <el-button class="w-full mt-2" text @click="mode = 'forgot'">
-              Forgot password?
-            </el-button>
-          </el-form>
+          <template v-if="mfaChallengeToken">
+            <div class="text-2xl font-semibold mb-2">Two-factor authentication</div>
+            <div class="text-sm text-muted-foreground mb-6">
+              Enter the 6-digit code from your authenticator app, or use one recovery code.
+            </div>
+            <el-form label-position="top" @submit.prevent="submitMfa">
+              <el-form-item label="Authentication code">
+                <el-input
+                  v-model="mfaCode"
+                  size="large"
+                  autocomplete="one-time-code"
+                  placeholder="123456 or XXXX-XXXX-XXXX"
+                  @keyup.enter="submitMfa"
+                />
+              </el-form-item>
+              <el-checkbox v-model="rememberDevice" class="mb-4">
+                Trust this device
+              </el-checkbox>
+              <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitMfa">
+                Verify and sign in
+              </el-button>
+              <el-button class="w-full mt-2" text @click="cancelMfa">
+                Use another account
+              </el-button>
+            </el-form>
+          </template>
+          <template v-else>
+            <div class="text-2xl font-semibold mb-2">Welcome back</div>
+            <div class="text-sm text-muted-foreground mb-6">
+              Sign in with your workspace account.
+            </div>
+            <el-form label-position="top" @submit.prevent="submitLogin">
+              <el-form-item label="Email">
+                <el-input v-model="email" size="large" autocomplete="email" placeholder="you@company.com" />
+              </el-form-item>
+              <el-form-item label="Password">
+                <el-input
+                  v-model="password"
+                  size="large"
+                  type="password"
+                  show-password
+                  autocomplete="current-password"
+                  @keyup.enter="submitLogin"
+                />
+              </el-form-item>
+              <el-button class="w-full" size="large" type="primary" :loading="loading" @click="submitLogin">
+                Sign in
+              </el-button>
+              <el-button class="w-full mt-2" text @click="mode = 'forgot'">
+                Forgot password?
+              </el-button>
+            </el-form>
+          </template>
         </template>
 
         <template v-else-if="mode === 'register'">

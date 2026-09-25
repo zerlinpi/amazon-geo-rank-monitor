@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { AccountProfile, AuthSecurityEvent, UserSession } from '@/api/agrm'
+import type {
+  AccountProfile,
+  AuthSecurityEvent,
+  MfaEnrollmentResult,
+  UserSession,
+} from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
 
@@ -14,7 +19,20 @@ const currentPassword = ref('')
 const newPassword = ref('')
 const changing = ref(false)
 
+const enrollment = ref<MfaEnrollmentResult>()
+const enrollmentDialog = ref(false)
+const enrollmentCode = ref('')
+const confirmingMfa = ref(false)
+const recoveryCodes = ref<string[]>([])
+const recoveryDialog = ref(false)
+
+const disableDialog = ref(false)
+const disablePassword = ref('')
+const disableCode = ref('')
+const disablingMfa = ref(false)
+
 const isHuman = computed(() => appAccountStore.authMode === 'session')
+const mfaEnabled = computed(() => profile.value?.user.mfa_enabled === true)
 
 async function load() {
   if (!isHuman.value) {
@@ -33,7 +51,7 @@ async function load() {
     profile.value = profileResult
   }
   catch (error: any) {
-    ElMessage.error(error.response?.data?.detail || 'Failed to load sessions')
+    ElMessage.error(error.response?.data?.detail || 'Failed to load account security')
   }
   finally {
     loading.value = false
@@ -53,6 +71,93 @@ async function resendVerification() {
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Failed to send verification email')
+  }
+}
+
+async function beginMfa() {
+  try {
+    enrollment.value = await agrmApi.beginMfaEnrollment()
+    enrollmentCode.value = ''
+    enrollmentDialog.value = true
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Unable to start MFA setup')
+  }
+}
+
+async function confirmMfa() {
+  if (!enrollmentCode.value.trim()) {
+    ElMessage.warning('Enter the 6-digit authenticator code')
+    return
+  }
+  confirmingMfa.value = true
+  try {
+    const result = await agrmApi.confirmMfaEnrollment(enrollmentCode.value.trim())
+    recoveryCodes.value = result.recovery_codes
+    enrollmentDialog.value = false
+    recoveryDialog.value = true
+    ElMessage.success('Two-factor authentication enabled')
+    await load()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Invalid authenticator code')
+  }
+  finally {
+    confirmingMfa.value = false
+  }
+}
+
+async function copyText(value: string, message: string) {
+  await navigator.clipboard.writeText(value)
+  ElMessage.success(message)
+}
+
+async function copyRecoveryCodes() {
+  await copyText(recoveryCodes.value.join('\n'), 'Recovery codes copied')
+}
+
+async function regenerateRecoveryCodes() {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      'Enter a current authenticator code or unused recovery code.',
+      'Regenerate recovery codes',
+      {
+        inputPlaceholder: '123456 or XXXX-XXXX-XXXX',
+        confirmButtonText: 'Regenerate',
+      },
+    )
+    const result = await agrmApi.regenerateRecoveryCodes(value)
+    recoveryCodes.value = result.recovery_codes
+    recoveryDialog.value = true
+    await load()
+  }
+  catch (error: any) {
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(error.response?.data?.detail || 'Unable to regenerate recovery codes')
+  }
+}
+
+async function disableMfa() {
+  if (!disablePassword.value || !disableCode.value.trim()) {
+    ElMessage.warning('Password and MFA code are required')
+    return
+  }
+  disablingMfa.value = true
+  try {
+    await agrmApi.disableMfa(disablePassword.value, disableCode.value.trim())
+    disableDialog.value = false
+    disablePassword.value = ''
+    disableCode.value = ''
+    ElMessage.success('Two-factor authentication disabled')
+    await load()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Unable to disable MFA')
+  }
+  finally {
+    disablingMfa.value = false
   }
 }
 
@@ -102,7 +207,7 @@ async function changePassword() {
 async function logoutAll() {
   try {
     await ElMessageBox.confirm(
-      'Sign out every active device, including this browser?',
+      'Sign out every active device and revoke trusted-device bypasses?',
       'Sign out everywhere',
       { type: 'warning', confirmButtonText: 'Sign out all' },
     )
@@ -126,7 +231,7 @@ onMounted(load)
       <div class="text-xs text-muted-foreground tracking-widest uppercase">Account</div>
       <h1 class="text-2xl font-semibold mt-1">Security</h1>
       <p class="text-sm text-muted-foreground mt-1">
-        Manage your password and active browser sessions.
+        Manage email verification, MFA, password and active browser sessions.
       </p>
     </div>
 
@@ -139,6 +244,14 @@ onMounted(load)
     />
 
     <template v-else>
+      <el-alert
+        v-if="profile?.workspace.mfa_setup_required"
+        type="warning"
+        :closable="false"
+        title="This workspace requires MFA"
+        description="Enable two-factor authentication below before accessing workspace resources."
+      />
+
       <el-card shadow="never">
         <template #header>
           <span class="font-medium">Email verification</span>
@@ -154,6 +267,36 @@ onMounted(load)
           <el-button v-else type="primary" plain @click="resendVerification">
             Resend verification
           </el-button>
+        </div>
+      </el-card>
+
+      <el-card shadow="never">
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <span class="font-medium">Two-factor authentication</span>
+            <el-tag :type="mfaEnabled ? 'success' : 'info'">
+              {{ mfaEnabled ? 'Enabled' : 'Disabled' }}
+            </el-tag>
+          </div>
+        </template>
+        <div v-if="mfaEnabled" class="space-y-4">
+          <p class="text-sm text-muted-foreground">
+            Authenticator verification protects password logins. Trusted devices may skip the second step temporarily.
+          </p>
+          <div class="text-sm">
+            Unused recovery codes:
+            <strong>{{ profile?.user.recovery_codes_remaining ?? 0 }}</strong>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <el-button @click="regenerateRecoveryCodes">Regenerate recovery codes</el-button>
+            <el-button type="danger" plain @click="disableDialog = true">Disable MFA</el-button>
+          </div>
+        </div>
+        <div v-else class="space-y-4">
+          <p class="text-sm text-muted-foreground">
+            Use any standard TOTP authenticator. Email verification is required before enrollment.
+          </p>
+          <el-button type="primary" @click="beginMfa">Enable MFA</el-button>
         </div>
       </el-card>
 
@@ -180,7 +323,7 @@ onMounted(load)
             </el-button>
           </el-form>
           <div class="text-xs text-muted-foreground mt-3">
-            Changing your password revokes every other active session.
+            Changing your password revokes other sessions and trusted-device bypasses.
           </div>
         </div>
       </el-card>
@@ -224,6 +367,7 @@ onMounted(load)
             <template #default="{ row }">
               <div class="flex items-center gap-2">
                 <el-tag v-if="row.current" type="success" size="small">Current</el-tag>
+                <el-tag v-if="row.mfa_authenticated_at" type="info" size="small">MFA</el-tag>
                 <span class="text-sm">{{ row.user_agent || 'Unknown client' }}</span>
               </div>
             </template>
@@ -236,11 +380,6 @@ onMounted(load)
           <el-table-column label="Last seen" min-width="170">
             <template #default="{ row }">
               {{ new Date(row.last_seen_at).toLocaleString() }}
-            </template>
-          </el-table-column>
-          <el-table-column label="Created" min-width="170">
-            <template #default="{ row }">
-              {{ new Date(row.created_at).toLocaleString() }}
             </template>
           </el-table-column>
           <el-table-column label="Expires" min-width="170">
@@ -262,6 +401,83 @@ onMounted(load)
           </el-table-column>
         </el-table>
       </el-card>
+
+      <el-dialog v-model="enrollmentDialog" title="Set up authenticator" width="min(620px, 94vw)">
+        <div class="space-y-4">
+          <el-alert
+            type="info"
+            :closable="false"
+            title="Add this account to your authenticator"
+            description="Use the manual secret below, or copy the provisioning URI into an authenticator that supports it."
+          />
+          <div>
+            <div class="text-xs text-muted-foreground mb-1">Manual secret</div>
+            <div class="flex gap-2">
+              <el-input :model-value="enrollment?.secret" readonly class="font-mono" />
+              <el-button @click="copyText(enrollment?.secret || '', 'Secret copied')">Copy</el-button>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs text-muted-foreground mb-1">Provisioning URI</div>
+            <div class="flex gap-2">
+              <el-input :model-value="enrollment?.provisioning_uri" readonly />
+              <el-button @click="copyText(enrollment?.provisioning_uri || '', 'URI copied')">Copy</el-button>
+            </div>
+          </div>
+          <el-form label-position="top">
+            <el-form-item label="6-digit code">
+              <el-input v-model="enrollmentCode" autocomplete="one-time-code" placeholder="123456" />
+            </el-form-item>
+          </el-form>
+        </div>
+        <template #footer>
+          <el-button @click="enrollmentDialog = false">Cancel</el-button>
+          <el-button type="primary" :loading="confirmingMfa" @click="confirmMfa">
+            Verify & enable
+          </el-button>
+        </template>
+      </el-dialog>
+
+      <el-dialog v-model="recoveryDialog" title="Save recovery codes" width="min(560px, 94vw)">
+        <el-alert
+          type="warning"
+          :closable="false"
+          title="These codes are shown only now"
+          description="Store them in a password manager. Each code can be used once instead of an authenticator code."
+          class="mb-4"
+        />
+        <div class="grid grid-cols-2 gap-2 font-mono text-sm">
+          <div v-for="code in recoveryCodes" :key="code" class="border rounded px-3 py-2">
+            {{ code }}
+          </div>
+        </div>
+        <template #footer>
+          <el-button @click="copyRecoveryCodes">Copy all</el-button>
+          <el-button type="primary" @click="recoveryDialog = false">I saved them</el-button>
+        </template>
+      </el-dialog>
+
+      <el-dialog v-model="disableDialog" title="Disable two-factor authentication" width="min(480px, 94vw)">
+        <el-alert
+          type="warning"
+          :closable="false"
+          title="This reduces account protection"
+          description="MFA cannot be disabled while any workspace membership requires it."
+          class="mb-4"
+        />
+        <el-form label-position="top">
+          <el-form-item label="Current password">
+            <el-input v-model="disablePassword" type="password" show-password />
+          </el-form-item>
+          <el-form-item label="Authenticator or recovery code">
+            <el-input v-model="disableCode" placeholder="123456 or XXXX-XXXX-XXXX" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="disableDialog = false">Cancel</el-button>
+          <el-button type="danger" :loading="disablingMfa" @click="disableMfa">Disable MFA</el-button>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>

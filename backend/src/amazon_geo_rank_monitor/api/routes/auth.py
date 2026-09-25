@@ -10,16 +10,21 @@ from amazon_geo_rank_monitor.api.schemas import (
     EmailVerificationRequest,
     ForgotPasswordRequest,
     InvitationAccept,
+    MfaCodeRequest,
+    MfaCompleteRequest,
+    MfaDisableRequest,
     PasswordChange,
     PasswordResetRequest,
     WorkspaceSwitch,
 )
 from amazon_geo_rank_monitor.api.session_cookies import (
     clear_session_cookies,
+    clear_trusted_device_cookie,
     session_payload,
     set_session_cookies,
+    set_trusted_device_cookie,
 )
-from amazon_geo_rank_monitor.auth.accounts import AccountLockedError
+from amazon_geo_rank_monitor.auth.accounts import AccountLockedError, MfaChallenge
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -65,14 +70,124 @@ def login(body: AccountLogin, request: Request, response: Response):
             email=body.email,
             password=body.password,
             workspace_id=body.workspace_id,
+            trusted_device_token=request.cookies.get(
+                services.trusted_device_cookie_name
+            ),
             **_client_context(request),
         )
     except AccountLockedError as exc:
         raise HTTPException(status_code=423, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    if isinstance(created, MfaChallenge):
+        response.status_code = status.HTTP_202_ACCEPTED
+        return {
+            "mfa_required": True,
+            "challenge_token": created.plaintext,
+            "expires_at": created.expires_at,
+        }
     set_session_cookies(response, services, created)
-    return session_payload(services, created)
+    return {
+        "mfa_required": False,
+        **session_payload(services, created),
+    }
+
+
+@router.post("/mfa/complete")
+def complete_mfa(
+    body: MfaCompleteRequest,
+    request: Request,
+    response: Response,
+):
+    services = get_services(request)
+    try:
+        created = services.accounts.complete_mfa_login(
+            challenge_token=body.challenge_token,
+            code=body.code,
+            remember_device=body.remember_device,
+            **_client_context(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    set_session_cookies(response, services, created)
+    if created.trusted_device_token and created.trusted_device_expires_at:
+        set_trusted_device_cookie(
+            response,
+            services,
+            token=created.trusted_device_token,
+            expires_at=created.trusted_device_expires_at,
+        )
+    return {
+        "mfa_required": False,
+        **session_payload(services, created),
+    }
+
+
+@router.post("/mfa/enroll")
+def begin_mfa_enrollment(
+    request: Request,
+    principal: HumanPrincipalDependency,
+):
+    try:
+        return get_services(request).accounts.begin_mfa_enrollment(
+            principal=principal
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/mfa/enroll/verify")
+def confirm_mfa_enrollment(
+    body: MfaCodeRequest,
+    request: Request,
+    principal: HumanPrincipalDependency,
+):
+    try:
+        recovery_codes = get_services(request).accounts.confirm_mfa_enrollment(
+            principal=principal,
+            code=body.code,
+            **_client_context(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"enabled": True, "recovery_codes": recovery_codes}
+
+
+@router.post("/mfa/recovery-codes/regenerate")
+def regenerate_recovery_codes(
+    body: MfaCodeRequest,
+    request: Request,
+    principal: HumanPrincipalDependency,
+):
+    try:
+        codes = get_services(request).accounts.regenerate_recovery_codes(
+            principal=principal,
+            code=body.code,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"recovery_codes": codes}
+
+
+@router.post("/mfa/disable")
+def disable_mfa(
+    body: MfaDisableRequest,
+    request: Request,
+    response: Response,
+    principal: HumanPrincipalDependency,
+):
+    services = get_services(request)
+    try:
+        services.accounts.disable_mfa(
+            principal=principal,
+            password=body.current_password,
+            code=body.code,
+            **_client_context(request),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    clear_trusted_device_cookie(response, services)
+    return {"enabled": False}
 
 
 @router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
@@ -107,6 +222,7 @@ def reset_password(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     clear_session_cookies(response, services)
+    clear_trusted_device_cookie(response, services)
     return {"reset": True, "revoked_sessions": revoked}
 
 
@@ -187,6 +303,7 @@ def change_password(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     set_session_cookies(response, services, rotated)
+    clear_trusted_device_cookie(response, services)
     return {
         "revoked_other_sessions": revoked,
         "expires_at": rotated.expires_at,
@@ -222,6 +339,7 @@ def logout_all(
     services = get_services(request)
     services.accounts.logout_all(principal)
     clear_session_cookies(response, services)
+    clear_trusted_device_cookie(response, services)
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
 

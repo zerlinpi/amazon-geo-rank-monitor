@@ -27,6 +27,8 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "workspace_invitations",
         "account_tokens",
         "auth_events",
+        "mfa_recovery_codes",
+        "trusted_devices",
     } <= tables
     inspector = inspect(create_engine(database_url))
     api_key_columns = {
@@ -46,11 +48,28 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "locked_until",
         "last_login_at",
         "last_login_ip",
+        "mfa_secret_encrypted",
+        "mfa_enabled_at",
+        "mfa_last_verified_at",
     } <= user_columns
     session_columns = {
         column["name"] for column in inspector.get_columns("user_sessions")
     }
-    assert {"csrf_hash", "created_ip", "last_seen_ip", "user_agent"} <= session_columns
+    assert {
+        "csrf_hash",
+        "created_ip",
+        "last_seen_ip",
+        "user_agent",
+        "mfa_authenticated_at",
+    } <= session_columns
+    tenant_columns = {
+        column["name"] for column in inspector.get_columns("tenants")
+    }
+    assert {"require_mfa"} <= tenant_columns
+    token_columns = {
+        column["name"] for column in inspector.get_columns("account_tokens")
+    }
+    assert {"details"} <= token_columns
     rank_job_columns = {
         column["name"] for column in inspector.get_columns("rank_jobs")
     }

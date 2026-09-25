@@ -12,6 +12,7 @@ from amazon_geo_rank_monitor.api.schemas import (
     BootstrapOwnerCreate,
     InvitationCreate,
     MemberRoleUpdate,
+    WorkspaceMfaPolicyUpdate,
 )
 from amazon_geo_rank_monitor.api.session_cookies import session_payload, set_session_cookies
 from amazon_geo_rank_monitor.auth.accounts import ROLES, HumanPrincipal
@@ -33,6 +34,38 @@ def list_members(
     owner_id: TeamReadOwner,
 ):
     return get_services(request).account_repository.list_members(owner_id=owner_id)
+
+
+@router.get("/security-policy")
+def get_security_policy(
+    request: Request,
+    owner_id: TeamReadOwner,
+):
+    return get_services(request).account_repository.get_workspace_security_policy(
+        owner_id=owner_id
+    )
+
+
+@router.patch("/security-policy")
+def update_security_policy(
+    body: WorkspaceMfaPolicyUpdate,
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    if not isinstance(principal, HumanPrincipal):
+        raise HTTPException(
+            status_code=403,
+            detail="human session required to change workspace security policy",
+        )
+    try:
+        return get_services(request).accounts.set_workspace_mfa_policy(
+            principal=principal,
+            require_mfa=body.require_mfa,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/invitations")

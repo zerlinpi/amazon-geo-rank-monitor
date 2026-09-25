@@ -118,10 +118,23 @@ HumanPrincipalDependency = Annotated[
 ]
 
 
+def _enforce_workspace_mfa(principal: Principal) -> None:
+    if (
+        isinstance(principal, HumanPrincipal)
+        and principal.workspace_require_mfa
+        and principal.mfa_authenticated_at is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="MFA required by workspace policy",
+        )
+
+
 def require_scope(scope: str) -> Callable[..., str]:
     def dependency(
         principal: PrincipalDependency,
     ) -> str:
+        _enforce_workspace_mfa(principal)
         if not principal.allows(scope):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -136,6 +149,7 @@ def require_scope_principal(scope: str) -> Callable[..., Principal]:
     def dependency(
         principal: PrincipalDependency,
     ) -> Principal:
+        _enforce_workspace_mfa(principal)
         if not principal.allows(scope):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
