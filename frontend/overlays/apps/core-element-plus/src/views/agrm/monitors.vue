@@ -4,6 +4,7 @@ import { agrmApi, type GeoProfile, type Monitor } from '@/api/agrm'
 
 defineOptions({ name: 'Monitors' })
 
+const router = useRouter()
 const loading = ref(false)
 const monitors = ref<Monitor[]>([])
 const geos = ref<GeoProfile[]>([])
@@ -112,6 +113,13 @@ async function remove(row: Monitor) {
   }
 }
 
+function openAlerts(row: Monitor) {
+  void router.push({
+    path: '/workspace/alerts',
+    query: { monitor: row.id },
+  })
+}
+
 async function run(row: any) {
   try {
     const monitor = row as Monitor
@@ -161,9 +169,10 @@ onMounted(load)
             <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? 'Enabled' : 'Disabled' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="Actions" width="260" fixed="right">
+        <el-table-column label="Actions" width="330" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain :disabled="!row.enabled" @click="run(row)">Run now</el-button>
+            <el-button size="small" @click="openAlerts(row as Monitor)">Alerts</el-button>
             <el-button size="small" @click="toggleEnabled(row as Monitor)">{{ row.enabled ? 'Disable' : 'Enable' }}</el-button>
             <el-button size="small" type="danger" text @click="remove(row as Monitor)">Delete</el-button>
           </template>
