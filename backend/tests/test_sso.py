@@ -325,3 +325,29 @@ def test_idp_mfa_claim_marks_sso_session_authenticated() -> None:
     )
     completion = sso.complete_login(state=state, code="authorization-code")
     assert completion.session.principal.mfa_authenticated_at is not None
+
+
+def test_local_session_cannot_switch_into_enforced_sso_workspace() -> None:
+    accounts_repository, sso_repository, accounts, sso, _ = build_services()
+    local = register_owner(accounts)
+    enterprise_owner = accounts.register(
+        email="enterprise-owner@example.com",
+        password="enterprise-owner-password",
+        display_name="Enterprise Owner",
+        workspace_name="Enterprise",
+    )
+    target_owner_id = enterprise_owner.principal.owner_id
+    accounts_repository.create_membership(
+        owner_id=target_owner_id,
+        user_id=local.principal.user_id,
+        role="viewer",
+    )
+    configure_owner_sso(sso, target_owner_id)
+    sso_repository.mark_verified(owner_id=target_owner_id)
+    sso.set_enforcement(owner_id=target_owner_id, enforce_sso=True)
+
+    with pytest.raises(SsoRequiredError, match="SSO is required"):
+        accounts.switch_workspace(
+            principal=local.principal,
+            owner_id=target_owner_id,
+        )
