@@ -74,6 +74,9 @@ export interface AccountProfile {
     role: 'owner' | 'admin' | 'analyst' | 'viewer'
     require_mfa: boolean
     mfa_setup_required: boolean
+    mfa_session_verification_required: boolean
+    enforce_sso: boolean
+    sso_authenticated: boolean
   }
   memberships: WorkspaceMembership[]
 }
@@ -99,6 +102,43 @@ export interface MfaEnrollmentResult {
 export interface WorkspaceSecurityPolicy {
   owner_id: string
   require_mfa: boolean
+}
+
+export interface SsoDiscovery {
+  workspace_id: string
+  display_name: string
+  provider_type: 'google' | 'entra' | 'oidc' | string
+}
+
+export interface WorkspaceSsoConfig {
+  owner_id: string
+  provider_type: 'google' | 'entra' | 'oidc' | string
+  display_name: string
+  issuer_url: string
+  client_id: string
+  email_domains: string[]
+  auto_join: boolean
+  enabled: boolean
+  enforce_sso: boolean
+  verified_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface WorkspaceSsoConfigUpdate {
+  provider_type: 'google' | 'entra' | 'oidc' | string
+  display_name: string
+  issuer_url: string
+  client_id: string
+  client_secret?: string
+  email_domains: string[]
+  auto_join: boolean
+  enabled: boolean
+}
+
+export interface SsoStartResult {
+  authorization_url: string
+  expires_at: string
 }
 
 export interface AuthSecurityEvent {
@@ -324,6 +364,9 @@ export const agrmApi = {
   confirmMfaEnrollment: (code: string) => data<{ enabled: boolean, recovery_codes: string[] }>(
     client.post('/api/v1/auth/mfa/enroll/verify', { code }),
   ),
+  verifyCurrentSessionMfa: (code: string) => data<{ verified: boolean }>(
+    client.post('/api/v1/auth/mfa/session-verify', { code }),
+  ),
   regenerateRecoveryCodes: (code: string) => data<{ recovery_codes: string[] }>(
     client.post('/api/v1/auth/mfa/recovery-codes/regenerate', { code }),
   ),
@@ -331,6 +374,12 @@ export const agrmApi = {
     client.post('/api/v1/auth/mfa/disable', { current_password, code }),
   ),
   getMe: () => data<AccountProfile>(client.get('/api/v1/auth/me')),
+  discoverSso: (email: string) => data<SsoDiscovery[]>(
+    client.get('/api/v1/auth/sso/discover', { params: { email } }),
+  ),
+  startSso: (workspace_id: string, email?: string) => data<SsoStartResult>(
+    client.post('/api/v1/auth/sso/start', { workspace_id, email }),
+  ),
   forgotPassword: (email: string) => data<{ accepted: boolean, message: string }>(
     client.post('/api/v1/auth/forgot-password', { email }),
   ),
@@ -368,6 +417,15 @@ export const agrmApi = {
   ),
   updateWorkspaceSecurityPolicy: (require_mfa: boolean) => data<WorkspaceSecurityPolicy>(
     client.patch('/api/v1/team/security-policy', { require_mfa }),
+  ),
+  getWorkspaceSsoConfig: () => data<WorkspaceSsoConfig | null>(
+    client.get('/api/v1/team/sso-config'),
+  ),
+  updateWorkspaceSsoConfig: (payload: WorkspaceSsoConfigUpdate) => data<WorkspaceSsoConfig>(
+    client.put('/api/v1/team/sso-config', payload),
+  ),
+  updateWorkspaceSsoEnforcement: (enforce_sso: boolean) => data<WorkspaceSsoConfig>(
+    client.patch('/api/v1/team/sso-config/enforcement', { enforce_sso }),
   ),
   getTeamInvitations: () => data<WorkspaceInvitation[]>(
     client.get('/api/v1/team/invitations'),
