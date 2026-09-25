@@ -12,6 +12,18 @@ const constantRoutes: RouteRecordRaw[] = [
     meta: { title: 'Sign in' },
   },
   {
+    path: '/verify-email',
+    name: 'verifyEmail',
+    component: () => import('@/views/verify-email.vue'),
+    meta: { title: 'Verify email' },
+  },
+  {
+    path: '/reset-password',
+    name: 'resetPassword',
+    component: () => import('@/views/reset-password.vue'),
+    meta: { title: 'Reset password' },
+  },
+  {
     path: '/:all(.*)*',
     name: 'notFound',
     component: () => import('@/views/[...all].vue'),
