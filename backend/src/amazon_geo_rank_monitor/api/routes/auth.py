@@ -464,6 +464,8 @@ def switch_workspace(
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="workspace membership not found") from exc
+    except SsoRequiredError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     set_session_cookies(response, services, created)
     return session_payload(services, created)
 
