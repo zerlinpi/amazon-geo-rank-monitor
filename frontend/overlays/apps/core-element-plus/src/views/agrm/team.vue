@@ -19,6 +19,8 @@ const inviteEmail = ref('')
 const inviteRole = ref('viewer')
 const inviting = ref(false)
 const createdInviteLink = ref('')
+const requireMfa = ref(false)
+const updatingPolicy = ref(false)
 
 const currentRole = computed(() => profile.value?.workspace.role)
 const canManage = computed(() => ['owner', 'admin'].includes(currentRole.value || ''))
@@ -37,6 +39,8 @@ async function load() {
   try {
     profile.value = await agrmApi.getMe()
     members.value = await agrmApi.getTeamMembers()
+    const policy = await agrmApi.getWorkspaceSecurityPolicy()
+    requireMfa.value = policy.require_mfa
     if (canManage.value) {
       invitations.value = await agrmApi.getTeamInvitations()
     }
@@ -49,6 +53,26 @@ async function load() {
   }
   finally {
     loading.value = false
+  }
+}
+
+async function updateMfaPolicy(value: boolean) {
+  if (currentRole.value !== 'owner') {
+    return
+  }
+  updatingPolicy.value = true
+  try {
+    const result = await agrmApi.updateWorkspaceSecurityPolicy(value)
+    requireMfa.value = result.require_mfa
+    ElMessage.success(result.require_mfa ? 'Workspace now requires MFA' : 'Workspace MFA requirement disabled')
+    await load()
+  }
+  catch (error: any) {
+    requireMfa.value = !value
+    ElMessage.error(error.response?.data?.detail || 'Failed to update MFA policy')
+  }
+  finally {
+    updatingPolicy.value = false
   }
 }
 
@@ -192,6 +216,38 @@ onMounted(load)
 
     <el-card shadow="never">
       <template #header>
+        <span class="font-medium">Workspace security</span>
+      </template>
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div class="font-medium">Require two-factor authentication</div>
+          <div class="text-sm text-muted-foreground mt-1">
+            When enabled, human members must complete MFA before workspace resources are accessible.
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <el-tag :type="requireMfa ? 'warning' : 'info'">
+            {{ requireMfa ? 'Required' : 'Optional' }}
+          </el-tag>
+          <el-switch
+            v-if="currentRole === 'owner'"
+            :model-value="requireMfa"
+            :loading="updatingPolicy"
+            @change="(value: boolean) => updateMfaPolicy(value)"
+          />
+        </div>
+      </div>
+      <el-alert
+        v-if="currentRole === 'owner' && !requireMfa"
+        class="mt-4"
+        type="info"
+        :closable="false"
+        title="All current members must enable MFA before this policy can be turned on."
+      />
+    </el-card>
+
+    <el-card shadow="never">
+      <template #header>
         <div class="flex items-center justify-between">
           <span class="font-medium">Members</span>
           <el-tag v-if="profile" type="info">{{ profile.workspace.name }} · {{ profile.workspace.role }}</el-tag>
@@ -200,6 +256,13 @@ onMounted(load)
       <el-table :data="members" empty-text="No members">
         <el-table-column prop="display_name" label="Name" min-width="170" />
         <el-table-column prop="email" label="Email" min-width="220" />
+        <el-table-column label="MFA" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.mfa_enabled ? 'success' : 'info'" size="small">
+              {{ row.mfa_enabled ? 'On' : 'Off' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="Role" width="150">
           <template #default="{ row }">
             <el-select
