@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 import hmac
+from collections.abc import Callable
 from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Request, status
