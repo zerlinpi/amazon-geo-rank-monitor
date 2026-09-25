@@ -8,27 +8,37 @@ export const useAppAccountStore = defineStore('appAccount', () => {
   const appRouteStore = useAppRouteStore()
   const appMenuStore = useAppMenuStore()
 
-  const token = ref(localStorage.getItem('token') ?? '')
+  const storedToken = localStorage.getItem('token') ?? ''
+  if (storedToken.startsWith('agrs_')) {
+    localStorage.removeItem('token')
+  }
+
+  const token = ref(storedToken.startsWith('agrm_') ? storedToken : '')
+  const authMode = ref(localStorage.getItem('authMode') ?? (token.value ? 'api' : ''))
   const account = ref(localStorage.getItem('account') ?? '')
   const avatar = ref('')
   const permissions = ref<string[]>(['*'])
-  const isLogin = computed(() => Boolean(token.value))
+  const isLogin = computed(() => authMode.value === 'session' || Boolean(token.value))
 
   function applySession(result: SessionResult) {
-    token.value = result.session_token
-    localStorage.setItem('token', result.session_token)
+    localStorage.removeItem('token')
+    token.value = ''
+    authMode.value = 'session'
+    localStorage.setItem('authMode', 'session')
     account.value = result.user.display_name || result.user.email
     localStorage.setItem('account', account.value)
     permissions.value = [result.workspace.role]
   }
 
-  function clearToken() {
+  function clearAuth() {
     localStorage.removeItem('token')
+    localStorage.removeItem('authMode')
     token.value = ''
+    authMode.value = ''
   }
 
   async function loginWithCredentials(email: string, password: string) {
-    clearToken()
+    clearAuth()
     const result = await agrmApi.loginAccount({ email, password })
     applySession(result)
     return result
@@ -41,7 +51,7 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     workspace_name?: string
     invitation_token?: string
   }) {
-    clearToken()
+    clearAuth()
     const result = await agrmApi.registerAccount(payload)
     applySession(result)
     return result
@@ -52,8 +62,11 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     if (!normalized) {
       throw new Error('API Key is required')
     }
+    clearAuth()
     token.value = normalized
+    authMode.value = 'api'
     localStorage.setItem('token', normalized)
+    localStorage.setItem('authMode', 'api')
     try {
       await agrmApi.validateKey()
       account.value = 'Legacy API workspace'
@@ -61,7 +74,7 @@ export const useAppAccountStore = defineStore('appAccount', () => {
       permissions.value = ['*']
     }
     catch (error) {
-      clearToken()
+      clearAuth()
       throw error
     }
   }
@@ -71,10 +84,10 @@ export const useAppAccountStore = defineStore('appAccount', () => {
   }
 
   function logout(redirect = router.currentRoute.value.fullPath) {
-    if (token.value.startsWith('agrs_')) {
+    if (authMode.value === 'session') {
       void agrmApi.logoutAccount().catch(() => undefined)
     }
-    clearToken()
+    clearAuth()
     router.push({
       name: 'login',
       query: {
@@ -99,26 +112,36 @@ export const useAppAccountStore = defineStore('appAccount', () => {
   }
 
   async function getPermissions() {
-    if (!token.value) {
-      permissions.value = []
-      return
-    }
-    if (!token.value.startsWith('agrs_')) {
+    if (authMode.value === 'api' && token.value) {
       permissions.value = ['*']
       return
     }
-    const profile = await agrmApi.getMe()
-    account.value = profile.user.display_name || profile.user.email
-    localStorage.setItem('account', account.value)
-    permissions.value = [profile.workspace.role]
+    if (authMode.value !== 'session') {
+      permissions.value = []
+      return
+    }
+    try {
+      const profile = await agrmApi.getMe()
+      account.value = profile.user.display_name || profile.user.email
+      localStorage.setItem('account', account.value)
+      permissions.value = [profile.workspace.role]
+    }
+    catch (error) {
+      clearAuth()
+      throw error
+    }
   }
 
-  async function editPassword(_data: { password: string, newPassword: string }) {
-    throw new Error('Password change is not enabled yet')
+  async function editPassword(data: { password: string, newPassword: string }) {
+    if (authMode.value !== 'session') {
+      throw new Error('Human session required')
+    }
+    await agrmApi.changePassword(data.password, data.newPassword)
   }
 
   return {
     token,
+    authMode,
     account,
     avatar,
     permissions,
