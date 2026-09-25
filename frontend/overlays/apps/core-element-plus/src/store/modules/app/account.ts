@@ -146,6 +146,12 @@ export const useAppAccountStore = defineStore('appAccount', () => {
       account.value = profile.user.display_name || profile.user.email
       localStorage.setItem('account', account.value)
       permissions.value = [profile.workspace.role]
+      if (
+        profile.workspace.mfa_setup_required
+        && router.currentRoute.value.path !== '/workspace/security'
+      ) {
+        void router.replace('/workspace/security')
+      }
     }
     catch (error) {
       clearAuth()
