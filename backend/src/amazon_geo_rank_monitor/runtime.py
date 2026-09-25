@@ -24,10 +24,10 @@ from amazon_geo_rank_monitor.config import (
 from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 from amazon_geo_rank_monitor.domain.models import VerificationLevel
 from amazon_geo_rank_monitor.notifications.email import build_email_sender
+from amazon_geo_rank_monitor.probe_cache import ProbeCacheService
 from amazon_geo_rank_monitor.providers.playwright_amazon import (
     PlaywrightAmazonBrowserClient,
 )
-from amazon_geo_rank_monitor.probe_cache import ProbeCacheService
 from amazon_geo_rank_monitor.providers.strict_browser import StrictBrowserRankProvider
 from amazon_geo_rank_monitor.reports import ReportService
 from amazon_geo_rank_monitor.repositories.account_repository import AccountRepository
