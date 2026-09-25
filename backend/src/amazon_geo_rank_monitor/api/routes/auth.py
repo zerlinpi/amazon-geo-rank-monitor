@@ -246,14 +246,20 @@ def start_sso(body: SsoStartRequest, request: Request):
 
 @router.get("/sso/callback")
 def sso_callback(
-    state: str,
-    code: str,
     request: Request,
+    state: str | None = None,
+    code: str | None = None,
+    error: str | None = None,
 ):
     services = get_services(request)
     if services.sso is None:
         return RedirectResponse(
             "http://localhost:5173/#/login?sso=failed",
+            status_code=302,
+        )
+    if error or not state or not code:
+        return RedirectResponse(
+            services.sso.failure_redirect_url(),
             status_code=302,
         )
     try:
