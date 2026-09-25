@@ -60,6 +60,7 @@ async def _worker_loop(*, once: bool) -> None:
         billing_repository=services.billing_repository,
         rate_card=services.rate_card,
         worker_status_repository=services.worker_status_repository,
+        alert_service=services.alerts,
         worker_id=settings.worker_id or socket.gethostname(),
         lease_seconds=settings.job_lease_seconds,
         retry_base_seconds=settings.job_retry_base_seconds,
