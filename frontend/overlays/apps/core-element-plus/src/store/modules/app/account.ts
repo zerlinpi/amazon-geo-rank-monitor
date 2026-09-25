@@ -30,6 +30,12 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     permissions.value = [result.workspace.role]
   }
 
+  async function closeExistingHumanSession() {
+    if (authMode.value === 'session') {
+      await agrmApi.logoutAccount().catch(() => undefined)
+    }
+  }
+
   function clearAuth() {
     localStorage.removeItem('token')
     localStorage.removeItem('authMode')
@@ -38,6 +44,7 @@ export const useAppAccountStore = defineStore('appAccount', () => {
   }
 
   async function loginWithCredentials(email: string, password: string) {
+    await closeExistingHumanSession()
     clearAuth()
     const result = await agrmApi.loginAccount({ email, password })
     applySession(result)
@@ -51,6 +58,7 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     workspace_name?: string
     invitation_token?: string
   }) {
+    await closeExistingHumanSession()
     clearAuth()
     const result = await agrmApi.registerAccount(payload)
     applySession(result)
@@ -62,6 +70,7 @@ export const useAppAccountStore = defineStore('appAccount', () => {
     if (!normalized) {
       throw new Error('API Key is required')
     }
+    await closeExistingHumanSession()
     clearAuth()
     token.value = normalized
     authMode.value = 'api'
