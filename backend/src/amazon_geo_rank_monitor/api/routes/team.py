@@ -12,7 +12,9 @@ from amazon_geo_rank_monitor.api.schemas import (
     BootstrapOwnerCreate,
     InvitationCreate,
     MemberRoleUpdate,
+    ScimGroupRoleUpdate,
     WorkspaceMfaPolicyUpdate,
+    WorkspaceScimConfigUpdate,
     WorkspaceSsoConfigUpdate,
     WorkspaceSsoEnforcementUpdate,
 )
@@ -143,6 +145,109 @@ def update_sso_enforcement(
         )
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/scim-config")
+def get_scim_config(
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    if not isinstance(principal, HumanPrincipal) or principal.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="workspace owner required to manage SCIM",
+        )
+    services = get_services(request)
+    if services.scim is None:
+        raise HTTPException(status_code=503, detail="SCIM is unavailable")
+    return services.scim.get_config(owner_id=principal.owner_id)
+
+
+@router.patch("/scim-config")
+def update_scim_config(
+    body: WorkspaceScimConfigUpdate,
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    if not isinstance(principal, HumanPrincipal) or principal.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="workspace owner required to manage SCIM",
+        )
+    services = get_services(request)
+    if services.scim is None:
+        raise HTTPException(status_code=503, detail="SCIM is unavailable")
+    try:
+        return services.scim.update_config(
+            owner_id=principal.owner_id,
+            enabled=body.enabled,
+            default_role=body.default_role,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/scim-token/rotate")
+def rotate_scim_token(
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    if not isinstance(principal, HumanPrincipal) or principal.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="workspace owner required to rotate SCIM token",
+        )
+    services = get_services(request)
+    if services.scim is None:
+        raise HTTPException(status_code=503, detail="SCIM is unavailable")
+    created = services.scim.rotate_token(owner_id=principal.owner_id)
+    return {
+        "token": created.plaintext,
+        "prefix": created.prefix,
+    }
+
+
+@router.get("/scim-groups")
+def list_scim_groups(
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    if not isinstance(principal, HumanPrincipal) or principal.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="workspace owner required to manage SCIM groups",
+        )
+    services = get_services(request)
+    if services.scim is None:
+        raise HTTPException(status_code=503, detail="SCIM is unavailable")
+    return services.scim.list_admin_groups(owner_id=principal.owner_id)
+
+
+@router.patch("/scim-groups/{group_id}")
+def map_scim_group_role(
+    group_id: str,
+    body: ScimGroupRoleUpdate,
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    if not isinstance(principal, HumanPrincipal) or principal.role != "owner":
+        raise HTTPException(
+            status_code=403,
+            detail="workspace owner required to map SCIM groups",
+        )
+    services = get_services(request)
+    if services.scim is None:
+        raise HTTPException(status_code=503, detail="SCIM is unavailable")
+    try:
+        return services.scim.set_group_role(
+            owner_id=principal.owner_id,
+            group_id=group_id,
+            mapped_role=body.mapped_role,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/invitations")
