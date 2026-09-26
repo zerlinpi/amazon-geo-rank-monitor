@@ -425,7 +425,7 @@ def test_verification_skip_rules_emit_probe_level_alerts(
     assert events[0]["details"]["manual_force_requested"] is True
     assert len(mailer.messages) == 1
     assert "Scope: strict verification" in mailer.messages[0].text
-    assert f"Reason: {skipped_reason}" in mailer.messages[0]["text"]
+    assert f"Reason: {skipped_reason}" in mailer.messages[0].text
 
 
 def test_strict_verification_failure_alert_includes_provider_error() -> None:
@@ -460,7 +460,7 @@ def test_strict_verification_failure_alert_includes_provider_error() -> None:
     assert len(events) == 1
     assert events[0]["event_type"] == "strict_verification_failed"
     assert events[0]["details"]["error"] == "browser navigation failed"
-    assert "Reason: browser navigation failed" in mailer.messages[0]["text"]
+    assert "Reason: browser navigation failed" in mailer.messages[0].text
 
 
 def test_verification_alert_rules_reject_asin_scope() -> None:
