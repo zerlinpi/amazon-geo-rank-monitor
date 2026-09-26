@@ -31,6 +31,15 @@ RULE_TYPES = frozenset(
         "competitor_overtakes_tracked",
     }
 )
+VERIFICATION_TYPES = frozenset(
+    {
+        "strict_verification_failed",
+        "strict_insufficient_credits",
+        "strict_probe_budget_exhausted",
+        "strict_provider_unavailable",
+        "strict_runtime_disabled",
+    }
+)
 COMPETITIVE_TYPES = frozenset(
     {
         "competitor_enters_top_n",
@@ -54,6 +63,7 @@ THRESHOLD_TYPES = frozenset(
     }
 )
 GEO_TYPES = frozenset({"geo_not_found", "geo_rank_above"})
+GEO_SCOPE_TYPES = GEO_TYPES | VERIFICATION_TYPES
 
 
 class AlertService:
@@ -304,6 +314,13 @@ class AlertService:
             else None
         )
 
+        if rule_type in VERIFICATION_TYPES:
+            return self._evaluate_verification(
+                rule_type=rule_type,
+                current=current,
+                geo_filter=geo_filter,
+            )
+
         if rule_type in GEO_TYPES:
             return self._evaluate_geo(
                 rule_type=rule_type,
@@ -366,6 +383,73 @@ class AlertService:
                         details={"scope": "aggregate"},
                     )
                 )
+        return candidates
+
+    def _evaluate_verification(
+        self,
+        *,
+        rule_type: str,
+        current: dict,
+        geo_filter: str | None,
+    ) -> list[dict]:
+        metadata = current.get("verification_metadata") or {}
+        events = metadata.get("events") or []
+        skip_reason_by_type = {
+            "strict_insufficient_credits": "insufficient_credits",
+            "strict_probe_budget_exhausted": "probe_budget_exhausted",
+            "strict_provider_unavailable": "strict_provider_unavailable",
+            "strict_runtime_disabled": "runtime_kill_switch_disabled",
+        }
+        candidates: list[dict] = []
+        for event in events:
+            geo_profile_id = event.get("geo_profile_id")
+            if geo_filter and geo_profile_id != geo_filter:
+                continue
+
+            if rule_type == "strict_verification_failed":
+                triggered = bool(
+                    event.get("error")
+                    or (
+                        event.get("attempted")
+                        and not event.get("succeeded")
+                        and not event.get("skipped_reason")
+                    )
+                )
+            else:
+                triggered = (
+                    event.get("skipped_reason")
+                    == skip_reason_by_type.get(rule_type)
+                )
+            if not triggered:
+                continue
+
+            candidates.append(
+                self._candidate(
+                    asin="VERIFICATION",
+                    event_type=rule_type,
+                    previous_value=None,
+                    current_value=None,
+                    geo_profile_id=geo_profile_id,
+                    details={
+                        "scope": "verification",
+                        "triggers": list(event.get("triggers") or []),
+                        "attempted": bool(event.get("attempted")),
+                        "succeeded": bool(event.get("succeeded")),
+                        "cache_hit": bool(event.get("cache_hit")),
+                        "skipped_reason": event.get("skipped_reason"),
+                        "error": event.get("error"),
+                        "manual_force_requested": bool(
+                            metadata.get("manual_force_requested")
+                        ),
+                        "strict_upstream_attempt_count": metadata.get(
+                            "strict_upstream_attempt_count"
+                        ),
+                        "strict_probe_budget": metadata.get(
+                            "auto_strict_max_upstream_probes_per_run"
+                        ),
+                    },
+                )
+            )
         return candidates
 
     def _evaluate_competitive_rule(
@@ -762,6 +846,20 @@ class AlertService:
             else "n/a"
         )
         geo = event["geo_profile_id"] or "aggregate"
+        if (event.get("details", {}).get("scope") == "verification":
+            reason = (
+                event["details"].get("skipped_reason")
+                or event["details"].get("error")
+                or "strict verification failed"
+            )
+            return (
+                f"Rule: {rule['name']}\n"
+                f"Event: {event['event_type']}\n"
+                f"Scope: strict verification\n"
+                f"Geo: {geo}\n"
+                f"Reason: {reason}\n"
+                f"Run: {event['run_id']}\n"
+            )
         return (
             f"Rule: {rule['name']}\n"
             f"Event: {event['event_type']}\n"
@@ -798,7 +896,12 @@ class AlertService:
         else:
             normalized_threshold = None
         normalized_asin = asin.strip().upper() if asin else None
-        if rule_type in COMPETITIVE_TYPES:
+        if rule_type in VERIFICATION_TYPES:
+            if normalized_asin:
+                raise ValueError(
+                    "verification alert rules do not use ASIN scope"
+                )
+        elif rule_type in COMPETITIVE_TYPES:
             if not normalized_asin:
                 raise ValueError("competitor alert rules require an ASIN")
             if (
@@ -813,8 +916,10 @@ class AlertService:
         normalized_geo = geo_profile_id.strip() if geo_profile_id else None
         if normalized_geo and normalized_geo not in monitor["geo_profile_ids"]:
             raise ValueError("alert geo profile is not part of the monitor")
-        if rule_type not in GEO_TYPES and normalized_geo:
-            raise ValueError("geo_profile_id is only valid for geo alert rules")
+        if rule_type not in GEO_SCOPE_TYPES and normalized_geo:
+            raise ValueError(
+                "geo_profile_id is only valid for geo or verification alert rules"
+            )
         if rule_type in COMPETITIVE_TYPES and normalized_geo:
             raise ValueError("competitive alert rules use monitor-wide geo scope")
         if cooldown_minutes < 0 or cooldown_minutes > 10080:
