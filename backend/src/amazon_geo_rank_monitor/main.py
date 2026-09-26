@@ -63,6 +63,7 @@ async def _worker_loop(*, once: bool) -> None:
         worker_status_repository=services.worker_status_repository,
         alert_service=services.alerts,
         probe_cache=services.probe_cache,
+        auto_strict_verifier=services.auto_strict_verifier,
         worker_id=settings.worker_id or socket.gethostname(),
         lease_seconds=settings.job_lease_seconds,
         retry_base_seconds=settings.job_retry_base_seconds,
