@@ -272,6 +272,10 @@ def build_services(settings: AppSettings) -> AppServices:
                 settings.auto_strict_verify_not_found_after_found
             ),
             verify_geo_mismatch=settings.auto_strict_verify_geo_mismatch,
+            recover_low_confidence=(
+                settings.auto_strict_recover_low_confidence
+            ),
+            min_confidence=str(settings.auto_strict_min_confidence),
         ),
         strict_provider=provider_registry.get("strict"),
         probe_cache=probe_cache,
