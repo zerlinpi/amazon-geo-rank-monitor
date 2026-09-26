@@ -142,6 +142,10 @@ class RankWorker:
                     reference_id=job["id"],
                 )
 
+            force_strict_verification = bool(
+                isinstance(verification_policy, dict)
+                and verification_policy.get("force_strict_verification")
+            )
             strict_verifier = self._auto_strict_verifier
             if (
                 strict_verifier is not None
@@ -153,6 +157,7 @@ class RankWorker:
                     max_upstream_probes_per_run=verification_policy.get(
                         "max_upstream_probes_per_run"
                     ),
+                    force_strict=force_strict_verification,
                 )
             service = RankMonitorService(
                 provider=provider,
@@ -166,6 +171,7 @@ class RankWorker:
                 owner_id=job["owner_id"],
                 prepared_cache=prepared_cache,
                 verification_reference_id=f"job:{job['id']}",
+                force_strict_verification=force_strict_verification,
             )
 
             if reservation is not None:
