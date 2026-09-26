@@ -1612,3 +1612,104 @@ Upgrade existing deployments with:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## SERP competitive intelligence and share of voice
+
+Phase 20 turns each successful geographic SERP probe into reusable competitive intelligence instead of discarding products that were not explicitly configured on the Monitor.
+
+For every successful `run + Geo Profile`, the system persists one compact row per discovered ASIN with its best:
+
+- organic position;
+- sponsored position;
+- absolute SERP position;
+- captured title;
+- probe source (`upstream` or `cache`);
+- cache age when applicable;
+- original SERP observation timestamp.
+
+An ASIN that appears in both organic and sponsored results is stored once for that geo/run.
+
+### Share of voice
+
+The Monitor competitive summary calculates two different visibility concepts deliberately:
+
+- **Organic SOV** — the ASIN's placements divided by all captured organic Top-N slots, including tracked products. This represents its share of the whole observed SERP rather than only the filtered competitor table.
+- **Geo coverage** — the percentage of Monitor geo probes in which that ASIN appeared organically inside Top-N.
+
+Sponsored SOV and sponsored geo coverage are calculated independently.
+
+The summary also includes:
+
+- best and average organic rank;
+- latest run-level average organic rank;
+- change from the previous completed run, where negative means improvement;
+- best/average sponsored rank;
+- run count and Geo Profile count;
+- per-Geo top competitor leaders.
+
+Tracked Monitor ASINs are excluded from the competitor table by default but can be included as a benchmark. Excluding them from the table does not remove them from the SOV denominator.
+
+### Competitive trend
+
+The trend API groups competitors by completed Monitor run and returns:
+
+- average organic rank;
+- best organic rank;
+- organic geo-probe coverage;
+- sponsored appearances.
+
+This supports direct comparison of the most visible competing ASINs through time without running extra Amazon requests.
+
+### Cache behavior
+
+Phase 19 SERP cache reuse is compatible with competitive intelligence.
+
+A cache hit still creates a new competitive observation set for the current RankRun so Monitor history remains continuous, but the rows preserve:
+
+- `probe_source=cache`;
+- the cache age;
+- the original cached SERP fetch timestamp.
+
+Competitive capture is fail-open. A persistence failure is logged but never changes the authoritative rank-check result, billing settlement or worker completion state.
+
+### API
+
+Competitive intelligence uses the existing `rank:read` permission:
+
+```http
+GET /api/v1/competitive/monitors/{monitor_id}/summary?hours=168&top_n=20
+GET /api/v1/competitive/monitors/{monitor_id}/trend?hours=168&top_n=20
+```
+
+Summary parameters support:
+
+- `hours`: 1–8760;
+- `top_n`: 1–100;
+- `limit`: 1–200;
+- `include_tracked`: include the Monitor's configured ASINs in the returned table.
+
+Trend can accept repeated `asins` query parameters. When omitted, the service automatically follows the leading competitors from the same summary window.
+
+Fantastic Admin exposes **Rank Monitoring → Competitor Intelligence**, with Monitor/window/Top-N selection, organic and sponsored SOV, geo coverage, rank movement sparklines and geographic leaders.
+
+### Data start point
+
+Competitive observations begin with SERP probes performed after Phase 20 is deployed. Existing historical RankRuns only stored explicitly requested ASIN observations, so they cannot be used to reconstruct products that were never persisted.
+
+No additional Amazon probe or credit is required to collect competitive intelligence; it is derived from the same SERP response already obtained for the rank check.
+
+## Phase 20 migration
+
+Schema revision `20260926_0014` adds:
+
+- `serp_competitive_observations`;
+- indexes for run, tenant, Geo Profile, ASIN and observed time;
+- a unique `run + geo + ASIN` constraint.
+
+Upgrade existing deployments with:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
