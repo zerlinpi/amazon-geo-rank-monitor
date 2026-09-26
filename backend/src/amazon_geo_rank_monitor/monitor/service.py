@@ -282,11 +282,32 @@ class RankMonitorService:
             primary_upstream_probe_count + strict_upstream_probe_count
         )
         cache_hit_count = primary_cache_hit_count + strict_cache_hit_count
+        verification_metadata = {
+            "auto_strict_enabled": bool(
+                self._provider_mode == "managed"
+                and self._strict_verifier is not None
+                and getattr(self._strict_verifier, "enabled", False)
+            ),
+            "strict_requested_count": len(verification_events),
+            "strict_attempted_count": sum(
+                1 for item in verification_events if item.get("attempted")
+            ),
+            "strict_succeeded_count": sum(
+                1 for item in verification_events if item.get("succeeded")
+            ),
+            "strict_skipped_count": sum(
+                1
+                for item in verification_events
+                if item.get("skipped_reason") is not None
+            ),
+            "events": verification_events,
+        }
         self._repository.complete_run(
             run_id,
             status=status,
             settled_probe_count=upstream_probe_count,
             cache_hit_count=cache_hit_count,
+            verification_metadata=verification_metadata,
             error_summary="; ".join(errors) if errors else None,
         )
         return RankExecutionResult(
