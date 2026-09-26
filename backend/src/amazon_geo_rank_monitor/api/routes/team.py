@@ -17,6 +17,7 @@ from amazon_geo_rank_monitor.api.schemas import (
     WorkspaceScimConfigUpdate,
     WorkspaceSsoConfigUpdate,
     WorkspaceSsoEnforcementUpdate,
+    WorkspaceVerificationPolicyUpdate,
 )
 from amazon_geo_rank_monitor.api.session_cookies import session_payload, set_session_cookies
 from amazon_geo_rank_monitor.auth.accounts import ROLES, HumanPrincipal
@@ -30,6 +31,40 @@ TeamManagePrincipal = Annotated[
     Principal,
     Depends(require_scope_principal("team:manage")),
 ]
+
+
+def _workspace_verification_policy(services, *, owner_id: str) -> dict:
+    stored = services.tenant_repository.get_workspace_verification_policy(
+        owner_id=owner_id
+    )
+    runtime = services.auto_strict_runtime_policy or {
+        "enabled": False,
+        "min_confidence": 0.75,
+        "max_upstream_probes_per_run": 3,
+    }
+    stored_enabled = stored.get("enabled")
+    stored_confidence = stored.get("min_confidence")
+    stored_budget = stored.get("max_upstream_probes_per_run")
+    return {
+        **stored,
+        "runtime": runtime,
+        "effective": {
+            "enabled": bool(
+                runtime.get("enabled", False)
+                and stored_enabled is not False
+            ),
+            "min_confidence": (
+                stored_confidence
+                if stored_confidence is not None
+                else runtime.get("min_confidence", 0.75)
+            ),
+            "max_upstream_probes_per_run": (
+                stored_budget
+                if stored_budget is not None
+                else runtime.get("max_upstream_probes_per_run", 3)
+            ),
+        },
+    }
 
 
 @router.get("/members")
@@ -70,6 +105,44 @@ def update_security_policy(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/verification-policy")
+def get_verification_policy(
+    request: Request,
+    owner_id: TeamReadOwner,
+):
+    return _workspace_verification_policy(
+        get_services(request),
+        owner_id=owner_id,
+    )
+
+
+@router.patch("/verification-policy")
+def update_verification_policy(
+    body: WorkspaceVerificationPolicyUpdate,
+    request: Request,
+    principal: TeamManagePrincipal,
+):
+    if not isinstance(principal, HumanPrincipal):
+        raise HTTPException(
+            status_code=403,
+            detail="human session required to change workspace verification policy",
+        )
+    services = get_services(request)
+    try:
+        services.tenant_repository.update_workspace_verification_policy(
+            owner_id=principal.owner_id,
+            changes=body.model_dump(exclude_unset=True),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="workspace not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _workspace_verification_policy(
+        services,
+        owner_id=principal.owner_id,
+    )
 
 
 @router.get("/sso-config")

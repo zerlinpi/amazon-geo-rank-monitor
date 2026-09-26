@@ -141,6 +141,29 @@ def test_geo_and_monitor_resources_are_tenant_scoped() -> None:
     assert inherited.json()["auto_strict_min_confidence"] is None
     assert inherited.json()["auto_strict_max_probes_per_run"] is None
 
+    tenants.update_workspace_verification_policy(
+        owner_id=tenant_a["id"],
+        changes={
+            "enabled": True,
+            "min_confidence": 0.88,
+            "max_upstream_probes_per_run": 1,
+        },
+    )
+    inherited_job = client.post(
+        f"/api/v1/monitors/{monitor_id}/run",
+        headers=auth_a,
+    )
+    assert inherited_job.status_code == 202
+    inherited_job_body = client.get(
+        f"/api/v1/jobs/{inherited_job.json()['id']}",
+        headers=auth_a,
+    ).json()
+    assert inherited_job_body["request_payload"]["_verification_policy"] == {
+        "enabled": True,
+        "min_confidence": "0.8800",
+        "max_upstream_probes_per_run": 1,
+    }
+
     queued_after_edit = client.get(
         f"/api/v1/jobs/{queued.json()['id']}",
         headers=auth_a,

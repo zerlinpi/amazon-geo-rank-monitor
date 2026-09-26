@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import Engine, select
@@ -19,6 +20,50 @@ class TenantRepository:
             row = TenantRow(id=tenant_id, name=name.strip())
             session.add(row)
         return {"id": tenant_id, "name": name.strip()}
+
+    def get_workspace_verification_policy(self, *, owner_id: str) -> dict:
+        with self._sessions() as session:
+            row = session.get(TenantRow, owner_id)
+            if row is None:
+                raise KeyError(f"tenant not found: {owner_id}")
+            return self._serialize_verification_policy(row)
+
+    def update_workspace_verification_policy(
+        self,
+        *,
+        owner_id: str,
+        changes: dict,
+    ) -> dict:
+        with self._sessions.begin() as session:
+            row = session.get(TenantRow, owner_id)
+            if row is None:
+                raise KeyError(f"tenant not found: {owner_id}")
+
+            if "enabled" in changes:
+                row.auto_strict_enabled = changes["enabled"]
+
+            if "min_confidence" in changes:
+                value = changes["min_confidence"]
+                if value is None:
+                    row.auto_strict_min_confidence = None
+                else:
+                    confidence = Decimal(str(value))
+                    if confidence <= 0 or confidence > 1:
+                        raise ValueError(
+                            "min_confidence must be greater than 0 and at most 1"
+                        )
+                    row.auto_strict_min_confidence = confidence
+
+            if "max_upstream_probes_per_run" in changes:
+                value = changes["max_upstream_probes_per_run"]
+                if value is not None and (value < 0 or value > 100):
+                    raise ValueError(
+                        "max_upstream_probes_per_run must be between 0 and 100"
+                    )
+                row.auto_strict_max_probes_per_run = value
+
+            session.flush()
+            return self._serialize_verification_policy(row)
 
     def create_api_key(
         self,
@@ -92,6 +137,17 @@ class TenantRepository:
             if row is None:
                 raise KeyError(f"API key not found: {key_id}")
             row.revoked_at = datetime.now(UTC)
+
+    @staticmethod
+    def _serialize_verification_policy(row: TenantRow) -> dict:
+        return {
+            "owner_id": row.id,
+            "enabled": row.auto_strict_enabled,
+            "min_confidence": row.auto_strict_min_confidence,
+            "max_upstream_probes_per_run": (
+                row.auto_strict_max_probes_per_run
+            ),
+        }
 
     @staticmethod
     def _serialize_key(row: ApiKeyRow) -> dict:
