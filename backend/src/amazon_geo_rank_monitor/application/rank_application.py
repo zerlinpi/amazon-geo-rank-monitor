@@ -143,17 +143,45 @@ def enqueue_monitor(
         search_depth=monitor["search_depth"],
     )
     request_payload = request.model_dump(mode="json")
-    confidence = monitor.get("auto_strict_min_confidence")
+    workspace_policy: dict = {}
+    tenant_repository = getattr(services, "tenant_repository", None)
+    if (
+        tenant_repository is not None
+        and hasattr(tenant_repository, "get_workspace_verification_policy")
+    ):
+        try:
+            workspace_policy = tenant_repository.get_workspace_verification_policy(
+                owner_id=owner_id
+            )
+        except KeyError:
+            workspace_policy = {}
+
+    monitor_enabled = monitor.get("auto_strict_enabled")
+    monitor_confidence = monitor.get("auto_strict_min_confidence")
+    monitor_budget = monitor.get("auto_strict_max_probes_per_run")
+    enabled = (
+        monitor_enabled
+        if monitor_enabled is not None
+        else workspace_policy.get("enabled")
+    )
+    confidence = (
+        monitor_confidence
+        if monitor_confidence is not None
+        else workspace_policy.get("min_confidence")
+    )
+    budget = (
+        monitor_budget
+        if monitor_budget is not None
+        else workspace_policy.get("max_upstream_probes_per_run")
+    )
     request_payload["_verification_policy"] = {
-        "enabled": monitor.get("auto_strict_enabled"),
+        "enabled": enabled,
         "min_confidence": (
             str(confidence)
             if confidence is not None
             else None
         ),
-        "max_upstream_probes_per_run": monitor.get(
-            "auto_strict_max_probes_per_run"
-        ),
+        "max_upstream_probes_per_run": budget,
     }
     return services.job_repository.enqueue(
         owner_id=owner_id,
