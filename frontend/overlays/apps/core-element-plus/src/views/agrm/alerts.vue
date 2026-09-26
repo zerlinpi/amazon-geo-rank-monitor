@@ -367,7 +367,11 @@ onMounted(async () => {
         <el-table-column label="Monitor" min-width="150">
           <template #default="{ row }">{{ monitorName(row.monitor_target_id) }}</template>
         </el-table-column>
-        <el-table-column prop="asin" label="ASIN" min-width="120" />
+        <el-table-column label="ASIN / Scope" min-width="130">
+          <template #default="{ row }">
+            {{ row.details?.scope === 'verification' ? 'Verification' : (row.asin || '—') }}
+          </template>
+        </el-table-column>
         <el-table-column label="Event" min-width="150">
           <template #default="{ row }">{{ ruleTypeLabel(row.event_type) }}</template>
         </el-table-column>
