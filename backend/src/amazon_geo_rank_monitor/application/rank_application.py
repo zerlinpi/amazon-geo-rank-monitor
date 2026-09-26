@@ -46,6 +46,7 @@ async def execute_rank_check(
     search_depth: int,
     provider_mode: str,
     reference_id: str | None = None,
+    force_strict_verification: bool = False,
 ):
     request = build_rank_request(
         geo_repository=services.geo_repository,
@@ -109,6 +110,7 @@ async def execute_rank_check(
             owner_id=owner_id,
             prepared_cache=prepared_cache,
             verification_reference_id=reference_id,
+            force_strict_verification=force_strict_verification,
         )
     except Exception:
         if reservation is not None:
@@ -132,6 +134,7 @@ def enqueue_monitor(
     owner_id: str,
     monitor: dict,
     job_id: str | None = None,
+    force_strict_verification: bool = False,
 ) -> dict:
     request = build_rank_request(
         geo_repository=services.geo_repository,
@@ -182,6 +185,7 @@ def enqueue_monitor(
             else None
         ),
         "max_upstream_probes_per_run": budget,
+        "force_strict_verification": force_strict_verification,
     }
     return services.job_repository.enqueue(
         owner_id=owner_id,
@@ -212,6 +216,10 @@ def serialize_execution_result(result) -> dict:
             ),
         },
         "verification": {
+            "manual_force_requested": any(
+                "manual_force" in item.get("triggers", [])
+                for item in result.verification_events
+            ),
             "auto_strict_events": result.verification_events,
             "strict_attempted": any(
                 item.get("attempted") for item in result.verification_events
