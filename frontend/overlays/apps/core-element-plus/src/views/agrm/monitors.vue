@@ -268,6 +268,7 @@ onMounted(load)
           <template #default="{ row }">
             <el-button size="small" type="primary" plain :disabled="!row.enabled" @click="run(row)">Run now</el-button>
             <el-button size="small" @click="openAlerts(row as Monitor)">Alerts</el-button>
+            <el-button size="small" @click="openPolicy(row as Monitor)">Verify</el-button>
             <el-button size="small" @click="toggleEnabled(row as Monitor)">{{ row.enabled ? 'Disable' : 'Enable' }}</el-button>
             <el-button size="small" type="danger" text @click="remove(row as Monitor)">Delete</el-button>
           </template>
