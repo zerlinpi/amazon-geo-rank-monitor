@@ -49,6 +49,11 @@ const ruleTypes = [
   { value: 'competitor_sov_gain', label: 'Competitor SOV gains N+ points' },
   { value: 'competitor_sov_loss', label: 'Competitor SOV loses N+ points' },
   { value: 'competitor_overtakes_tracked', label: 'Competitor overtakes tracked ASINs' },
+  { value: 'strict_verification_failed', label: 'Strict verification fails' },
+  { value: 'strict_insufficient_credits', label: 'Strict skipped · insufficient credits' },
+  { value: 'strict_probe_budget_exhausted', label: 'Strict skipped · probe budget exhausted' },
+  { value: 'strict_provider_unavailable', label: 'Strict skipped · provider unavailable' },
+  { value: 'strict_runtime_disabled', label: 'Strict blocked · runtime kill switch' },
 ]
 
 const thresholdRequired = computed(() =>
@@ -67,8 +72,12 @@ const thresholdRequired = computed(() =>
 const competitiveRule = computed(() =>
   form.rule_type.startsWith('competitor_'),
 )
+const verificationRule = computed(() =>
+  form.rule_type.startsWith('strict_'),
+)
 const geoRule = computed(() =>
-  ['geo_not_found', 'geo_rank_above'].includes(form.rule_type),
+  ['geo_not_found', 'geo_rank_above'].includes(form.rule_type)
+  || verificationRule.value,
 )
 const selectedMonitor = computed(() =>
   monitors.value.find(item => item.id === form.monitor_target_id),
@@ -205,7 +214,9 @@ async function save() {
     name: form.name.trim(),
     rule_type: form.rule_type,
     threshold: thresholdRequired.value ? form.threshold : null,
-    asin: form.asin.trim().toUpperCase() || null,
+    asin: verificationRule.value
+      ? null
+      : (form.asin.trim().toUpperCase() || null),
     geo_profile_id: geoRule.value ? (form.geo_profile_id || null) : null,
     cooldown_minutes: form.cooldown_minutes,
     enabled: form.enabled,
@@ -429,7 +440,10 @@ onMounted(async () => {
         </div>
 
         <div class="grid md:grid-cols-2 gap-x-4">
-          <el-form-item :label="competitiveRule ? 'Competitor ASIN' : 'ASIN scope'">
+          <el-form-item
+            v-if="!verificationRule"
+            :label="competitiveRule ? 'Competitor ASIN' : 'ASIN scope'"
+          >
             <el-input
               v-if="competitiveRule"
               :model-value="form.asin"
@@ -458,6 +472,15 @@ onMounted(async () => {
             </el-select>
           </el-form-item>
         </div>
+
+        <el-alert
+          v-if="verificationRule"
+          class="mb-4"
+          type="info"
+          :closable="false"
+          title="Strict verification alerts are probe-level"
+          description="They fire once per matching Geo verification event, not once per tracked ASIN. You can leave Geo empty to watch every Geo in the Monitor."
+        />
 
         <el-form-item label="Cooldown minutes">
           <el-input-number v-model="form.cooldown_minutes" :min="0" :max="10080" />
