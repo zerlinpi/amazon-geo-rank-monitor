@@ -386,6 +386,82 @@ export interface AnalyticsSummary {
   geos: AnalyticsGeoSummary[]
 }
 
+export interface CompetitiveRow {
+  asin: string
+  title?: string | null
+  tracked: boolean
+  organic_appearances: number
+  sponsored_appearances: number
+  organic_sov_pct: number
+  sponsored_sov_pct: number
+  organic_probe_coverage_pct: number
+  sponsored_probe_coverage_pct: number
+  best_organic_rank?: number | null
+  average_organic_rank?: number | null
+  best_sponsored_rank?: number | null
+  average_sponsored_rank?: number | null
+  latest_organic_rank?: number | null
+  organic_rank_change?: number | null
+  run_count: number
+  geo_count: number
+}
+
+export interface CompetitiveSummary {
+  monitor: {
+    id: string
+    name: string
+    marketplace: string
+    keyword: string
+    tracked_asins: string[]
+  }
+  window: {
+    start: string
+    end: string
+    hours: number
+    top_n: number
+  }
+  probe_count: number
+  organic_slot_count: number
+  sponsored_slot_count: number
+  competitors: CompetitiveRow[]
+  geo_leaders: {
+    geo_profile_id: string
+    leaders: {
+      asin: string
+      appearances: number
+      average_organic_rank: number
+      best_organic_rank: number
+    }[]
+  }[]
+}
+
+export interface CompetitiveTrendPoint {
+  run_id: string
+  completed_at: string
+  asin: string
+  average_organic_rank?: number | null
+  best_organic_rank?: number | null
+  organic_probe_coverage_pct: number
+  sponsored_appearances: number
+}
+
+export interface CompetitiveTrend {
+  monitor: {
+    id: string
+    name: string
+    marketplace: string
+    keyword: string
+  }
+  window: {
+    start: string
+    end: string
+    hours: number
+    top_n: number
+  }
+  asins: string[]
+  series: CompetitiveTrendPoint[]
+}
+
 export interface ReportSchedule {
   id: string
   owner_id: string
@@ -722,6 +798,27 @@ export const agrmApi = {
     client.get('/api/v1/analytics/monitors/' + monitorId + '/export.csv', {
       params: { hours, granularity },
       responseType: 'blob',
+    }),
+  ),
+  getCompetitiveSummary: (
+    monitorId: string,
+    hours = 168,
+    top_n = 20,
+    limit = 50,
+    include_tracked = false,
+  ) => data<CompetitiveSummary>(
+    client.get('/api/v1/competitive/monitors/' + monitorId + '/summary', {
+      params: { hours, top_n, limit, include_tracked },
+    }),
+  ),
+  getCompetitiveTrend: (
+    monitorId: string,
+    hours = 168,
+    top_n = 20,
+    asins?: string[],
+  ) => data<CompetitiveTrend>(
+    client.get('/api/v1/competitive/monitors/' + monitorId + '/trend', {
+      params: { hours, top_n, asins },
     }),
   ),
   getReportSchedules: () => data<ReportSchedule[]>(

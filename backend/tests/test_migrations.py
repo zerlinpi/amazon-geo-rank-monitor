@@ -41,6 +41,7 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "report_schedules",
         "report_deliveries",
         "serp_probe_cache",
+        "serp_competitive_observations",
     } <= tables
     inspector = inspect(create_engine(database_url))
     api_key_columns = {

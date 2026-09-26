@@ -25,6 +25,7 @@ from .routes import (
     api_keys_router,
     auth_router,
     billing_router,
+    competitive_router,
     geo_profiles_router,
     monitors_router,
     rank_router,
@@ -46,6 +47,8 @@ class AppServices:
     provider_registry: Any
     probe_cache_repository: Any | None = None
     probe_cache: Any | None = None
+    competitive_repository: Any | None = None
+    competitive_intelligence: Any | None = None
     alert_repository: Any | None = None
     alerts: Any | None = None
     analytics_repository: Any | None = None
@@ -260,6 +263,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(alerts_router)
     app.include_router(analytics_router)
+    app.include_router(competitive_router)
     app.include_router(team_router)
     app.include_router(geo_profiles_router)
     app.include_router(monitors_router)

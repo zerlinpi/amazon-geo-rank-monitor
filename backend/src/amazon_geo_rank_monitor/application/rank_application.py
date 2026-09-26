@@ -78,6 +78,11 @@ async def execute_rank_check(
         repository=services.rank_repository,
         probe_cache=getattr(services, "probe_cache", None),
         provider_mode=provider_mode,
+        competitive_intelligence=getattr(
+            services,
+            "competitive_intelligence",
+            None,
+        ),
     )
 
     billing = getattr(services, "billing_repository", None)

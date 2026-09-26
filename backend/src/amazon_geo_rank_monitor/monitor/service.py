@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from amazon_geo_rank_monitor.domain.errors import RankMonitorError
@@ -27,11 +28,13 @@ class RankMonitorService:
         repository: Any,
         probe_cache=None,
         provider_mode: str | None = None,
+        competitive_intelligence=None,
     ) -> None:
         self._provider = provider
         self._repository = repository
         self._probe_cache = probe_cache
         self._provider_mode = provider_mode
+        self._competitive_intelligence = competitive_intelligence
 
     async def check(self, request: RankCheckRequest) -> list[RankSnapshot]:
         return (await self.check_with_result(request)).snapshots
@@ -117,6 +120,37 @@ class RankMonitorService:
                             owner_id,
                             geo_profile.id,
                         )
+
+            observed_at = (
+                cache_hit.fetched_at
+                if cache_hit is not None
+                else datetime.now(UTC)
+            )
+            if self._competitive_intelligence is not None:
+                try:
+                    self._competitive_intelligence.capture_probe(
+                        owner_id=owner_id,
+                        run_id=run_id,
+                        geo_profile_id=geo_profile.id,
+                        result=result,
+                        search_depth=request.search_depth,
+                        probe_source=(
+                            "cache" if cache_hit is not None else "upstream"
+                        ),
+                        cache_age_seconds=(
+                            cache_hit.age_seconds
+                            if cache_hit is not None
+                            else None
+                        ),
+                        observed_at=observed_at,
+                    )
+                except Exception:
+                    logger.exception(
+                        "competitive_capture_failed owner_id=%s run_id=%s geo_profile_id=%s",
+                        owner_id,
+                        run_id,
+                        geo_profile.id,
+                    )
 
             provider_name = getattr(
                 self._provider,
