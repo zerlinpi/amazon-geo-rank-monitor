@@ -46,6 +46,8 @@ class AppServices:
     provider_registry: Any
     probe_cache_repository: Any | None = None
     probe_cache: Any | None = None
+    competitive_repository: Any | None = None
+    competitive_intelligence: Any | None = None
     alert_repository: Any | None = None
     alerts: Any | None = None
     analytics_repository: Any | None = None
