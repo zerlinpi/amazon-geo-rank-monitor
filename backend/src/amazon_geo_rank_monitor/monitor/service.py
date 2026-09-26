@@ -211,7 +211,8 @@ class RankMonitorService:
                         )
                     except Exception:
                         logger.exception(
-                            "auto_strict_history_lookup_failed owner_id=%s run_id=%s geo_profile_id=%s",
+                            "auto_strict_history_lookup_failed "
+                            "owner_id=%s run_id=%s geo_profile_id=%s",
                             owner_id,
                             run_id,
                             geo_profile.id,
