@@ -177,6 +177,11 @@ class RankExecutionResult(BaseModel):
     requested_probe_count: int = Field(default=0, ge=0)
     upstream_probe_count: int = Field(default=0, ge=0)
     cache_hit_count: int = Field(default=0, ge=0)
+    primary_upstream_probe_count: int = Field(default=0, ge=0)
+    primary_cache_hit_count: int = Field(default=0, ge=0)
+    strict_verification_upstream_probe_count: int = Field(default=0, ge=0)
+    strict_verification_cache_hit_count: int = Field(default=0, ge=0)
+    verification_events: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ProxyLocation(BaseModel):
