@@ -124,6 +124,27 @@ def test_geo_and_monitor_resources_are_tenant_scoped() -> None:
         "min_confidence": "0.8200",
     }
 
+    inherited = client.patch(
+        f"/api/v1/monitors/{monitor_id}",
+        headers=auth_a,
+        json={
+            "auto_strict_enabled": None,
+            "auto_strict_min_confidence": None,
+        },
+    )
+    assert inherited.status_code == 200
+    assert inherited.json()["auto_strict_enabled"] is None
+    assert inherited.json()["auto_strict_min_confidence"] is None
+
+    queued_after_edit = client.get(
+        f"/api/v1/jobs/{queued.json()['id']}",
+        headers=auth_a,
+    )
+    assert queued_after_edit.json()["request_payload"]["_verification_policy"] == {
+        "enabled": False,
+        "min_confidence": "0.8200",
+    }
+
 
 def test_immediate_rank_check_creates_tenant_owned_run() -> None:
     client, tenants, keys = setup_client()
