@@ -846,7 +846,7 @@ class AlertService:
             else "n/a"
         )
         geo = event["geo_profile_id"] or "aggregate"
-        if (event.get("details", {}).get("scope") == "verification":
+        if event.get("details", {}).get("scope") == "verification":
             reason = (
                 event["details"].get("skipped_reason")
                 or event["details"].get("error")
