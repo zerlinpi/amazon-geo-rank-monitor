@@ -224,7 +224,6 @@ def build_services(settings: AppSettings) -> AppServices:
         repository=report_repository,
         analytics=analytics,
         monitor_repository=monitor_repository,
-        competitive_repository=competitive_repository,
         email_sender=email_sender,
         encryption_key=(
             settings.report_encryption_key
@@ -237,6 +236,7 @@ def build_services(settings: AppSettings) -> AppServices:
         rank_repository=rank_repository,
         job_repository=job_repository,
         monitor_repository=monitor_repository,
+        competitive_repository=competitive_repository,
         email_sender=email_sender,
         encryption_key=(
             settings.alert_encryption_key
