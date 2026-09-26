@@ -6,6 +6,7 @@ from typing import Any
 
 from amazon_geo_rank_monitor.domain.errors import RankMonitorError
 from amazon_geo_rank_monitor.domain.models import (
+    GeoProfile,
     RankCheckRequest,
     RankExecutionResult,
     RankObservation,
@@ -67,6 +68,8 @@ class RankMonitorService:
         primary_cache_hit_count = 0
         strict_upstream_probe_count = 0
         strict_cache_hit_count = 0
+        failed_geo_profiles: list[GeoProfile] = []
+        successful_geo_ids: set[str] = set()
 
         prepared_cache = prepared_cache or {}
         for geo_profile in request.geo_profiles:
@@ -107,6 +110,7 @@ class RankMonitorService:
                     )
                 except RankMonitorError as exc:
                     errors.append(f"{geo_profile.id}: {exc}")
+                    failed_geo_profiles.append(geo_profile)
                     continue
                 primary_upstream_probe_count += 1
                 if self._probe_cache is not None and self._provider_mode is not None:
@@ -252,6 +256,65 @@ class RankMonitorService:
             observations.extend(persisted_geo_observations)
             preferred_observations.extend(preferred_geo_observations)
             successful_probe_count += 1
+            successful_geo_ids.add(geo_profile.id)
+
+        if (
+            self._provider_mode == "managed"
+            and self._strict_verifier is not None
+            and getattr(self._strict_verifier, "enabled", False)
+            and failed_geo_profiles
+        ):
+            total_weight = sum(
+                (profile.weight for profile in request.geo_profiles),
+                start=0,
+            )
+            successful_weight = sum(
+                (
+                    profile.weight
+                    for profile in request.geo_profiles
+                    if profile.id in successful_geo_ids
+                ),
+                start=0,
+            )
+            confidence_trigger = self._strict_verifier.low_confidence_trigger(
+                successful_weight=successful_weight,
+                total_weight=total_weight,
+            )
+            if confidence_trigger is not None:
+                for geo_profile in failed_geo_profiles:
+                    outcome = await self._strict_verifier.verify_for_triggers(
+                        owner_id=owner_id,
+                        reference_id=verification_reference_id or run_id,
+                        marketplace=request.marketplace,
+                        keyword=request.keyword,
+                        geo_profile=geo_profile,
+                        search_depth=request.search_depth,
+                        asins=request.asins,
+                        triggers=[
+                            confidence_trigger,
+                            "managed_probe_failed",
+                        ],
+                    )
+                    if outcome.requested:
+                        verification_events.append(
+                            outcome.as_dict(geo_profile_id=geo_profile.id)
+                        )
+                    strict_upstream_probe_count += outcome.upstream_probe_count
+                    strict_cache_hit_count += outcome.cache_hit_count
+                    if outcome.observations:
+                        self._repository.save_observations(
+                            run_id,
+                            outcome.observations,
+                        )
+                        observations.extend(outcome.observations)
+                        preferred_observations.extend(outcome.observations)
+                        if outcome.succeeded:
+                            successful_probe_count += 1
+                            successful_geo_ids.add(geo_profile.id)
+                    if outcome.error:
+                        errors.append(
+                            f"strict:{geo_profile.id}: {outcome.error}"
+                        )
 
         snapshots: list[RankSnapshot] = []
         if successful_probe_count:
