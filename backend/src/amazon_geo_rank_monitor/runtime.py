@@ -16,6 +16,7 @@ from amazon_geo_rank_monitor.auth.scim import ScimService
 from amazon_geo_rank_monitor.auth.sso import OidcSsoService
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.billing.stripe_service import StripeBillingService
+from amazon_geo_rank_monitor.competitive import CompetitiveIntelligenceService
 from amazon_geo_rank_monitor.config import (
     AppSettings,
     build_oxylabs_provider,
@@ -35,6 +36,7 @@ from amazon_geo_rank_monitor.repositories.alert_repository import AlertRepositor
 from amazon_geo_rank_monitor.repositories.analytics_repository import AnalyticsRepository
 from amazon_geo_rank_monitor.repositories.audit_repository import AuditRepository
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
+from amazon_geo_rank_monitor.repositories.competitive_repository import CompetitiveRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
@@ -166,6 +168,7 @@ def build_services(settings: AppSettings) -> AppServices:
     )
     rank_repository = RankRepository(engine)
     probe_cache_repository = ProbeCacheRepository(engine)
+    competitive_repository = CompetitiveRepository(engine)
     analytics_repository = AnalyticsRepository(engine)
     report_repository = ReportRepository(engine)
     accounts_repository = AccountRepository(engine)
@@ -208,6 +211,10 @@ def build_services(settings: AppSettings) -> AppServices:
     scim = ScimService(
         repository=scim_repository,
         pepper=settings.scim_token_pepper or settings.api_key_pepper,
+    )
+    competitive_intelligence = CompetitiveIntelligenceService(
+        repository=competitive_repository,
+        monitor_repository=monitor_repository,
     )
     analytics = AnalyticsService(
         repository=analytics_repository,
@@ -255,6 +262,8 @@ def build_services(settings: AppSettings) -> AppServices:
         rank_repository=rank_repository,
         probe_cache_repository=probe_cache_repository,
         probe_cache=probe_cache,
+        competitive_repository=competitive_repository,
+        competitive_intelligence=competitive_intelligence,
         api_keys=ApiKeyService(
             repository=tenants,
             pepper=settings.api_key_pepper,
