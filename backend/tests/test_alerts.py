@@ -77,6 +77,35 @@ def aggregate_run(run_id: str, rank: int, *, found_weight: float = 1.0) -> dict:
     }
 
 
+def verification_run(
+    run_id: str,
+    *,
+    skipped_reason: str | None = None,
+    error: str | None = None,
+    attempted: bool = False,
+    succeeded: bool = False,
+) -> dict:
+    run = aggregate_run(run_id, 10)
+    run["verification_metadata"] = {
+        "manual_force_requested": True,
+        "auto_strict_max_upstream_probes_per_run": 1,
+        "strict_upstream_attempt_count": 1 if attempted else 0,
+        "events": [
+            {
+                "geo_profile_id": GEO_ID,
+                "requested": True,
+                "attempted": attempted,
+                "succeeded": succeeded,
+                "cache_hit": False,
+                "triggers": ["manual_force"],
+                "skipped_reason": skipped_reason,
+                "error": error,
+            }
+        ],
+    }
+    return run
+
+
 def geo_run(run_id: str, *, found: bool, effective_rank: int) -> dict:
     return {
         "id": run_id,
@@ -345,6 +374,112 @@ def test_not_found_aggregate_alert() -> None:
     )
     assert len(events) == 1
     assert events[0]["event_type"] == "not_found"
+
+
+@pytest.mark.parametrize(
+    ("rule_type", "skipped_reason"),
+    [
+        ("strict_insufficient_credits", "insufficient_credits"),
+        ("strict_probe_budget_exhausted", "probe_budget_exhausted"),
+        ("strict_provider_unavailable", "strict_provider_unavailable"),
+        ("strict_runtime_disabled", "runtime_kill_switch_disabled"),
+    ],
+)
+def test_verification_skip_rules_emit_probe_level_alerts(
+    rule_type: str,
+    skipped_reason: str,
+) -> None:
+    service, mailer = build_service(
+        runs={
+            "current": verification_run(
+                "current",
+                skipped_reason=skipped_reason,
+            )
+        },
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name=rule_type,
+        rule_type=rule_type,
+        threshold=None,
+        asin=None,
+        geo_profile_id=GEO_ID,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+
+    assert len(events) == 1
+    assert events[0]["event_type"] == rule_type
+    assert events[0]["asin"] == "VERIFICATION"
+    assert events[0]["geo_profile_id"] == GEO_ID
+    assert events[0]["details"]["scope"] == "verification"
+    assert events[0]["details"]["skipped_reason"] == skipped_reason
+    assert events[0]["details"]["manual_force_requested"] is True
+    assert len(mailer.messages) == 1
+    assert "Scope: strict verification" in mailer.messages[0]["text"]
+    assert f"Reason: {skipped_reason}" in mailer.messages[0]["text"]
+
+
+def test_strict_verification_failure_alert_includes_provider_error() -> None:
+    service, mailer = build_service(
+        runs={
+            "current": verification_run(
+                "current",
+                attempted=True,
+                error="browser navigation failed",
+            )
+        },
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict browser failed",
+        rule_type="strict_verification_failed",
+        threshold=None,
+        asin=None,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+
+    assert len(events) == 1
+    assert events[0]["event_type"] == "strict_verification_failed"
+    assert events[0]["details"]["error"] == "browser navigation failed"
+    assert "Reason: browser navigation failed" in mailer.messages[0]["text"]
+
+
+def test_verification_alert_rules_reject_asin_scope() -> None:
+    service, _ = build_service(runs={}, jobs=[])
+    with pytest.raises(
+        ValueError,
+        match="verification alert rules do not use ASIN scope",
+    ):
+        service.create_rule(
+            owner_id=OWNER_ID,
+            monitor_target_id=MONITOR_ID,
+            name="Invalid verification scope",
+            rule_type="strict_verification_failed",
+            threshold=None,
+            asin=ASIN,
+            geo_profile_id=None,
+            channels={"emails": ["alerts@example.com"]},
+            cooldown_minutes=0,
+        )
 
 
 def test_private_webhook_targets_are_rejected_and_urls_are_not_exposed() -> None:
