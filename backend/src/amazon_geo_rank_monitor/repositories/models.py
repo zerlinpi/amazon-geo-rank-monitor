@@ -546,6 +546,39 @@ class SerpProbeCacheRow(Base):
     hit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class SerpCompetitiveObservationRow(Base):
+    __tablename__ = "serp_competitive_observations"
+    __table_args__ = (
+        UniqueConstraint(
+            "rank_run_id",
+            "geo_profile_id",
+            "asin",
+            name="uq_serp_competitive_run_geo_asin",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rank_run_id: Mapped[str] = mapped_column(
+        ForeignKey("rank_runs.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    owner_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    geo_profile_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    asin: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    title: Mapped[str | None] = mapped_column(Text)
+    organic_position: Mapped[int | None] = mapped_column(Integer)
+    sponsored_position: Mapped[int | None] = mapped_column(Integer)
+    absolute_position: Mapped[int | None] = mapped_column(Integer)
+    probe_source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="upstream"
+    )
+    cache_age_seconds: Mapped[int | None] = mapped_column(Integer)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class RankSnapshotRow(Base):
     __tablename__ = "rank_snapshots"
     __table_args__ = (
