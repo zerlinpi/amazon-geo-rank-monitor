@@ -96,6 +96,12 @@ def prometheus_metrics(
         else []
     )
     now = datetime.now(UTC)
+    verification = (
+        services.rank_repository.verification_summary()
+        if services.rank_repository is not None
+        and hasattr(services.rank_repository, "verification_summary")
+        else {}
+    )
     lines = [
         "# HELP agrm_rank_jobs Current rank jobs by state.",
         "# TYPE agrm_rank_jobs gauge",
@@ -134,6 +140,21 @@ def prometheus_metrics(
             "agrm_service_processed_jobs_total"
             f"{{{labels}}} {int(worker['processed_jobs'])}"
         )
+
+    if verification:
+        lines.extend(
+            [
+                "# HELP agrm_auto_strict_verification_total "
+                "Automatic strict verification outcomes.",
+                "# TYPE agrm_auto_strict_verification_total counter",
+            ]
+        )
+        for outcome, count in sorted(verification.items()):
+            normalized = outcome.removeprefix("strict_")
+            lines.append(
+                "agrm_auto_strict_verification_total"
+                f'{{outcome="{_label(normalized)}"}} {int(count)}'
+            )
 
     return Response(
         content="\n".join(lines) + "\n",
