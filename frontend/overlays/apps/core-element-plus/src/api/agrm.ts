@@ -104,6 +104,29 @@ export interface WorkspaceSecurityPolicy {
   require_mfa: boolean
 }
 
+export interface WorkspaceVerificationPolicy {
+  owner_id: string
+  enabled?: boolean | null
+  min_confidence?: string | number | null
+  max_upstream_probes_per_run?: number | null
+  runtime: {
+    enabled: boolean
+    min_confidence: string | number
+    max_upstream_probes_per_run: number
+  }
+  effective: {
+    enabled: boolean
+    min_confidence: string | number
+    max_upstream_probes_per_run: number
+  }
+}
+
+export interface WorkspaceVerificationPolicyUpdate {
+  enabled?: boolean | null
+  min_confidence?: number | null
+  max_upstream_probes_per_run?: number | null
+}
+
 export interface SsoDiscovery {
   workspace_id: string
   display_name: string
@@ -761,6 +784,14 @@ export const agrmApi = {
   ),
   updateWorkspaceSecurityPolicy: (require_mfa: boolean) => data<WorkspaceSecurityPolicy>(
     client.patch('/api/v1/team/security-policy', { require_mfa }),
+  ),
+  getWorkspaceVerificationPolicy: () => data<WorkspaceVerificationPolicy>(
+    client.get('/api/v1/team/verification-policy'),
+  ),
+  updateWorkspaceVerificationPolicy: (
+    payload: WorkspaceVerificationPolicyUpdate,
+  ) => data<WorkspaceVerificationPolicy>(
+    client.patch('/api/v1/team/verification-policy', payload),
   ),
   getWorkspaceSsoConfig: () => data<WorkspaceSsoConfig | null>(
     client.get('/api/v1/team/sso-config'),
