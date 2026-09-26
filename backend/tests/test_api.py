@@ -104,12 +104,14 @@ def test_geo_and_monitor_resources_are_tenant_scoped() -> None:
             "provider_mode": "managed",
             "auto_strict_enabled": False,
             "auto_strict_min_confidence": 0.82,
+            "auto_strict_max_probes_per_run": 2,
         },
     )
     assert monitor.status_code == 201
     monitor_id = monitor.json()["id"]
     assert monitor.json()["auto_strict_enabled"] is False
     assert float(monitor.json()["auto_strict_min_confidence"]) == 0.82
+    assert monitor.json()["auto_strict_max_probes_per_run"] == 2
     assert client.get(f"/api/v1/monitors/{monitor_id}", headers=auth_a).status_code == 200
     assert client.get(f"/api/v1/monitors/{monitor_id}", headers=auth_b).status_code == 404
 
@@ -122,6 +124,7 @@ def test_geo_and_monitor_resources_are_tenant_scoped() -> None:
     assert job.json()["request_payload"]["_verification_policy"] == {
         "enabled": False,
         "min_confidence": "0.8200",
+        "max_upstream_probes_per_run": 2,
     }
 
     inherited = client.patch(
@@ -130,11 +133,13 @@ def test_geo_and_monitor_resources_are_tenant_scoped() -> None:
         json={
             "auto_strict_enabled": None,
             "auto_strict_min_confidence": None,
+            "auto_strict_max_probes_per_run": None,
         },
     )
     assert inherited.status_code == 200
     assert inherited.json()["auto_strict_enabled"] is None
     assert inherited.json()["auto_strict_min_confidence"] is None
+    assert inherited.json()["auto_strict_max_probes_per_run"] is None
 
     queued_after_edit = client.get(
         f"/api/v1/jobs/{queued.json()['id']}",
@@ -143,6 +148,7 @@ def test_geo_and_monitor_resources_are_tenant_scoped() -> None:
     assert queued_after_edit.json()["request_payload"]["_verification_policy"] == {
         "enabled": False,
         "min_confidence": "0.8200",
+        "max_upstream_probes_per_run": 2,
     }
 
 
