@@ -10,6 +10,9 @@ const monitors = ref<Monitor[]>([])
 const geos = ref<GeoProfile[]>([])
 const dialog = ref(false)
 const submitting = ref(false)
+const policyDialog = ref(false)
+const policySubmitting = ref(false)
+const policyMonitor = ref<Monitor | null>(null)
 const form = reactive({
   name: '',
   marketplace: 'amazon.com',
@@ -18,7 +21,13 @@ const form = reactive({
   geo_profile_ids: [] as string[],
   search_depth: 100,
   provider_mode: 'managed' as 'managed' | 'strict',
+  auto_strict_mode: 'inherit' as 'inherit' | 'on' | 'off',
+  auto_strict_min_confidence: 75,
   schedule: '',
+})
+const policyForm = reactive({
+  mode: 'inherit' as 'inherit' | 'on' | 'off',
+  minConfidence: 75,
 })
 
 async function load() {
@@ -45,6 +54,8 @@ function resetForm() {
     geo_profile_ids: [],
     search_depth: 100,
     provider_mode: 'managed',
+    auto_strict_mode: 'inherit',
+    auto_strict_min_confidence: 75,
     schedule: '',
   })
 }
@@ -68,6 +79,16 @@ async function create() {
       geo_profile_ids: form.geo_profile_ids,
       search_depth: form.search_depth,
       provider_mode: form.provider_mode,
+      auto_strict_enabled: (
+        form.auto_strict_mode === 'inherit'
+          ? null
+          : form.auto_strict_mode === 'on'
+      ),
+      auto_strict_min_confidence: (
+        form.auto_strict_mode === 'inherit'
+          ? null
+          : form.auto_strict_min_confidence / 100
+      ),
       schedule: form.schedule.trim() || null,
     })
     ElMessage.success('Monitor created')
@@ -80,6 +101,66 @@ async function create() {
   }
   finally {
     submitting.value = false
+  }
+}
+
+function policyMode(row: Monitor): 'inherit' | 'on' | 'off' {
+  if (row.auto_strict_enabled == null) {
+    return 'inherit'
+  }
+  return row.auto_strict_enabled ? 'on' : 'off'
+}
+
+function policyLabel(row: Monitor) {
+  const mode = policyMode(row)
+  if (mode === 'inherit') {
+    return 'Inherit'
+  }
+  if (mode === 'off') {
+    return 'Off'
+  }
+  const confidence = row.auto_strict_min_confidence == null
+    ? 75
+    : Math.round(Number(row.auto_strict_min_confidence) * 100)
+  return `On · ${confidence}%`
+}
+
+function openPolicy(row: Monitor) {
+  policyMonitor.value = row
+  policyForm.mode = policyMode(row)
+  policyForm.minConfidence = row.auto_strict_min_confidence == null
+    ? 75
+    : Math.round(Number(row.auto_strict_min_confidence) * 100)
+  policyDialog.value = true
+}
+
+async function savePolicy() {
+  if (!policyMonitor.value) {
+    return
+  }
+  policySubmitting.value = true
+  try {
+    await agrmApi.updateMonitor(policyMonitor.value.id, {
+      auto_strict_enabled: (
+        policyForm.mode === 'inherit'
+          ? null
+          : policyForm.mode === 'on'
+      ),
+      auto_strict_min_confidence: (
+        policyForm.mode === 'inherit'
+          ? null
+          : policyForm.minConfidence / 100
+      ),
+    })
+    ElMessage.success('Auto strict policy updated')
+    policyDialog.value = false
+    await load()
+  }
+  catch (error: any) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to update auto strict policy')
+  }
+  finally {
+    policySubmitting.value = false
   }
 }
 
@@ -160,6 +241,20 @@ onMounted(load)
             <el-tag :type="row.provider_mode === 'strict' ? 'warning' : 'info'">{{ row.provider_mode }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="Auto strict" width="130">
+          <template #default="{ row }">
+            <el-tag
+              :type="policyMode(row as Monitor) === 'on'
+                ? 'success'
+                : policyMode(row as Monitor) === 'off'
+                  ? 'info'
+                  : 'warning'"
+              size="small"
+            >
+              {{ policyLabel(row as Monitor) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="search_depth" label="Depth" width="90" />
         <el-table-column prop="schedule" label="Schedule" min-width="150">
           <template #default="{ row }">{{ row.schedule || 'Manual' }}</template>
@@ -169,7 +264,7 @@ onMounted(load)
             <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? 'Enabled' : 'Disabled' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="Actions" width="330" fixed="right">
+        <el-table-column label="Actions" width="390" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain :disabled="!row.enabled" @click="run(row)">Run now</el-button>
             <el-button size="small" @click="openAlerts(row as Monitor)">Alerts</el-button>
@@ -196,6 +291,30 @@ onMounted(load)
               <el-option label="Managed" value="managed" />
               <el-option label="Strict verify" value="strict" />
             </el-select>
+          </el-form-item>
+        </div>
+        <div
+          v-if="form.provider_mode === 'managed'"
+          class="grid gap-x-4 md:grid-cols-2"
+        >
+          <el-form-item label="Auto strict verification">
+            <el-select v-model="form.auto_strict_mode" class="w-full">
+              <el-option label="Inherit workspace default" value="inherit" />
+              <el-option label="On for this monitor" value="on" />
+              <el-option label="Off for this monitor" value="off" />
+            </el-select>
+          </el-form-item>
+          <el-form-item
+            v-if="form.auto_strict_mode !== 'inherit'"
+            label="Minimum confidence"
+          >
+            <el-input-number
+              v-model="form.auto_strict_min_confidence"
+              :min="1"
+              :max="100"
+              :step="5"
+            />
+            <span class="ml-2 text-xs text-muted-foreground">%</span>
           </el-form-item>
         </div>
         <el-form-item label="Keyword">
@@ -226,6 +345,64 @@ onMounted(load)
       <template #footer>
         <el-button @click="dialog = false">Cancel</el-button>
         <el-button type="primary" :loading="submitting" @click="create">Create</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="policyDialog"
+      title="Auto strict verification"
+      width="min(560px, 92vw)"
+    >
+      <template v-if="policyMonitor">
+        <div class="text-sm text-muted-foreground mb-4">
+          Configure anomaly and low-confidence strict recovery for
+          <span class="font-medium text-foreground">{{ policyMonitor.name }}</span>.
+        </div>
+        <el-form label-position="top">
+          <el-form-item label="Policy">
+            <el-select v-model="policyForm.mode" class="w-full">
+              <el-option label="Inherit workspace default" value="inherit" />
+              <el-option label="On for this monitor" value="on" />
+              <el-option label="Off for this monitor" value="off" />
+            </el-select>
+          </el-form-item>
+          <el-form-item
+            v-if="policyForm.mode !== 'inherit'"
+            label="Minimum confidence"
+          >
+            <div class="flex items-center gap-2">
+              <el-input-number
+                v-model="policyForm.minConfidence"
+                :min="1"
+                :max="100"
+                :step="5"
+              />
+              <span class="text-sm text-muted-foreground">%</span>
+            </div>
+          </el-form-item>
+          <el-alert
+            v-if="policyForm.mode === 'inherit'"
+            type="info"
+            :closable="false"
+            title="This monitor will use the workspace/runtime Auto Strict policy."
+          />
+          <el-alert
+            v-else-if="policyForm.mode === 'on'"
+            type="warning"
+            :closable="false"
+            title="The runtime Auto Strict kill switch must also be enabled."
+          />
+        </el-form>
+      </template>
+      <template #footer>
+        <el-button @click="policyDialog = false">Cancel</el-button>
+        <el-button
+          type="primary"
+          :loading="policySubmitting"
+          @click="savePolicy"
+        >
+          Save policy
+        </el-button>
       </template>
     </el-dialog>
   </div>
