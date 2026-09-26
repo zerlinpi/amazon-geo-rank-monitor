@@ -313,6 +313,13 @@ def build_services(settings: AppSettings) -> AppServices:
             browser_verified_serp=settings.strict_serp_credit_cost,
         ),
         auto_strict_verifier=auto_strict_verifier,
+        auto_strict_runtime_policy={
+            "enabled": settings.auto_strict_verification_enabled,
+            "min_confidence": settings.auto_strict_min_confidence,
+            "max_upstream_probes_per_run": (
+                settings.auto_strict_max_probes_per_run
+            ),
+        },
         stripe_billing=_stripe_billing(billing, settings),
         database_engine=engine,
         worker_status_repository=worker_status_repository,
