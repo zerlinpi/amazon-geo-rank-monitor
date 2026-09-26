@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from amazon_geo_rank_monitor.domain.models import GeoProfile, RankObservation
@@ -12,10 +13,14 @@ class AutoStrictVerificationPolicy:
     rank_delta_threshold: int = 20
     verify_not_found_after_found: bool = True
     verify_geo_mismatch: bool = True
+    recover_low_confidence: bool = True
+    min_confidence: Decimal = Decimal("0.75")
 
     def __post_init__(self) -> None:
         if self.rank_delta_threshold < 1:
             raise ValueError("rank_delta_threshold must be at least 1")
+        if self.min_confidence <= 0 or self.min_confidence > 1:
+            raise ValueError("min_confidence must be greater than 0 and at most 1")
 
     def evaluate(
         self,
@@ -80,6 +85,21 @@ class AutoStrictVerificationPolicy:
                 reasons.append("delivery_postal_mismatch")
 
         return list(dict.fromkeys(reasons))
+
+    def low_confidence_trigger(
+        self,
+        *,
+        successful_weight: Decimal,
+        total_weight: Decimal,
+    ) -> str | None:
+        if not self.enabled or not self.recover_low_confidence:
+            return None
+        if total_weight <= 0:
+            return None
+        confidence = successful_weight / total_weight
+        if confidence >= self.min_confidence:
+            return None
+        return f"low_confidence:{confidence.quantize(Decimal('0.01'))}"
 
     @staticmethod
     def _text(value: Any) -> str | None:
