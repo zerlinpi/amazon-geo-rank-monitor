@@ -49,6 +49,7 @@ class RankMonitorService:
         owner_id: str | None = None,
         prepared_cache: dict[str, Any] | None = None,
         verification_reference_id: str | None = None,
+        force_strict_verification: bool = False,
     ) -> RankExecutionResult:
         if not request.geo_profiles:
             raise ValueError("at least one geo profile is required")
@@ -206,7 +207,10 @@ class RankMonitorService:
             if (
                 self._provider_mode == "managed"
                 and self._strict_verifier is not None
-                and getattr(self._strict_verifier, "enabled", False)
+                and (
+                    getattr(self._strict_verifier, "enabled", False)
+                    or force_strict_verification
+                )
             ):
                 previous_observations: list[RankObservation] = []
                 if hasattr(self._repository, "previous_observations"):
@@ -244,6 +248,7 @@ class RankMonitorService:
                         strict_probe_budget is None
                         or strict_upstream_attempt_count < strict_probe_budget
                     ),
+                    force_strict=force_strict_verification,
                 )
                 if outcome.requested:
                     verification_events.append(
@@ -273,7 +278,10 @@ class RankMonitorService:
         if (
             self._provider_mode == "managed"
             and self._strict_verifier is not None
-            and getattr(self._strict_verifier, "enabled", False)
+            and (
+                getattr(self._strict_verifier, "enabled", False)
+                or force_strict_verification
+            )
             and failed_geo_profiles
         ):
             total_weight = sum(
@@ -292,7 +300,12 @@ class RankMonitorService:
                 successful_weight=successful_weight,
                 total_weight=total_weight,
             )
+            recovery_triggers: list[str] = []
+            if force_strict_verification:
+                recovery_triggers.append("manual_force")
             if confidence_trigger is not None:
+                recovery_triggers.append(confidence_trigger)
+            if recovery_triggers:
                 for geo_profile in failed_geo_profiles:
                     outcome = await self._strict_verifier.verify_for_triggers(
                         owner_id=owner_id,
@@ -303,7 +316,7 @@ class RankMonitorService:
                         search_depth=request.search_depth,
                         asins=request.asins,
                         triggers=[
-                            confidence_trigger,
+                            *recovery_triggers,
                             "managed_probe_failed",
                         ],
                         allow_upstream=(
@@ -363,6 +376,16 @@ class RankMonitorService:
         )
         cache_hit_count = primary_cache_hit_count + strict_cache_hit_count
         verification_metadata = {
+            "manual_force_requested": bool(
+                self._provider_mode == "managed"
+                and force_strict_verification
+            ),
+            "manual_force_effective": bool(
+                self._provider_mode == "managed"
+                and force_strict_verification
+                and self._strict_verifier is not None
+                and getattr(self._strict_verifier, "enabled", False)
+            ),
             "auto_strict_enabled": bool(
                 self._provider_mode == "managed"
                 and self._strict_verifier is not None
