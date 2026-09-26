@@ -316,6 +316,7 @@ class RankMonitorService:
                             outcome.as_dict(geo_profile_id=geo_profile.id)
                         )
                     strict_upstream_probe_count += outcome.upstream_probe_count
+                    strict_upstream_attempt_count += int(outcome.attempted)
                     strict_cache_hit_count += outcome.cache_hit_count
                     if outcome.observations:
                         self._repository.save_observations(
