@@ -21,6 +21,7 @@ class RankMcpTools:
         geo_profile_ids: list[str],
         search_depth: int = 100,
         provider_mode: str = "managed",
+        force_strict_verification: bool = False,
     ) -> dict:
         result = await execute_rank_check(
             services=self._services,
@@ -31,6 +32,7 @@ class RankMcpTools:
             geo_profile_ids=geo_profile_ids,
             search_depth=search_depth,
             provider_mode=provider_mode,
+            force_strict_verification=force_strict_verification,
         )
         return serialize_execution_result(result)
 
@@ -61,7 +63,12 @@ class RankMcpTools:
             schedule=schedule,
         )
 
-    def run_monitor(self, *, monitor_id: str) -> dict:
+    def run_monitor(
+        self,
+        *,
+        monitor_id: str,
+        force_strict_verification: bool = False,
+    ) -> dict:
         monitor = self._services.monitor_repository.get(
             monitor_id,
             owner_id=self._owner_id,
@@ -72,6 +79,7 @@ class RankMcpTools:
             services=self._services,
             owner_id=self._owner_id,
             monitor=monitor,
+            force_strict_verification=force_strict_verification,
         )
 
     def get_rank_run(self, *, run_id: str) -> dict:
