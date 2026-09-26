@@ -127,14 +127,17 @@ def test_monitor_policy_can_disable_but_not_bypass_global_kill_switch() -> None:
             min_confidence=Decimal("0.75"),
         ),
         strict_provider=provider,
+        max_upstream_probes_per_run=3,
     )
 
     disabled = global_on.for_monitor(
         enabled=False,
         min_confidence="0.90",
+        max_upstream_probes_per_run=1,
     )
     assert disabled.enabled is False
     assert disabled.min_confidence == Decimal("0.90")
+    assert disabled.max_upstream_probes_per_run == 1
 
     global_off = AutoStrictVerifier(
         policy=AutoStrictVerificationPolicy(enabled=False),
