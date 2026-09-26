@@ -8,7 +8,10 @@ from amazon_geo_rank_monitor.api.app import AppServices
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.application.rank_application import execute_rank_check
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
-from amazon_geo_rank_monitor.domain.errors import InsufficientCreditsError
+from amazon_geo_rank_monitor.domain.errors import (
+    InsufficientCreditsError,
+    ProviderUnavailableError,
+)
 from amazon_geo_rank_monitor.domain.models import GeoProfile, SerpProduct, SerpResult
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
@@ -274,4 +277,69 @@ async def test_auto_strict_insufficient_credits_keeps_managed_result() -> None:
         "balance": 0,
         "reserved": 0,
         "available": 0,
+    }
+
+
+
+class FailingStrictProvider:
+    provider_name = "strict-failing"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def search(self, **kwargs):
+        self.calls += 1
+        raise ProviderUnavailableError("strict browser unavailable")
+
+
+@pytest.mark.asyncio
+async def test_auto_strict_failure_preserves_managed_success_and_releases_credits() -> None:
+    managed = SequenceRankProvider([5, 40])
+    strict = FailingStrictProvider()
+    services, geo, billing = make_services(
+        managed,
+        strict_provider=strict,
+        auto_strict=True,
+    )
+    ny = add_geo(geo, "ny", "10001")
+    billing.grant(
+        owner_id="tenant-1",
+        credits=10,
+        idempotency_key="grant:auto-strict-failure",
+    )
+
+    await execute_rank_check(
+        services=services,
+        owner_id="tenant-1",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        asins=["B0TARGET01"],
+        geo_profile_ids=[ny["id"]],
+        search_depth=100,
+        provider_mode="managed",
+        reference_id="auto-strict-failure-first",
+    )
+    second = await execute_rank_check(
+        services=services,
+        owner_id="tenant-1",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        asins=["B0TARGET01"],
+        geo_profile_ids=[ny["id"]],
+        search_depth=100,
+        provider_mode="managed",
+        reference_id="auto-strict-failure-second",
+    )
+
+    assert second.status == "succeeded"
+    assert second.strict_verification_upstream_probe_count == 0
+    assert second.snapshots[0].weighted_rank == Decimal("40.00")
+    assert second.verification_events[0]["attempted"] is True
+    assert second.verification_events[0]["succeeded"] is False
+    assert "strict browser unavailable" in second.verification_events[0]["error"]
+    assert strict.calls == 1
+    assert billing.get_balance("tenant-1") == {
+        "balance": 8,
+        "reserved": 0,
+        "available": 8,
     }
