@@ -96,7 +96,12 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
     tenant_columns = {
         column["name"] for column in inspector.get_columns("tenants")
     }
-    assert {"require_mfa"} <= tenant_columns
+    assert {
+        "require_mfa",
+        "auto_strict_enabled",
+        "auto_strict_min_confidence",
+        "auto_strict_max_probes_per_run",
+    } <= tenant_columns
     token_columns = {
         column["name"] for column in inspector.get_columns("account_tokens")
     }
