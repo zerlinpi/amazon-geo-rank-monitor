@@ -267,6 +267,8 @@ export interface Monitor {
   geo_profile_ids: string[]
   search_depth: number
   provider_mode: 'managed' | 'strict'
+  auto_strict_enabled?: boolean | null
+  auto_strict_min_confidence?: string | number | null
   schedule?: string | null
   enabled: boolean
 }
@@ -579,6 +581,7 @@ export interface VerificationEvent {
 
 export interface VerificationMetadata {
   auto_strict_enabled?: boolean
+  auto_strict_min_confidence?: string | number | null
   strict_requested_count?: number
   strict_attempted_count?: number
   strict_succeeded_count?: number

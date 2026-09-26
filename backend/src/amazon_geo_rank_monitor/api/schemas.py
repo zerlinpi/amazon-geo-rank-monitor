@@ -11,6 +11,12 @@ class MonitorCreate(BaseModel):
     geo_profile_ids: list[str] = Field(min_length=1)
     search_depth: int = Field(default=100, ge=1)
     provider_mode: str = "managed"
+    auto_strict_enabled: bool | None = None
+    auto_strict_min_confidence: float | None = Field(
+        default=None,
+        gt=0,
+        le=1,
+    )
     schedule: str | None = None
 
 
@@ -22,6 +28,12 @@ class MonitorUpdate(BaseModel):
     geo_profile_ids: list[str] | None = Field(default=None, min_length=1)
     search_depth: int | None = Field(default=None, ge=1)
     provider_mode: str | None = None
+    auto_strict_enabled: bool | None = None
+    auto_strict_min_confidence: float | None = Field(
+        default=None,
+        gt=0,
+        le=1,
+    )
     schedule: str | None = None
     enabled: bool | None = None
 

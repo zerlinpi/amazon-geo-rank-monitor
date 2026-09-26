@@ -142,11 +142,21 @@ def enqueue_monitor(
         geo_profile_ids=monitor["geo_profile_ids"],
         search_depth=monitor["search_depth"],
     )
+    request_payload = request.model_dump(mode="json")
+    confidence = monitor.get("auto_strict_min_confidence")
+    request_payload["_verification_policy"] = {
+        "enabled": monitor.get("auto_strict_enabled"),
+        "min_confidence": (
+            str(confidence)
+            if confidence is not None
+            else None
+        ),
+    }
     return services.job_repository.enqueue(
         owner_id=owner_id,
         monitor_target_id=monitor["id"],
         provider_mode=monitor["provider_mode"],
-        request_payload=request.model_dump(mode="json"),
+        request_payload=request_payload,
         job_id=job_id,
     )
 

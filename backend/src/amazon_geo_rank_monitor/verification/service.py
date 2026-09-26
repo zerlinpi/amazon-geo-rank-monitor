@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -67,6 +67,34 @@ class AutoStrictVerifier:
     @property
     def enabled(self) -> bool:
         return self._policy.enabled
+
+    @property
+    def min_confidence(self) -> Decimal:
+        return self._policy.min_confidence
+
+    def for_monitor(
+        self,
+        *,
+        enabled: bool | None,
+        min_confidence: Decimal | str | float | None,
+    ) -> AutoStrictVerifier:
+        effective_enabled = self._policy.enabled and enabled is not False
+        effective_confidence = (
+            self._policy.min_confidence
+            if min_confidence is None
+            else Decimal(str(min_confidence))
+        )
+        return AutoStrictVerifier(
+            policy=replace(
+                self._policy,
+                enabled=effective_enabled,
+                min_confidence=effective_confidence,
+            ),
+            strict_provider=self._provider,
+            probe_cache=self._probe_cache,
+            billing_repository=self._billing,
+            rate_card=self._rate_card,
+        )
 
     def low_confidence_trigger(
         self,

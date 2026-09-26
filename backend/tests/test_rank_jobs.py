@@ -81,10 +81,15 @@ async def test_worker_runs_tenant_aware_rank_service_and_completes_job() -> None
     db = engine()
     jobs = JobRepository(db)
     rank_repo = RankRepository(db)
+    payload = request_payload()
+    payload["_verification_policy"] = {
+        "enabled": None,
+        "min_confidence": None,
+    }
     created = jobs.enqueue(
         owner_id="tenant-a",
         provider_mode="managed",
-        request_payload=request_payload(),
+        request_payload=payload,
     )
     worker = RankWorker(
         job_repository=jobs,

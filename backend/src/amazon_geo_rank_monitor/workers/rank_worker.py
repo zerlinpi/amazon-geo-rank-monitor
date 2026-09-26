@@ -103,7 +103,12 @@ class RankWorker:
 
         reservation = None
         try:
-            request = RankCheckRequest.model_validate(job["request_payload"])
+            request_payload = dict(job["request_payload"])
+            verification_policy = request_payload.pop(
+                "_verification_policy",
+                None,
+            )
+            request = RankCheckRequest.model_validate(request_payload)
             provider = self._providers.get(job["provider_mode"])
             prepared_cache = {}
             if self._probe_cache is not None:
@@ -137,12 +142,21 @@ class RankWorker:
                     reference_id=job["id"],
                 )
 
+            strict_verifier = self._auto_strict_verifier
+            if (
+                strict_verifier is not None
+                and isinstance(verification_policy, dict)
+            ):
+                strict_verifier = strict_verifier.for_monitor(
+                    enabled=verification_policy.get("enabled"),
+                    min_confidence=verification_policy.get("min_confidence"),
+                )
             service = RankMonitorService(
                 provider=provider,
                 repository=self._rank_repository,
                 probe_cache=self._probe_cache,
                 provider_mode=job["provider_mode"],
-                strict_verifier=self._auto_strict_verifier,
+                strict_verifier=strict_verifier,
             )
             result = await service.check_with_result(
                 request,

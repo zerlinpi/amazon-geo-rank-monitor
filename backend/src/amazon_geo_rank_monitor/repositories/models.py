@@ -418,6 +418,11 @@ class MonitorTargetRow(Base):
     keyword: Mapped[str] = mapped_column(String(512), nullable=False)
     search_depth: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     provider_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="managed")
+    auto_strict_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    auto_strict_min_confidence: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 4),
+        nullable=True,
+    )
     schedule: Mapped[str | None] = mapped_column(String(128))
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(

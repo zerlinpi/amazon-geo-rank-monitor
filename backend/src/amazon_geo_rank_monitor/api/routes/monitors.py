@@ -32,6 +32,8 @@ def create_monitor(
             geo_profile_ids=body.geo_profile_ids,
             search_depth=body.search_depth,
             provider_mode=body.provider_mode,
+            auto_strict_enabled=body.auto_strict_enabled,
+            auto_strict_min_confidence=body.auto_strict_min_confidence,
             schedule=body.schedule,
         )
     except KeyError as exc:

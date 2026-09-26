@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import Engine, delete, select
@@ -30,10 +31,21 @@ class MonitorRepository:
         geo_profile_ids: list[str],
         search_depth: int,
         provider_mode: str,
+        auto_strict_enabled: bool | None = None,
+        auto_strict_min_confidence: Decimal | float | str | None = None,
         schedule: str | None = None,
     ) -> dict:
         if provider_mode not in {"managed", "strict"}:
             raise ValueError("provider_mode must be managed or strict")
+        confidence = (
+            None
+            if auto_strict_min_confidence is None
+            else Decimal(str(auto_strict_min_confidence))
+        )
+        if confidence is not None and (confidence <= 0 or confidence > 1):
+            raise ValueError(
+                "auto_strict_min_confidence must be greater than 0 and at most 1"
+            )
         normalized_schedule = normalize_schedule(schedule)
         normalized_asins = list(
             dict.fromkeys(asin.strip().upper() for asin in asins if asin.strip())
@@ -65,6 +77,8 @@ class MonitorRepository:
                     keyword=keyword.strip(),
                     search_depth=search_depth,
                     provider_mode=provider_mode,
+                    auto_strict_enabled=auto_strict_enabled,
+                    auto_strict_min_confidence=confidence,
                     schedule=normalized_schedule,
                 )
             )
@@ -145,6 +159,22 @@ class MonitorRepository:
                 if value is None or value < 1:
                     raise ValueError("search_depth must be positive")
                 row.search_depth = value
+
+            if "auto_strict_enabled" in changes:
+                row.auto_strict_enabled = changes["auto_strict_enabled"]
+
+            if "auto_strict_min_confidence" in changes:
+                value = changes["auto_strict_min_confidence"]
+                if value is None:
+                    row.auto_strict_min_confidence = None
+                else:
+                    confidence = Decimal(str(value))
+                    if confidence <= 0 or confidence > 1:
+                        raise ValueError(
+                            "auto_strict_min_confidence must be greater than 0 "
+                            "and at most 1"
+                        )
+                    row.auto_strict_min_confidence = confidence
 
             if "schedule" in changes:
                 row.schedule = normalize_schedule(changes["schedule"])
@@ -279,6 +309,8 @@ class MonitorRepository:
             "keyword": row.keyword,
             "search_depth": row.search_depth,
             "provider_mode": row.provider_mode,
+            "auto_strict_enabled": row.auto_strict_enabled,
+            "auto_strict_min_confidence": row.auto_strict_min_confidence,
             "schedule": row.schedule,
             "enabled": row.enabled,
             "asins": asins,

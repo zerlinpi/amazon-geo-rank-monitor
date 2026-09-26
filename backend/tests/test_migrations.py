@@ -101,6 +101,13 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         column["name"] for column in inspector.get_columns("account_tokens")
     }
     assert {"details"} <= token_columns
+    monitor_columns = {
+        column["name"] for column in inspector.get_columns("monitor_targets")
+    }
+    assert {
+        "auto_strict_enabled",
+        "auto_strict_min_confidence",
+    } <= monitor_columns
     rank_run_columns = {
         column["name"] for column in inspector.get_columns("rank_runs")
     }
