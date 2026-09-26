@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import httpx
@@ -13,6 +14,7 @@ from amazon_geo_rank_monitor.repositories.models import Base
 OWNER_ID = "owner-1"
 MONITOR_ID = "monitor-1"
 ASIN = "B000TEST01"
+COMPETITOR_ASIN = "B000COMP01"
 GEO_ID = "geo-1"
 
 
@@ -36,6 +38,15 @@ class FakeRankRepository:
         if owner_id != OWNER_ID or run_id not in self.runs:
             raise KeyError(run_id)
         return self.runs[run_id]
+
+
+class FakeCompetitiveRepository:
+    def __init__(self, points: dict[str, list[dict]] | None = None) -> None:
+        self.points = points or {}
+
+    def run_points(self, *, owner_id: str, run_id: str) -> list[dict]:
+        assert owner_id == OWNER_ID
+        return self.points.get(run_id, [])
 
 
 class FakeJobRepository:
@@ -104,6 +115,7 @@ def build_service(
     jobs: list[dict],
     handler=None,
     allowed_hosts: list[str] | None = None,
+    competitive_points: dict[str, list[dict]] | None = None,
 ):
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -122,6 +134,7 @@ def build_service(
         rank_repository=FakeRankRepository(runs),
         job_repository=FakeJobRepository(jobs),
         monitor_repository=FakeMonitorRepository(),
+        competitive_repository=FakeCompetitiveRepository(competitive_points),
         email_sender=mailer,
         encryption_key="alert-test-key",
         webhook_allowed_hosts=allowed_hosts,
@@ -401,3 +414,211 @@ def test_webhook_delivery_records_masked_destination() -> None:
     delivery = service.list_events(owner_id=OWNER_ID)[0]["deliveries"][0]
     assert delivery["destination"] == "https://alerts.example.com/***"
     assert "secret" not in delivery["destination"]
+
+
+
+def competitive_point(
+    run_id: str,
+    asin: str,
+    organic_position: int | None,
+    *,
+    geo_profile_id: str,
+) -> dict:
+    return {
+        "run_id": run_id,
+        "geo_profile_id": geo_profile_id,
+        "asin": asin,
+        "title": asin + " title",
+        "organic_position": organic_position,
+        "sponsored_position": None,
+        "absolute_position": organic_position,
+        "probe_source": "upstream",
+        "cache_age_seconds": None,
+        "observed_at": datetime.now(UTC),
+    }
+
+
+def test_competitor_enters_top_n_emits_transition_alert() -> None:
+    service, _ = build_service(
+        runs={
+            "previous": aggregate_run("previous", 12),
+            "current": aggregate_run("current", 11),
+        },
+        jobs=completed_jobs("current", "previous"),
+        competitive_points={
+            "previous": [
+                competitive_point("previous", ASIN, 5, geo_profile_id="geo-1"),
+                competitive_point(
+                    "previous",
+                    COMPETITOR_ASIN,
+                    18,
+                    geo_profile_id="geo-1",
+                ),
+            ],
+            "current": [
+                competitive_point("current", ASIN, 6, geo_profile_id="geo-1"),
+                competitive_point(
+                    "current",
+                    COMPETITOR_ASIN,
+                    8,
+                    geo_profile_id="geo-1",
+                ),
+            ],
+        },
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Competitor entered Top 10",
+        rule_type="competitor_enters_top_n",
+        threshold=Decimal("10"),
+        asin=COMPETITOR_ASIN,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+    assert len(events) == 1
+    assert events[0]["event_type"] == "competitor_enters_top_n"
+    assert events[0]["previous_value"] == Decimal("18")
+    assert events[0]["current_value"] == Decimal("8")
+    assert events[0]["details"]["scope"] == "competitive"
+
+
+def test_competitor_sov_gain_compares_adjacent_runs() -> None:
+    service, _ = build_service(
+        runs={
+            "previous": aggregate_run("previous", 10),
+            "current": aggregate_run("current", 10),
+        },
+        jobs=completed_jobs("current", "previous"),
+        competitive_points={
+            "previous": [
+                competitive_point("previous", ASIN, 4, geo_profile_id="g1"),
+                competitive_point("previous", ASIN, 5, geo_profile_id="g2"),
+                competitive_point(
+                    "previous",
+                    COMPETITOR_ASIN,
+                    9,
+                    geo_profile_id="g1",
+                ),
+                competitive_point("previous", "B000OTHER1", 12, geo_profile_id="g2"),
+            ],
+            "current": [
+                competitive_point("current", ASIN, 5, geo_profile_id="g1"),
+                competitive_point(
+                    "current",
+                    COMPETITOR_ASIN,
+                    6,
+                    geo_profile_id="g1",
+                ),
+                competitive_point(
+                    "current",
+                    COMPETITOR_ASIN,
+                    7,
+                    geo_profile_id="g2",
+                ),
+                competitive_point(
+                    "current",
+                    COMPETITOR_ASIN,
+                    8,
+                    geo_profile_id="g3",
+                ),
+            ],
+        },
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Competitor SOV jump",
+        rule_type="competitor_sov_gain",
+        threshold=Decimal("40"),
+        asin=COMPETITOR_ASIN,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+    assert len(events) == 1
+    assert events[0]["previous_value"] == Decimal("25.0")
+    assert events[0]["current_value"] == Decimal("75.0")
+    assert events[0]["details"]["sov_change_pct_points"] == 50.0
+
+
+def test_competitor_overtakes_best_tracked_product_once() -> None:
+    service, _ = build_service(
+        runs={
+            "previous": aggregate_run("previous", 10),
+            "current": aggregate_run("current", 10),
+        },
+        jobs=completed_jobs("current", "previous"),
+        competitive_points={
+            "previous": [
+                competitive_point("previous", ASIN, 8, geo_profile_id="g1"),
+                competitive_point(
+                    "previous",
+                    COMPETITOR_ASIN,
+                    14,
+                    geo_profile_id="g1",
+                ),
+            ],
+            "current": [
+                competitive_point("current", ASIN, 9, geo_profile_id="g1"),
+                competitive_point(
+                    "current",
+                    COMPETITOR_ASIN,
+                    5,
+                    geo_profile_id="g1",
+                ),
+            ],
+        },
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Competitor overtook us",
+        rule_type="competitor_overtakes_tracked",
+        threshold=None,
+        asin=COMPETITOR_ASIN,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+    assert len(events) == 1
+    assert events[0]["current_value"] == Decimal("5.0")
+    assert events[0]["details"]["current_best_tracked_average_rank"] == 9
+
+
+def test_competitor_rule_requires_untracked_valid_asin() -> None:
+    service, _ = build_service(
+        runs={"current": aggregate_run("current", 10)},
+        jobs=completed_jobs("current"),
+    )
+    with pytest.raises(ValueError, match="must not be a tracked ASIN"):
+        service.create_rule(
+            owner_id=OWNER_ID,
+            monitor_target_id=MONITOR_ID,
+            name="Invalid competitor",
+            rule_type="competitor_sov_gain",
+            threshold=Decimal("10"),
+            asin=ASIN,
+            geo_profile_id=None,
+            channels={"emails": ["alerts@example.com"]},
+            cooldown_minutes=0,
+        )
