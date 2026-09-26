@@ -6,7 +6,10 @@ from amazon_geo_rank_monitor.domain.models import (
     RankObservation,
     VerificationLevel,
 )
-from amazon_geo_rank_monitor.verification import AutoStrictVerificationPolicy
+from amazon_geo_rank_monitor.verification import (
+    AutoStrictVerificationPolicy,
+    AutoStrictVerifier,
+)
 
 
 def geo() -> GeoProfile:
@@ -114,3 +117,31 @@ def test_low_confidence_trigger_uses_configured_weight_threshold() -> None:
         successful_weight=Decimal("80"),
         total_weight=Decimal("100"),
     ) is None
+
+
+def test_monitor_policy_can_disable_but_not_bypass_global_kill_switch() -> None:
+    provider = object()
+    global_on = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(
+            enabled=True,
+            min_confidence=Decimal("0.75"),
+        ),
+        strict_provider=provider,
+    )
+
+    disabled = global_on.for_monitor(
+        enabled=False,
+        min_confidence="0.90",
+    )
+    assert disabled.enabled is False
+    assert disabled.min_confidence == Decimal("0.90")
+
+    global_off = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(enabled=False),
+        strict_provider=provider,
+    )
+    requested_on = global_off.for_monitor(
+        enabled=True,
+        min_confidence="0.90",
+    )
+    assert requested_on.enabled is False
