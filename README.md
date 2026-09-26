@@ -1713,3 +1713,47 @@ Upgrade existing deployments with:
 cd backend
 alembic -c alembic.ini upgrade head
 ```
+
+
+## Competitive trend alerts
+
+Phase 21 extends the existing rank-alert engine with competitor-specific transitions derived from the SERP-wide competitive observations captured for each completed monitor run.
+
+No additional SERP probes are performed and no additional credits are consumed. Competitive alerts evaluate only after a monitor run has completed successfully or partially successfully, using the same captured SERP observations that power **Competitor Intelligence**.
+
+Supported competitor rules:
+
+- `competitor_enters_top_n` — fires when the competitor's best organic position moves from outside Top N (or absent) to inside Top N between adjacent successful runs.
+- `competitor_exits_top_n` — fires on the inverse transition.
+- `competitor_sov_gain` — fires when the competitor gains at least N **percentage points** of organic share of voice between adjacent successful runs.
+- `competitor_sov_loss` — fires when the competitor loses at least N percentage points.
+- `competitor_overtakes_tracked` — fires when the competitor's average organic rank becomes better than the best average organic rank among the monitor's tracked ASINs, and it was not ahead on the previous successful run.
+
+Competitor alert rules require one untracked 10-character ASIN. They intentionally use monitor-wide geo scope; existing geo-specific tracked-ASIN alert rules remain separate.
+
+All competitor alerts reuse the existing alert infrastructure:
+
+- Email delivery;
+- Slack Incoming Webhooks;
+- allowlisted generic HTTPS webhooks;
+- encrypted notification destinations;
+- stable event IDs;
+- worker-safe cooldown enforcement;
+- tenant-scoped event history and delivery audit.
+
+The cooldown key remains rule + ASIN + geo scope. Repeated matching runs inside the cooldown window are suppressed.
+
+The **Competitor Intelligence** table provides a **Create alert** action for discovered untracked ASINs. It opens **Workspace → Rank Alerts** with the monitor and competitor prefilled.
+
+### Metric definitions
+
+For one monitor run:
+
+- **Best organic rank** is the lowest organic position observed for the ASIN across the run's geo probes.
+- **Average organic rank** is the arithmetic mean of the ASIN's organic positions across geo probes where it appeared.
+- **Organic SOV** is the ASIN's number of captured organic placements divided by all captured organic placements in that run, expressed as a percentage.
+- **SOV gain/loss thresholds** are absolute percentage-point changes. For example, 25% → 40% is a +15 percentage-point gain.
+
+Competitive transition rules compare the current run only with the previous completed/partially-completed monitor run. A first run by itself never emits a transition alert.
+
+Phase 21 does not add database tables or require an Alembic migration; it extends the Phase 17 alert rule/event schema and Phase 20 competitive observation data.
