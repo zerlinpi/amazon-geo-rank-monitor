@@ -103,6 +103,24 @@ def test_system_queue_metrics_and_dead_letter_requeue_are_scoped() -> None:
             "strict_skipped_count": 0,
         },
     )
+    other = tenants.create_tenant("Other")
+    other_run_id = rank_repository.create_run(
+        owner_id=other["id"],
+        marketplace="amazon.com",
+        keyword="desk treadmill",
+        requested_probe_count=1,
+    )
+    rank_repository.complete_run(
+        other_run_id,
+        status="succeeded",
+        settled_probe_count=1,
+        verification_metadata={
+            "strict_requested_count": 5,
+            "strict_attempted_count": 5,
+            "strict_succeeded_count": 4,
+            "strict_skipped_count": 1,
+        },
+    )
 
     queue = client.get("/api/v1/system/queue", headers=read_headers)
     assert queue.status_code == 200
@@ -114,6 +132,18 @@ def test_system_queue_metrics_and_dead_letter_requeue_are_scoped() -> None:
     )
     assert dead_letters.status_code == 200
     assert dead_letters.json()[0]["id"] == created["id"]
+
+    verification = client.get(
+        "/api/v1/system/verification-summary",
+        headers=read_headers,
+    )
+    assert verification.status_code == 200
+    assert verification.json() == {
+        "strict_requested": 1,
+        "strict_attempted": 1,
+        "strict_succeeded": 1,
+        "strict_skipped": 0,
+    }
 
     metrics = client.get("/api/v1/system/metrics", headers=read_headers)
     assert metrics.status_code == 200
