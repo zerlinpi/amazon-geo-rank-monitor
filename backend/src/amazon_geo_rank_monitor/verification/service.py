@@ -162,7 +162,8 @@ class AutoStrictVerifier:
                     self._billing.release(reservation["id"])
                 outcome.error = str(exc)
                 logger.warning(
-                    "auto_strict_probe_failed owner_id=%s reference_id=%s geo_profile_id=%s error=%s",
+                    "auto_strict_probe_failed owner_id=%s reference_id=%s "
+                    "geo_profile_id=%s error=%s",
                     owner_id,
                     reference_id,
                     geo_profile.id,
