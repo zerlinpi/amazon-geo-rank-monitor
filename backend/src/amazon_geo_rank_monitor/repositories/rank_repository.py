@@ -89,6 +89,7 @@ class RankRepository:
         status: str,
         settled_probe_count: int,
         cache_hit_count: int = 0,
+        verification_metadata: dict | None = None,
         error_summary: str | None = None,
     ) -> None:
         with self._sessions.begin() as session:
@@ -98,6 +99,7 @@ class RankRepository:
             row.status = status
             row.settled_probe_count = settled_probe_count
             row.cache_hit_count = cache_hit_count
+            row.verification_metadata = verification_metadata or {}
             row.error_summary = error_summary
             row.completed_at = datetime.now(UTC)
 
@@ -203,6 +205,7 @@ class RankRepository:
             "requested_probe_count": run.requested_probe_count,
             "settled_probe_count": run.settled_probe_count,
             "cache_hit_count": run.cache_hit_count,
+            "verification_metadata": run.verification_metadata or {},
             "error_summary": run.error_summary,
             "started_at": run.started_at,
             "completed_at": run.completed_at,
