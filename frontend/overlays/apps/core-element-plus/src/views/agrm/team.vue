@@ -6,6 +6,7 @@ import type {
   WorkspaceInvitation,
   WorkspaceScimConfig,
   WorkspaceSsoConfig,
+  WorkspaceVerificationPolicy,
 } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
@@ -24,6 +25,13 @@ const inviting = ref(false)
 const createdInviteLink = ref('')
 const requireMfa = ref(false)
 const updatingPolicy = ref(false)
+const verificationPolicy = ref<WorkspaceVerificationPolicy>()
+const savingVerificationPolicy = ref(false)
+const verificationForm = reactive({
+  mode: 'inherit' as 'inherit' | 'on' | 'off',
+  minConfidence: 75,
+  maxProbes: 3,
+})
 const ssoConfig = ref<WorkspaceSsoConfig | null>(null)
 const savingSso = ref(false)
 const updatingSsoEnforcement = ref(false)
@@ -64,8 +72,25 @@ async function load() {
   try {
     profile.value = await agrmApi.getMe()
     members.value = await agrmApi.getTeamMembers()
-    const policy = await agrmApi.getWorkspaceSecurityPolicy()
+    const [policy, loadedVerificationPolicy] = await Promise.all([
+      agrmApi.getWorkspaceSecurityPolicy(),
+      agrmApi.getWorkspaceVerificationPolicy(),
+    ])
     requireMfa.value = policy.require_mfa
+    verificationPolicy.value = loadedVerificationPolicy
+    verificationForm.mode = loadedVerificationPolicy.enabled == null
+      ? 'inherit'
+      : loadedVerificationPolicy.enabled ? 'on' : 'off'
+    verificationForm.minConfidence = Math.round(
+      Number(
+        loadedVerificationPolicy.min_confidence
+        ?? loadedVerificationPolicy.runtime.min_confidence,
+      ) * 100,
+    )
+    verificationForm.maxProbes = (
+      loadedVerificationPolicy.max_upstream_probes_per_run
+      ?? loadedVerificationPolicy.runtime.max_upstream_probes_per_run
+    )
     if (currentRole.value === 'owner') {
       const [loadedSso, loadedScim, loadedScimGroups] = await Promise.all([
         agrmApi.getWorkspaceSsoConfig(),
@@ -126,6 +151,37 @@ async function updateMfaPolicy(value: string | number | boolean) {
   }
   finally {
     updatingPolicy.value = false
+  }
+}
+
+async function saveVerificationPolicy() {
+  if (!canManage.value) {
+    return
+  }
+  savingVerificationPolicy.value = true
+  try {
+    verificationPolicy.value = await agrmApi.updateWorkspaceVerificationPolicy({
+      enabled: verificationForm.mode === 'inherit'
+        ? null
+        : verificationForm.mode === 'on',
+      min_confidence: verificationForm.mode === 'inherit'
+        ? null
+        : verificationForm.minConfidence / 100,
+      max_upstream_probes_per_run: verificationForm.mode === 'inherit'
+        ? null
+        : verificationForm.maxProbes,
+    })
+    ElMessage.success('Workspace Auto Strict defaults updated')
+    await load()
+  }
+  catch (error: any) {
+    ElMessage.error(
+      error.response?.data?.detail
+      || 'Failed to update workspace Auto Strict defaults',
+    )
+  }
+  finally {
+    savingVerificationPolicy.value = false
   }
 }
 
@@ -473,6 +529,104 @@ onMounted(load)
         :closable="false"
         title="All current members must enable MFA before this policy can be turned on."
       />
+    </el-card>
+
+    <el-card shadow="never">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span class="font-medium">Automatic strict verification</span>
+            <div class="text-xs text-muted-foreground mt-1">
+              Workspace defaults used by managed Monitors set to Inherit.
+            </div>
+          </div>
+          <div v-if="verificationPolicy" class="flex items-center gap-2">
+            <el-tag
+              :type="verificationPolicy.effective.enabled ? 'success' : 'info'"
+            >
+              {{ verificationPolicy.effective.enabled ? 'Effective On' : 'Effective Off' }}
+            </el-tag>
+            <el-tag
+              v-if="!verificationPolicy.runtime.enabled"
+              type="warning"
+            >
+              Runtime kill switch Off
+            </el-tag>
+          </div>
+        </div>
+      </template>
+
+      <el-form label-position="top" class="max-w-3xl">
+        <div class="grid gap-x-4 md:grid-cols-3">
+          <el-form-item label="Workspace default">
+            <el-select
+              v-model="verificationForm.mode"
+              class="w-full"
+              :disabled="!canManage"
+            >
+              <el-option label="Inherit runtime default" value="inherit" />
+              <el-option label="On" value="on" />
+              <el-option label="Off" value="off" />
+            </el-select>
+          </el-form-item>
+          <el-form-item
+            v-if="verificationForm.mode !== 'inherit'"
+            label="Minimum confidence"
+          >
+            <div class="flex items-center gap-2">
+              <el-input-number
+                v-model="verificationForm.minConfidence"
+                :min="1"
+                :max="100"
+                :step="5"
+                :disabled="!canManage"
+              />
+              <span class="text-sm text-muted-foreground">%</span>
+            </div>
+          </el-form-item>
+          <el-form-item
+            v-if="verificationForm.mode !== 'inherit'"
+            label="Max paid strict probes / run"
+          >
+            <el-input-number
+              v-model="verificationForm.maxProbes"
+              :min="0"
+              :max="100"
+              :disabled="!canManage"
+            />
+          </el-form-item>
+        </div>
+
+        <el-alert
+          v-if="verificationPolicy"
+          :type="verificationPolicy.runtime.enabled ? 'info' : 'warning'"
+          :closable="false"
+        >
+          <template #title>
+            Effective policy:
+            {{ verificationPolicy.effective.enabled ? 'On' : 'Off' }}
+            · confidence
+            {{ Math.round(Number(verificationPolicy.effective.min_confidence) * 100) }}%
+            · max
+            {{ verificationPolicy.effective.max_upstream_probes_per_run }}
+            strict upstream probes/run
+          </template>
+          <div class="mt-1 text-xs">
+            The runtime switch is the global safety kill switch. Monitor-level overrides
+            are resolved after this workspace default when a job is queued.
+          </div>
+        </el-alert>
+
+        <div v-if="canManage" class="mt-4">
+          <el-button
+            type="primary"
+            :loading="savingVerificationPolicy"
+            @click="saveVerificationPolicy"
+          >
+            Save verification defaults
+          </el-button>
+        </div>
+      </el-form>
     </el-card>
 
     <el-card v-if="currentRole === 'owner'" shadow="never">
