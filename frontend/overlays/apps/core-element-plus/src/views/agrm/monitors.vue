@@ -216,11 +216,20 @@ function openAlerts(row: Monitor) {
   })
 }
 
-async function run(row: any) {
+async function run(row: any, forceStrict = false) {
   try {
     const monitor = row as Monitor
-    const job: any = await agrmApi.runMonitor(monitor.id)
-    ElMessage.success('Run queued: ' + job.id)
+    if (forceStrict) {
+      await ElMessageBox.confirm(
+        'Force strict browser verification for this run? Strict probes can consume additional credits and remain subject to the configured per-run probe budget.',
+        'Force strict verification',
+        { type: 'warning', confirmButtonText: 'Queue verified run' },
+      )
+    }
+    const job: any = await agrmApi.runMonitor(monitor.id, forceStrict)
+    ElMessage.success(
+      (forceStrict ? 'Verified run queued: ' : 'Run queued: ') + job.id,
+    )
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Failed to queue monitor')
@@ -279,9 +288,19 @@ onMounted(load)
             <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? 'Enabled' : 'Disabled' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="Actions" width="390" fixed="right">
+        <el-table-column label="Actions" width="470" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain :disabled="!row.enabled" @click="run(row)">Run now</el-button>
+            <el-button
+              v-if="row.provider_mode === 'managed'"
+              size="small"
+              type="warning"
+              plain
+              :disabled="!row.enabled"
+              @click="run(row, true)"
+            >
+              Verify now
+            </el-button>
             <el-button size="small" @click="openAlerts(row as Monitor)">Alerts</el-button>
             <el-button size="small" @click="openPolicy(row as Monitor)">Verify</el-button>
             <el-button size="small" @click="toggleEnabled(row as Monitor)">{{ row.enabled ? 'Disable' : 'Enable' }}</el-button>
