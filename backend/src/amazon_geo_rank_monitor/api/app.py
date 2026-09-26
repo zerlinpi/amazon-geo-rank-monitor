@@ -58,6 +58,7 @@ class AppServices:
     billing_repository: Any | None = None
     rate_card: Any | None = None
     auto_strict_verifier: Any | None = None
+    auto_strict_runtime_policy: dict[str, Any] | None = None
     stripe_billing: Any | None = None
     database_engine: Any | None = None
     worker_status_repository: Any | None = None
