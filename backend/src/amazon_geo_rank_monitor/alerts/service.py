@@ -15,6 +15,15 @@ from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger("amazon_geo_rank_monitor.alerts")
 
+VERIFICATION_TYPES = frozenset(
+    {
+        "strict_verification_failed",
+        "strict_insufficient_credits",
+        "strict_probe_budget_exhausted",
+        "strict_provider_unavailable",
+        "strict_runtime_disabled",
+    }
+)
 RULE_TYPES = frozenset(
     {
         "rank_drop",
@@ -30,16 +39,7 @@ RULE_TYPES = frozenset(
         "competitor_sov_loss",
         "competitor_overtakes_tracked",
     }
-)
-VERIFICATION_TYPES = frozenset(
-    {
-        "strict_verification_failed",
-        "strict_insufficient_credits",
-        "strict_probe_budget_exhausted",
-        "strict_provider_unavailable",
-        "strict_runtime_disabled",
-    }
-)
+) | VERIFICATION_TYPES
 COMPETITIVE_TYPES = frozenset(
     {
         "competitor_enters_top_n",
