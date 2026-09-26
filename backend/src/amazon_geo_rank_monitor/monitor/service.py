@@ -67,6 +67,7 @@ class RankMonitorService:
         primary_upstream_probe_count = 0
         primary_cache_hit_count = 0
         strict_upstream_probe_count = 0
+        strict_upstream_attempt_count = 0
         strict_cache_hit_count = 0
         strict_probe_budget = (
             self._strict_verifier.max_upstream_probes_per_run
@@ -241,7 +242,7 @@ class RankMonitorService:
                     previous_observations=previous_observations,
                     allow_upstream=(
                         strict_probe_budget is None
-                        or strict_upstream_probe_count < strict_probe_budget
+                        or strict_upstream_attempt_count < strict_probe_budget
                     ),
                 )
                 if outcome.requested:
@@ -249,6 +250,7 @@ class RankMonitorService:
                         outcome.as_dict(geo_profile_id=geo_profile.id)
                     )
                 strict_upstream_probe_count += outcome.upstream_probe_count
+                strict_upstream_attempt_count += int(outcome.attempted)
                 strict_cache_hit_count += outcome.cache_hit_count
                 if outcome.observations:
                     persisted_geo_observations.extend(outcome.observations)
@@ -306,7 +308,7 @@ class RankMonitorService:
                         ],
                         allow_upstream=(
                             strict_probe_budget is None
-                            or strict_upstream_probe_count < strict_probe_budget
+                            or strict_upstream_attempt_count < strict_probe_budget
                         ),
                     )
                     if outcome.requested:
@@ -372,6 +374,7 @@ class RankMonitorService:
                 else None
             ),
             "auto_strict_max_upstream_probes_per_run": strict_probe_budget,
+            "strict_upstream_attempt_count": strict_upstream_attempt_count,
             "strict_requested_count": len(verification_events),
             "strict_attempted_count": sum(
                 1 for item in verification_events if item.get("attempted")
