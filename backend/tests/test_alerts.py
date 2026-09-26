@@ -424,7 +424,7 @@ def test_verification_skip_rules_emit_probe_level_alerts(
     assert events[0]["details"]["skipped_reason"] == skipped_reason
     assert events[0]["details"]["manual_force_requested"] is True
     assert len(mailer.messages) == 1
-    assert "Scope: strict verification" in mailer.messages[0]["text"]
+    assert "Scope: strict verification" in mailer.messages[0].text
     assert f"Reason: {skipped_reason}" in mailer.messages[0]["text"]
 
 
