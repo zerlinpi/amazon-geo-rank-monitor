@@ -53,6 +53,11 @@ def build_client(*, auth_rate_limit: int = 20):
         audit_repository=AuditRepository(engine),
         account_repository=account_repository,
         accounts=accounts,
+        auto_strict_runtime_policy={
+            "enabled": True,
+            "min_confidence": 0.75,
+            "max_upstream_probes_per_run": 3,
+        },
         allow_public_signup=True,
     )
     return client_for(services, auth_rate_limit=auth_rate_limit), services
@@ -130,6 +135,52 @@ def test_owner_registration_cookie_csrf_and_logout() -> None:
     logout = client.post("/api/v1/auth/logout", headers=csrf_headers(client))
     assert logout.status_code == 204
     assert client.get("/api/v1/auth/me").status_code == 401
+
+
+def test_owner_can_manage_workspace_verification_defaults() -> None:
+    client, services = build_client()
+    registered = register_owner(client)
+    owner_id = registered["workspace"]["id"]
+
+    current = client.get("/api/v1/team/verification-policy")
+    assert current.status_code == 200
+    assert current.json()["enabled"] is None
+    assert current.json()["effective"] == {
+        "enabled": True,
+        "min_confidence": 0.75,
+        "max_upstream_probes_per_run": 3,
+    }
+
+    updated = client.patch(
+        "/api/v1/team/verification-policy",
+        headers=csrf_headers(client),
+        json={
+            "enabled": False,
+            "min_confidence": 0.9,
+            "max_upstream_probes_per_run": 1,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["effective"] == {
+        "enabled": False,
+        "min_confidence": "0.9000",
+        "max_upstream_probes_per_run": 1,
+    }
+    assert services.tenant_repository.get_workspace_verification_policy(
+        owner_id=owner_id
+    ) == {
+        "owner_id": owner_id,
+        "enabled": False,
+        "min_confidence": services.tenant_repository.get_workspace_verification_policy(
+            owner_id=owner_id
+        )["min_confidence"],
+        "max_upstream_probes_per_run": 1,
+    }
+    assert str(
+        services.tenant_repository.get_workspace_verification_policy(
+            owner_id=owner_id
+        )["min_confidence"]
+    ) == "0.9000"
 
 
 def test_login_returns_cookie_without_exposing_session_token() -> None:
