@@ -151,11 +151,15 @@ def test_system_queue_metrics_and_dead_letter_requeue_are_scoped() -> None:
     assert "agrm_service_heartbeat_age_seconds" in metrics.text
     assert "agrm_service_processed_jobs_total" in metrics.text
     assert (
-        'agrm_auto_strict_verification_total{outcome="requested"} 1'
+        'agrm_auto_strict_verification_total{outcome="requested"} 6'
         in metrics.text
     )
     assert (
-        'agrm_auto_strict_verification_total{outcome="succeeded"} 1'
+        'agrm_auto_strict_verification_total{outcome="succeeded"} 5'
+        in metrics.text
+    )
+    assert (
+        'agrm_auto_strict_verification_total{outcome="skipped"} 1'
         in metrics.text
     )
 
