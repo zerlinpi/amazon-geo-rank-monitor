@@ -90,6 +90,29 @@ class FakeProvider:
         )
 
 
+class RankedProvider:
+    provider_name = "ranked"
+
+    def __init__(self, rank: int) -> None:
+        self.rank = rank
+        self.calls = 0
+
+    async def search(self, **kwargs):
+        self.calls += 1
+        products = [
+            SerpProduct(asin=f"FILLER{i:03d}", position=i, page=1)
+            for i in range(1, self.rank)
+        ]
+        products.append(
+            SerpProduct(
+                asin="B0TARGET01",
+                position=self.rank,
+                page=1,
+            )
+        )
+        return SerpResult(organic_products=products)
+
+
 async def test_worker_runs_tenant_aware_rank_service_and_completes_job() -> None:
     db = engine()
     jobs = JobRepository(db)
@@ -129,8 +152,8 @@ async def test_worker_honors_manual_force_when_automatic_policy_is_off() -> None
     db = engine()
     jobs = JobRepository(db)
     rank_repo = RankRepository(db)
-    managed = FakeProvider(position=4)
-    strict = FakeProvider(position=7)
+    managed = RankedProvider(rank=4)
+    strict = RankedProvider(rank=7)
     payload = request_payload()
     payload["_verification_policy"] = {
         "enabled": False,
