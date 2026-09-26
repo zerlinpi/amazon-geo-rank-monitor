@@ -19,7 +19,6 @@ class AlertRepository:
     def __init__(self, engine: Engine) -> None:
         self._sessions = sessionmaker(bind=engine, expire_on_commit=False)
         self._dialect_name = engine.dialect.name
-        self._dialect_name = engine.dialect.name
 
     def create_rule(
         self,
