@@ -506,7 +506,7 @@ export interface AlertRule {
   owner_id: string
   monitor_target_id: string
   name: string
-  rule_type: 'rank_drop' | 'rank_improve' | 'enters_top_n' | 'exits_top_n' | 'not_found' | 'geo_not_found' | 'geo_rank_above' | string
+  rule_type: 'rank_drop' | 'rank_improve' | 'enters_top_n' | 'exits_top_n' | 'not_found' | 'geo_not_found' | 'geo_rank_above' | 'competitor_enters_top_n' | 'competitor_exits_top_n' | 'competitor_sov_gain' | 'competitor_sov_loss' | 'competitor_overtakes_tracked' | string
   threshold?: string | number | null
   asin?: string | null
   geo_profile_id?: string | null

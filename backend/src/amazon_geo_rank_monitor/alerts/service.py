@@ -5,7 +5,9 @@ import hashlib
 import ipaddress
 import json
 import logging
+from collections import defaultdict
 from decimal import Decimal
+from statistics import fmean
 from urllib.parse import urlparse
 
 import httpx
@@ -22,6 +24,20 @@ RULE_TYPES = frozenset(
         "not_found",
         "geo_not_found",
         "geo_rank_above",
+        "competitor_enters_top_n",
+        "competitor_exits_top_n",
+        "competitor_sov_gain",
+        "competitor_sov_loss",
+        "competitor_overtakes_tracked",
+    }
+)
+COMPETITIVE_TYPES = frozenset(
+    {
+        "competitor_enters_top_n",
+        "competitor_exits_top_n",
+        "competitor_sov_gain",
+        "competitor_sov_loss",
+        "competitor_overtakes_tracked",
     }
 )
 THRESHOLD_TYPES = frozenset(
@@ -31,6 +47,10 @@ THRESHOLD_TYPES = frozenset(
         "enters_top_n",
         "exits_top_n",
         "geo_rank_above",
+        "competitor_enters_top_n",
+        "competitor_exits_top_n",
+        "competitor_sov_gain",
+        "competitor_sov_loss",
     }
 )
 GEO_TYPES = frozenset({"geo_not_found", "geo_rank_above"})
@@ -44,6 +64,7 @@ class AlertService:
         rank_repository,
         job_repository,
         monitor_repository,
+        competitive_repository,
         email_sender,
         encryption_key: str,
         webhook_allowed_hosts: list[str] | None = None,
@@ -57,6 +78,7 @@ class AlertService:
         self._ranks = rank_repository
         self._jobs = job_repository
         self._monitors = monitor_repository
+        self._competitive = competitive_repository
         self._email = email_sender
         self._http = http_client or httpx.Client(timeout=10.0, follow_redirects=False)
         self._allowed_hosts = {
@@ -206,11 +228,22 @@ class AlertService:
         emitted: list[dict] = []
         for rule in rules:
             try:
-                candidates = self._evaluate_rule(
-                    rule=rule,
-                    current=current,
-                    previous=previous,
-                )
+                if rule["rule_type"] in COMPETITIVE_TYPES:
+                    candidates = self._evaluate_competitive_rule(
+                        rule=rule,
+                        monitor=self._monitors.get(
+                            monitor_target_id,
+                            owner_id=owner_id,
+                        ),
+                        current_run_id=run_id,
+                        previous_run_id=previous["id"] if previous else None,
+                    )
+                else:
+                    candidates = self._evaluate_rule(
+                        rule=rule,
+                        current=current,
+                        previous=previous,
+                    )
                 for candidate in candidates:
                     event = self._emit_candidate(
                         rule=rule,
@@ -334,6 +367,187 @@ class AlertService:
                     )
                 )
         return candidates
+
+    def _evaluate_competitive_rule(
+        self,
+        *,
+        rule: dict,
+        monitor: dict | None,
+        current_run_id: str,
+        previous_run_id: str | None,
+    ) -> list[dict]:
+        if monitor is None or previous_run_id is None:
+            return []
+        asin = rule["asin"]
+        if not asin:
+            return []
+
+        current_points = self._competitive.run_points(
+            owner_id=rule["owner_id"],
+            run_id=current_run_id,
+        )
+        previous_points = self._competitive.run_points(
+            owner_id=rule["owner_id"],
+            run_id=previous_run_id,
+        )
+        current = self._competitive_metrics(
+            current_points,
+            tracked=set(monitor["asins"]),
+        )
+        previous = self._competitive_metrics(
+            previous_points,
+            tracked=set(monitor["asins"]),
+        )
+        current_target = current["asins"].get(asin, self._empty_competitive_metric())
+        previous_target = previous["asins"].get(
+            asin,
+            self._empty_competitive_metric(),
+        )
+        threshold = (
+            Decimal(str(rule["threshold"]))
+            if rule["threshold"] is not None
+            else None
+        )
+        rule_type = rule["rule_type"]
+        triggered = False
+        previous_value = None
+        current_value = None
+        details = {
+            "scope": "competitive",
+            "title": current_target.get("title") or previous_target.get("title"),
+            "previous_sov_pct": previous_target["sov_pct"],
+            "current_sov_pct": current_target["sov_pct"],
+            "previous_best_rank": previous_target["best_rank"],
+            "current_best_rank": current_target["best_rank"],
+            "previous_average_rank": previous_target["average_rank"],
+            "current_average_rank": current_target["average_rank"],
+        }
+
+        if rule_type in {"competitor_enters_top_n", "competitor_exits_top_n"}:
+            if threshold is None:
+                return []
+            previous_rank = previous_target["best_rank"]
+            current_rank = current_target["best_rank"]
+            previous_in = previous_rank is not None and previous_rank <= threshold
+            current_in = current_rank is not None and current_rank <= threshold
+            triggered = (
+                current_in and not previous_in
+                if rule_type == "competitor_enters_top_n"
+                else previous_in and not current_in
+            )
+            previous_value = previous_rank
+            current_value = current_rank
+            details["top_n"] = int(threshold)
+        elif rule_type in {"competitor_sov_gain", "competitor_sov_loss"}:
+            if threshold is None:
+                return []
+            previous_sov = Decimal(str(previous_target["sov_pct"]))
+            current_sov = Decimal(str(current_target["sov_pct"]))
+            delta = current_sov - previous_sov
+            triggered = (
+                delta >= threshold
+                if rule_type == "competitor_sov_gain"
+                else -delta >= threshold
+            )
+            previous_value = previous_sov
+            current_value = current_sov
+            details["sov_change_pct_points"] = float(delta)
+        elif rule_type == "competitor_overtakes_tracked":
+            previous_rank = previous_target["average_rank"]
+            current_rank = current_target["average_rank"]
+            previous_tracked = previous["best_tracked_average_rank"]
+            current_tracked = current["best_tracked_average_rank"]
+            if (
+                current_rank is not None
+                and current_tracked is not None
+                and previous_tracked is not None
+            ):
+                previous_ahead = (
+                    previous_rank is not None
+                    and previous_rank < previous_tracked
+                )
+                current_ahead = current_rank < current_tracked
+                triggered = current_ahead and not previous_ahead
+            previous_value = previous_rank
+            current_value = current_rank
+            details["previous_best_tracked_average_rank"] = previous_tracked
+            details["current_best_tracked_average_rank"] = current_tracked
+
+        if not triggered:
+            return []
+        return [
+            self._candidate(
+                asin=asin,
+                event_type=rule_type,
+                previous_value=(
+                    Decimal(str(previous_value))
+                    if previous_value is not None
+                    else None
+                ),
+                current_value=(
+                    Decimal(str(current_value))
+                    if current_value is not None
+                    else None
+                ),
+                details=details,
+            )
+        ]
+
+    @classmethod
+    def _competitive_metrics(
+        cls,
+        points: list[dict],
+        *,
+        tracked: set[str],
+    ) -> dict:
+        organic_total = sum(
+            1 for row in points if row["organic_position"] is not None
+        )
+        grouped: dict[str, list[dict]] = defaultdict(list)
+        for row in points:
+            grouped[row["asin"]].append(row)
+
+        asins: dict[str, dict] = {}
+        for asin, rows in grouped.items():
+            organic = [
+                int(row["organic_position"])
+                for row in rows
+                if row["organic_position"] is not None
+            ]
+            latest = max(
+                rows,
+                key=lambda row: row["observed_at"],
+            )
+            asins[asin] = {
+                "title": latest.get("title"),
+                "best_rank": min(organic) if organic else None,
+                "average_rank": round(fmean(organic), 2) if organic else None,
+                "sov_pct": (
+                    round((len(organic) / organic_total) * 100, 2)
+                    if organic_total
+                    else 0.0
+                ),
+            }
+        tracked_averages = [
+            metric["average_rank"]
+            for asin, metric in asins.items()
+            if asin in tracked and metric["average_rank"] is not None
+        ]
+        return {
+            "asins": asins,
+            "best_tracked_average_rank": (
+                min(tracked_averages) if tracked_averages else None
+            ),
+        }
+
+    @staticmethod
+    def _empty_competitive_metric() -> dict:
+        return {
+            "title": None,
+            "best_rank": None,
+            "average_rank": None,
+            "sov_pct": 0.0,
+        }
 
     def _evaluate_geo(
         self,
@@ -584,13 +798,25 @@ class AlertService:
         else:
             normalized_threshold = None
         normalized_asin = asin.strip().upper() if asin else None
-        if normalized_asin and normalized_asin not in monitor["asins"]:
+        if rule_type in COMPETITIVE_TYPES:
+            if not normalized_asin:
+                raise ValueError("competitor alert rules require an ASIN")
+            if (
+                len(normalized_asin) != 10
+                or not normalized_asin.isalnum()
+            ):
+                raise ValueError("competitor ASIN must be 10 alphanumeric characters")
+            if normalized_asin in monitor["asins"]:
+                raise ValueError("competitor ASIN must not be a tracked ASIN")
+        elif normalized_asin and normalized_asin not in monitor["asins"]:
             raise ValueError("alert ASIN is not part of the monitor")
         normalized_geo = geo_profile_id.strip() if geo_profile_id else None
         if normalized_geo and normalized_geo not in monitor["geo_profile_ids"]:
             raise ValueError("alert geo profile is not part of the monitor")
         if rule_type not in GEO_TYPES and normalized_geo:
             raise ValueError("geo_profile_id is only valid for geo alert rules")
+        if rule_type in COMPETITIVE_TYPES and normalized_geo:
+            raise ValueError("competitive alert rules use monitor-wide geo scope")
         if cooldown_minutes < 0 or cooldown_minutes > 10080:
             raise ValueError("cooldown_minutes must be between 0 and 10080")
         normalized_channels = self._validate_channels(channels)

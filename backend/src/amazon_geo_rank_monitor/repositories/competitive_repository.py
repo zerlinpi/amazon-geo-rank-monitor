@@ -51,6 +51,52 @@ class CompetitiveRepository:
                 ]
             )
 
+    def run_points(
+        self,
+        *,
+        owner_id: str,
+        run_id: str,
+    ) -> list[dict]:
+        statement = (
+            select(
+                SerpCompetitiveObservationRow.rank_run_id,
+                SerpCompetitiveObservationRow.geo_profile_id,
+                SerpCompetitiveObservationRow.asin,
+                SerpCompetitiveObservationRow.title,
+                SerpCompetitiveObservationRow.organic_position,
+                SerpCompetitiveObservationRow.sponsored_position,
+                SerpCompetitiveObservationRow.absolute_position,
+                SerpCompetitiveObservationRow.probe_source,
+                SerpCompetitiveObservationRow.cache_age_seconds,
+                SerpCompetitiveObservationRow.observed_at,
+            )
+            .where(
+                SerpCompetitiveObservationRow.owner_id == owner_id,
+                SerpCompetitiveObservationRow.rank_run_id == run_id,
+            )
+            .order_by(
+                SerpCompetitiveObservationRow.geo_profile_id,
+                SerpCompetitiveObservationRow.asin,
+            )
+        )
+        with self._sessions() as session:
+            rows = session.execute(statement).all()
+        return [
+            {
+                "run_id": row.rank_run_id,
+                "geo_profile_id": row.geo_profile_id,
+                "asin": row.asin,
+                "title": row.title,
+                "organic_position": row.organic_position,
+                "sponsored_position": row.sponsored_position,
+                "absolute_position": row.absolute_position,
+                "probe_source": row.probe_source,
+                "cache_age_seconds": row.cache_age_seconds,
+                "observed_at": row.observed_at,
+            }
+            for row in rows
+        ]
+
     def monitor_points(
         self,
         *,

@@ -44,11 +44,28 @@ const ruleTypes = [
   { value: 'not_found', label: 'Not found anywhere' },
   { value: 'geo_not_found', label: 'Not found in geo' },
   { value: 'geo_rank_above', label: 'Geo rank worse than N' },
+  { value: 'competitor_enters_top_n', label: 'Competitor enters Top N' },
+  { value: 'competitor_exits_top_n', label: 'Competitor exits Top N' },
+  { value: 'competitor_sov_gain', label: 'Competitor SOV gains N+ points' },
+  { value: 'competitor_sov_loss', label: 'Competitor SOV loses N+ points' },
+  { value: 'competitor_overtakes_tracked', label: 'Competitor overtakes tracked ASINs' },
 ]
 
 const thresholdRequired = computed(() =>
-  ['rank_drop', 'rank_improve', 'enters_top_n', 'exits_top_n', 'geo_rank_above']
-    .includes(form.rule_type),
+  [
+    'rank_drop',
+    'rank_improve',
+    'enters_top_n',
+    'exits_top_n',
+    'geo_rank_above',
+    'competitor_enters_top_n',
+    'competitor_exits_top_n',
+    'competitor_sov_gain',
+    'competitor_sov_loss',
+  ].includes(form.rule_type),
+)
+const competitiveRule = computed(() =>
+  form.rule_type.startsWith('competitor_'),
 )
 const geoRule = computed(() =>
   ['geo_not_found', 'geo_rank_above'].includes(form.rule_type),
@@ -113,12 +130,13 @@ async function load() {
 
 function resetForm() {
   const hintedMonitor = route.query.monitor?.toString() || monitors.value[0]?.id || ''
+  const hintedCompetitor = route.query.competitor?.toString().trim().toUpperCase() || ''
   Object.assign(form, {
     monitor_target_id: hintedMonitor,
-    name: '',
-    rule_type: 'rank_drop',
+    name: hintedCompetitor ? hintedCompetitor + ' enters Top 10' : '',
+    rule_type: hintedCompetitor ? 'competitor_enters_top_n' : 'rank_drop',
     threshold: 10,
-    asin: '',
+    asin: hintedCompetitor,
     geo_profile_id: '',
     cooldown_minutes: 60,
     enabled: true,
@@ -174,13 +192,20 @@ async function save() {
     ElMessage.warning('Selected geo is not part of the monitor')
     return
   }
+  if (
+    competitiveRule.value
+    && !/^[A-Z0-9]{10}$/.test(form.asin.trim().toUpperCase())
+  ) {
+    ElMessage.warning('Competitor ASIN must be 10 letters/numbers')
+    return
+  }
 
   const base = {
     monitor_target_id: form.monitor_target_id,
     name: form.name.trim(),
     rule_type: form.rule_type,
     threshold: thresholdRequired.value ? form.threshold : null,
-    asin: form.asin || null,
+    asin: form.asin.trim().toUpperCase() || null,
     geo_profile_id: geoRule.value ? (form.geo_profile_id || null) : null,
     cooldown_minutes: form.cooldown_minutes,
     enabled: form.enabled,
@@ -395,14 +420,30 @@ onMounted(async () => {
               />
             </el-select>
           </el-form-item>
-          <el-form-item v-if="thresholdRequired" label="Threshold / N">
+          <el-form-item
+            v-if="thresholdRequired"
+            :label="form.rule_type.includes('sov_') ? 'SOV change (percentage points)' : 'Threshold / N'"
+          >
             <el-input-number v-model="form.threshold" :min="1" :max="500" class="w-full" />
           </el-form-item>
         </div>
 
         <div class="grid md:grid-cols-2 gap-x-4">
-          <el-form-item label="ASIN scope">
-            <el-select v-model="form.asin" clearable class="w-full" placeholder="All ASINs">
+          <el-form-item :label="competitiveRule ? 'Competitor ASIN' : 'ASIN scope'">
+            <el-input
+              v-if="competitiveRule"
+              :model-value="form.asin"
+              maxlength="10"
+              placeholder="B0XXXXXXXX"
+              @input="(value: string) => form.asin = value.toUpperCase()"
+            />
+            <el-select
+              v-else
+              v-model="form.asin"
+              clearable
+              class="w-full"
+              placeholder="All tracked ASINs"
+            >
               <el-option v-for="asin in selectedAsins" :key="asin" :label="asin" :value="asin" />
             </el-select>
           </el-form-item>
