@@ -35,6 +35,12 @@ const routes: RouteRecordRaw = {
       meta: { title: 'Run History', icon: 'i-lucide:history' },
     },
     {
+      path: 'competitors',
+      name: 'competitiveIntelligence',
+      component: () => import('@/views/agrm/competitive-intelligence.vue'),
+      meta: { title: 'Competitor Intelligence', icon: 'i-lucide:binoculars' },
+    },
+    {
       path: 'analytics',
       name: 'analyticsReports',
       component: () => import('@/views/agrm/analytics-reports.vue'),
