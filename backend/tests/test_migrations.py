@@ -107,6 +107,7 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
     assert {
         "auto_strict_enabled",
         "auto_strict_min_confidence",
+        "auto_strict_max_probes_per_run",
     } <= monitor_columns
     rank_run_columns = {
         column["name"] for column in inspector.get_columns("rank_runs")
