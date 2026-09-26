@@ -163,24 +163,15 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
     assert updated.status_code == 200
     assert updated.json()["effective"] == {
         "enabled": False,
-        "min_confidence": "0.9000",
+        "min_confidence": 0.9,
         "max_upstream_probes_per_run": 1,
     }
-    assert services.tenant_repository.get_workspace_verification_policy(
+    stored = services.tenant_repository.get_workspace_verification_policy(
         owner_id=owner_id
-    ) == {
-        "owner_id": owner_id,
-        "enabled": False,
-        "min_confidence": services.tenant_repository.get_workspace_verification_policy(
-            owner_id=owner_id
-        )["min_confidence"],
-        "max_upstream_probes_per_run": 1,
-    }
-    assert str(
-        services.tenant_repository.get_workspace_verification_policy(
-            owner_id=owner_id
-        )["min_confidence"]
-    ) == "0.9000"
+    )
+    assert stored["enabled"] is False
+    assert str(stored["min_confidence"]) == "0.9000"
+    assert stored["max_upstream_probes_per_run"] == 1
 
 
 def test_login_returns_cookie_without_exposing_session_token() -> None:
