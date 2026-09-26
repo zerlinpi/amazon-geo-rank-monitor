@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
@@ -11,9 +13,9 @@ router = APIRouter(prefix="/api/v1/competitive", tags=["competitive"])
 def monitor_competitive_summary(
     monitor_id: str,
     request: Request,
-    hours: int = Query(default=168, ge=1, le=8760),
-    top_n: int = Query(default=20, ge=1, le=100),
-    limit: int = Query(default=50, ge=1, le=200),
+    hours: Annotated[int, Query(ge=1, le=8760)] = 168,
+    top_n: Annotated[int, Query(ge=1, le=100)] = 20,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     include_tracked: bool = False,
     owner_id: str = Depends(require_scope("rank:read")),
 ):
@@ -36,10 +38,10 @@ def monitor_competitive_summary(
 def monitor_competitive_trend(
     monitor_id: str,
     request: Request,
-    hours: int = Query(default=168, ge=1, le=8760),
-    top_n: int = Query(default=20, ge=1, le=100),
-    asins: list[str] | None = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=50),
+    hours: Annotated[int, Query(ge=1, le=8760)] = 168,
+    top_n: Annotated[int, Query(ge=1, le=100)] = 20,
+    asins: Annotated[list[str] | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
     owner_id: str = Depends(require_scope("rank:read")),
 ):
     try:
