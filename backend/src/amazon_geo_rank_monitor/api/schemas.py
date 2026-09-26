@@ -55,6 +55,11 @@ class RankCheckBody(BaseModel):
     geo_profile_ids: list[str] = Field(min_length=1)
     search_depth: int = Field(default=100, ge=1)
     provider_mode: str = "managed"
+    force_strict_verification: bool = False
+
+
+class MonitorRunRequest(BaseModel):
+    force_strict_verification: bool = False
 
 
 class ApiKeyCreate(BaseModel):

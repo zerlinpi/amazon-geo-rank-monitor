@@ -27,6 +27,7 @@ async def check_rank(
             geo_profile_ids=body.geo_profile_ids,
             search_depth=body.search_depth,
             provider_mode=body.provider_mode,
+            force_strict_verification=body.force_strict_verification,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

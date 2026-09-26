@@ -332,6 +332,12 @@ export interface RankCheckResult {
   status: string
   errors: string[]
   usage: RankUsage
+  verification: {
+    manual_force_requested?: boolean
+    auto_strict_events: VerificationEvent[]
+    strict_attempted: boolean
+    strict_succeeded: boolean
+  }
   observations: RankObservation[]
   snapshots: RankSnapshot[]
 }
@@ -604,6 +610,8 @@ export interface VerificationEvent {
 }
 
 export interface VerificationMetadata {
+  manual_force_requested?: boolean
+  manual_force_effective?: boolean
   auto_strict_enabled?: boolean
   auto_strict_min_confidence?: string | number | null
   auto_strict_max_upstream_probes_per_run?: number | null
@@ -927,7 +935,11 @@ export const agrmApi = {
     client.patch('/api/v1/monitors/' + id, payload),
   ),
   deleteMonitor: (id: string) => data<void>(client.delete('/api/v1/monitors/' + id)),
-  runMonitor: (id: string) => data<any>(client.post('/api/v1/monitors/' + id + '/run')),
+  runMonitor: (id: string, force_strict_verification = false) => data<any>(
+    client.post('/api/v1/monitors/' + id + '/run', {
+      force_strict_verification,
+    }),
+  ),
   checkRank: (payload: {
     marketplace: string
     keyword: string
@@ -935,6 +947,7 @@ export const agrmApi = {
     geo_profile_ids: string[]
     search_depth: number
     provider_mode: 'managed' | 'strict'
+    force_strict_verification?: boolean
   }) => data<RankCheckResult>(client.post('/api/v1/rank/check', payload)),
   getRuns: (limit = 50) => data<RankRun[]>(client.get('/api/v1/runs', { params: { limit } })),
   getRun: (id: string) => data<RankRun>(client.get('/api/v1/runs/' + id)),

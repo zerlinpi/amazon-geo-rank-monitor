@@ -13,6 +13,7 @@ const form = reactive({
   geo_profile_ids: [] as string[],
   search_depth: 100,
   provider_mode: 'managed' as 'managed' | 'strict',
+  force_strict_verification: false,
 })
 const result = ref<RankCheckResult | null>(null)
 
@@ -38,6 +39,10 @@ async function submit() {
       geo_profile_ids: form.geo_profile_ids,
       search_depth: form.search_depth,
       provider_mode: form.provider_mode,
+      force_strict_verification: (
+        form.provider_mode === 'managed'
+        && form.force_strict_verification
+      ),
     })
     ElMessage.success('Rank check completed')
   }
@@ -112,10 +117,28 @@ onMounted(loadGeos)
           <el-form-item label="Search depth" class="mb-0">
             <el-input-number v-model="form.search_depth" :min="1" :max="500" />
           </el-form-item>
+          <el-form-item
+            v-if="form.provider_mode === 'managed'"
+            label="Manual verification"
+            class="mb-0"
+          >
+            <el-switch
+              v-model="form.force_strict_verification"
+              active-text="Force strict"
+            />
+          </el-form-item>
           <el-button type="primary" size="large" :loading="loading" @click="submit">
             Run rank check
           </el-button>
         </div>
+        <el-alert
+          v-if="form.provider_mode === 'managed' && form.force_strict_verification"
+          class="mt-4"
+          type="warning"
+          :closable="false"
+          title="This run will request strict browser verification for each managed Geo."
+          description="Strict verification remains subject to the runtime kill switch, available credits, strict cache, and the configured probe budget."
+        />
       </el-form>
     </el-card>
 
@@ -148,6 +171,13 @@ onMounted(loadGeos)
           type="success"
           :closable="false"
           title="Fresh compatible SERP probes were reused and were not billed as new upstream probes."
+        />
+        <el-alert
+          v-if="result.verification?.manual_force_requested"
+          class="mt-4"
+          type="info"
+          :closable="false"
+          title="Manual strict verification was requested for this managed run."
         />
       </el-card>
 

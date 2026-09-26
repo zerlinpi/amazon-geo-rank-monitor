@@ -120,3 +120,44 @@ def test_streamable_http_refuses_to_start_without_oauth_configuration() -> None:
             token_verifier=None,
             tenant_resolver=None,
         )
+
+
+def test_mcp_run_monitor_snapshots_manual_force_intent() -> None:
+    app_services, tenants = services()
+    tenant = tenants.create_tenant("A")
+    geo = app_services.geo_repository.create(
+        owner_id=tenant["id"],
+        profile=GeoProfile(
+            id="ny",
+            name="New York",
+            marketplace="amazon.com",
+            ip_country="US",
+            ip_postal_code="10001",
+            delivery_country="US",
+            delivery_postal_code="10001",
+            weight=Decimal("100"),
+        ),
+    )
+    monitor = app_services.monitor_repository.create(
+        owner_id=tenant["id"],
+        name="Walking Pad",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        asins=["B0TARGET01"],
+        geo_profile_ids=[geo["id"]],
+        search_depth=100,
+        provider_mode="managed",
+    )
+    tools = RankMcpTools(services=app_services, owner_id=tenant["id"])
+
+    job = tools.run_monitor(
+        monitor_id=monitor["id"],
+        force_strict_verification=True,
+    )
+
+    assert (
+        job["request_payload"]["_verification_policy"][
+            "force_strict_verification"
+        ]
+        is True
+    )

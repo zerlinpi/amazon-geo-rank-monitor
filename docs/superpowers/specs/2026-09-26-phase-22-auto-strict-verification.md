@@ -31,6 +31,42 @@ When escalation is triggered:
 
 Strict verification failure must not invalidate a successful managed probe. The run remains usable and records the strict failure separately.
 
+## Manual force semantics
+
+A caller may force strict verification for a single managed execution without
+changing the saved Workspace or Monitor policy.
+
+Supported entry points:
+
+- REST `POST /api/v1/rank/check` with
+  `force_strict_verification=true`;
+- REST `POST /api/v1/monitors/{id}/run` with the same flag;
+- MCP `check_rank` and `run_monitor`;
+- Fantastic Admin Rank Explorer **Force strict** and Monitor **Verify now**.
+
+Manual force keeps the managed probe as the primary measurement and requests a
+strict probe for each managed Geo. Both observations remain persisted and a
+successful strict observation becomes the preferred result for that Geo.
+
+Policy precedence is:
+
+```text
+runtime global kill switch
+  -> workspace default
+  -> monitor override
+  -> one-run manual force
+```
+
+Manual force may override a Workspace or Monitor `Off` setting, but it must
+never bypass the runtime global kill switch. It also remains subject to strict
+cache compatibility, prepaid credits, and the per-run strict upstream probe
+budget.
+
+For queued Monitor runs the force flag is snapshotted into the job payload so
+retries preserve the exact execution intent. Run evidence records the
+`manual_force` trigger and whether the runtime kill switch allowed the
+verification path.
+
 ## Billing
 
 Billing remains probe-based.

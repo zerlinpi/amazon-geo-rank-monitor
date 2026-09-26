@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
-from amazon_geo_rank_monitor.api.schemas import MonitorCreate, MonitorUpdate
+from amazon_geo_rank_monitor.api.schemas import (
+    MonitorCreate,
+    MonitorRunRequest,
+    MonitorUpdate,
+)
 from amazon_geo_rank_monitor.application.rank_application import enqueue_monitor
 
 router = APIRouter(prefix="/api/v1/monitors", tags=["monitors"])
@@ -131,6 +135,7 @@ def get_monitor_history(
 def run_monitor(
     monitor_id: str,
     request: Request,
+    body: MonitorRunRequest | None = None,
     owner_id: str = Depends(require_scope("monitors:write")),
 ):
     services = get_services(request)
@@ -141,4 +146,7 @@ def run_monitor(
         services=services,
         owner_id=owner_id,
         monitor=monitor,
+        force_strict_verification=(
+            body.force_strict_verification if body is not None else False
+        ),
     )

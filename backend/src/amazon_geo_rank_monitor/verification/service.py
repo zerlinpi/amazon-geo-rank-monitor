@@ -58,6 +58,7 @@ class AutoStrictVerifier:
         billing_repository=None,
         rate_card: RateCard | None = None,
         max_upstream_probes_per_run: int | None = None,
+        automatic_enabled: bool | None = None,
     ) -> None:
         self._policy = policy
         self._provider = strict_provider
@@ -70,10 +71,19 @@ class AutoStrictVerifier:
         ):
             raise ValueError("max_upstream_probes_per_run must be non-negative")
         self._max_upstream_probes_per_run = max_upstream_probes_per_run
+        self._automatic_enabled = (
+            self._policy.enabled
+            if automatic_enabled is None
+            else automatic_enabled
+        )
 
     @property
     def enabled(self) -> bool:
         return self._policy.enabled
+
+    @property
+    def automatic_enabled(self) -> bool:
+        return self._automatic_enabled
 
     @property
     def min_confidence(self) -> Decimal:
@@ -89,8 +99,12 @@ class AutoStrictVerifier:
         enabled: bool | None,
         min_confidence: Decimal | str | float | None,
         max_upstream_probes_per_run: int | None = None,
+        force_strict: bool = False,
     ) -> AutoStrictVerifier:
-        effective_enabled = self._policy.enabled and enabled is not False
+        automatic_enabled = self._policy.enabled and enabled is not False
+        effective_enabled = automatic_enabled or (
+            self._policy.enabled and force_strict
+        )
         effective_confidence = (
             self._policy.min_confidence
             if min_confidence is None
@@ -111,6 +125,7 @@ class AutoStrictVerifier:
                 if max_upstream_probes_per_run is None
                 else max_upstream_probes_per_run
             ),
+            automatic_enabled=automatic_enabled,
         )
 
     def low_confidence_trigger(
@@ -138,6 +153,7 @@ class AutoStrictVerifier:
         managed_observations: list[RankObservation],
         previous_observations: list[RankObservation],
         allow_upstream: bool = True,
+        force_strict: bool = False,
     ) -> StrictVerificationOutcome:
         triggers = self._policy.evaluate(
             managed_observations=managed_observations,
@@ -145,6 +161,8 @@ class AutoStrictVerifier:
             geo_profile=geo_profile,
             geo_metadata=managed_result.geo_metadata,
         )
+        if force_strict:
+            triggers.append("manual_force")
         return await self.verify_for_triggers(
             owner_id=owner_id,
             reference_id=reference_id,
@@ -177,6 +195,9 @@ class AutoStrictVerifier:
             requested=True,
             triggers=list(dict.fromkeys(triggers)),
         )
+        if not self.enabled:
+            outcome.skipped_reason = "runtime_kill_switch_disabled"
+            return outcome
         if not getattr(self._provider, "available", True):
             outcome.skipped_reason = "strict_provider_unavailable"
             return outcome

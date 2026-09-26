@@ -125,6 +125,7 @@ def test_geo_and_monitor_resources_are_tenant_scoped() -> None:
         "enabled": False,
         "min_confidence": "0.8200",
         "max_upstream_probes_per_run": 2,
+        "force_strict_verification": False,
     }
 
     inherited = client.patch(
@@ -162,7 +163,25 @@ def test_geo_and_monitor_resources_are_tenant_scoped() -> None:
         "enabled": True,
         "min_confidence": "0.8800",
         "max_upstream_probes_per_run": 1,
+        "force_strict_verification": False,
     }
+
+    forced_job = client.post(
+        f"/api/v1/monitors/{monitor_id}/run",
+        headers=auth_a,
+        json={"force_strict_verification": True},
+    )
+    assert forced_job.status_code == 202
+    forced_job_body = client.get(
+        f"/api/v1/jobs/{forced_job.json()['id']}",
+        headers=auth_a,
+    ).json()
+    assert (
+        forced_job_body["request_payload"]["_verification_policy"][
+            "force_strict_verification"
+        ]
+        is True
+    )
 
     queued_after_edit = client.get(
         f"/api/v1/jobs/{queued.json()['id']}",
@@ -172,6 +191,7 @@ def test_geo_and_monitor_resources_are_tenant_scoped() -> None:
         "enabled": False,
         "min_confidence": "0.8200",
         "max_upstream_probes_per_run": 2,
+        "force_strict_verification": False,
     }
 
 

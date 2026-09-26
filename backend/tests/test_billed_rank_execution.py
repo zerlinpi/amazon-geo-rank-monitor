@@ -476,3 +476,100 @@ async def test_strict_probe_budget_caps_upstream_attempts_and_credit_spend() -> 
         "reserved": 0,
         "available": 14,
     }
+
+
+@pytest.mark.asyncio
+async def test_manual_force_verifies_stable_managed_result_and_bills_strict() -> None:
+    managed = SequenceRankProvider([5])
+    strict = SequenceRankProvider([7])
+    services, geo, billing = make_services(
+        managed,
+        strict_provider=strict,
+        auto_strict=True,
+        strict_probe_budget=1,
+    )
+    ny = add_geo(geo, "ny", "10001")
+    billing.grant(
+        owner_id="tenant-1",
+        credits=10,
+        idempotency_key="grant:manual-force",
+    )
+
+    result = await execute_rank_check(
+        services=services,
+        owner_id="tenant-1",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        asins=["B0TARGET01"],
+        geo_profile_ids=[ny["id"]],
+        search_depth=100,
+        provider_mode="managed",
+        reference_id="manual-force",
+        force_strict_verification=True,
+    )
+
+    assert result.status == "succeeded"
+    assert managed.calls == 1
+    assert strict.calls == 1
+    assert result.primary_upstream_probe_count == 1
+    assert result.strict_verification_upstream_probe_count == 1
+    assert result.snapshots[0].weighted_rank == Decimal("7.00")
+    assert result.verification_events[0]["triggers"] == ["manual_force"]
+    assert result.verification_events[0]["succeeded"] is True
+
+    saved = services.rank_repository.get_run(
+        result.run_id,
+        owner_id="tenant-1",
+    )
+    assert saved["verification_metadata"]["manual_force_requested"] is True
+    assert saved["verification_metadata"]["manual_force_effective"] is True
+    assert saved["verification_metadata"]["auto_strict_enabled"] is True
+    assert billing.get_balance("tenant-1") == {
+        "balance": 4,
+        "reserved": 0,
+        "available": 4,
+    }
+
+
+@pytest.mark.asyncio
+async def test_manual_force_recovers_managed_failure_with_strict_probe() -> None:
+    managed = CountingProvider(fail_zip="90001")
+    strict = CountingProvider()
+    services, geo, billing = make_services(
+        managed,
+        strict_provider=strict,
+        auto_strict=True,
+        strict_probe_budget=1,
+    )
+    la = add_geo(geo, "la", "90001")
+    billing.grant(
+        owner_id="tenant-1",
+        credits=10,
+        idempotency_key="grant:manual-force-recovery",
+    )
+
+    result = await execute_rank_check(
+        services=services,
+        owner_id="tenant-1",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        asins=["B0TARGET01"],
+        geo_profile_ids=[la["id"]],
+        search_depth=100,
+        provider_mode="managed",
+        reference_id="manual-force-recovery",
+        force_strict_verification=True,
+    )
+
+    assert result.status == "succeeded"
+    assert result.primary_upstream_probe_count == 0
+    assert result.strict_verification_upstream_probe_count == 1
+    assert result.snapshots[0].confidence == Decimal("1.00")
+    assert "manual_force" in result.verification_events[0]["triggers"]
+    assert "managed_probe_failed" in result.verification_events[0]["triggers"]
+    assert strict.calls == 1
+    assert billing.get_balance("tenant-1") == {
+        "balance": 5,
+        "reserved": 0,
+        "available": 5,
+    }

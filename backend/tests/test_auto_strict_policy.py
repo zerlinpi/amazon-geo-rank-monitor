@@ -142,8 +142,18 @@ def test_monitor_policy_can_disable_but_not_bypass_global_kill_switch() -> None:
         max_upstream_probes_per_run=1,
     )
     assert disabled.enabled is False
+    assert disabled.automatic_enabled is False
     assert disabled.min_confidence == Decimal("0.90")
     assert disabled.max_upstream_probes_per_run == 1
+
+    forced = global_on.for_monitor(
+        enabled=False,
+        min_confidence="0.90",
+        max_upstream_probes_per_run=1,
+        force_strict=True,
+    )
+    assert forced.enabled is True
+    assert forced.automatic_enabled is False
 
     global_off = AutoStrictVerifier(
         policy=AutoStrictVerificationPolicy(enabled=False),
@@ -154,6 +164,12 @@ def test_monitor_policy_can_disable_but_not_bypass_global_kill_switch() -> None:
         min_confidence="0.90",
     )
     assert requested_on.enabled is False
+    forced_global_off = global_off.for_monitor(
+        enabled=False,
+        min_confidence="0.90",
+        force_strict=True,
+    )
+    assert forced_global_off.enabled is False
 
 
 class NeverCalledStrictProvider:
@@ -210,4 +226,34 @@ async def test_exhausted_probe_budget_still_allows_strict_cache_hits() -> None:
     assert outcome.cache_hit is True
     assert outcome.cache_hit_count == 1
     assert outcome.upstream_probe_count == 0
+    assert provider.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_manual_force_records_runtime_kill_switch_skip() -> None:
+    provider = NeverCalledStrictProvider()
+    verifier = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(enabled=False),
+        strict_provider=provider,
+    )
+
+    outcome = await verifier.verify_if_needed(
+        owner_id="tenant-1",
+        reference_id="manual-force-disabled",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        geo_profile=geo(),
+        search_depth=100,
+        asins=["B0TARGET01"],
+        managed_result=SerpResult(),
+        managed_observations=[observation()],
+        previous_observations=[],
+        force_strict=True,
+    )
+
+    assert outcome.requested is True
+    assert outcome.attempted is False
+    assert outcome.succeeded is False
+    assert outcome.triggers == ["manual_force"]
+    assert outcome.skipped_reason == "runtime_kill_switch_disabled"
     assert provider.calls == 0
