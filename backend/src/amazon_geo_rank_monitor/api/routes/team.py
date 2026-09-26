@@ -15,9 +15,9 @@ from amazon_geo_rank_monitor.api.schemas import (
     ScimGroupRoleUpdate,
     WorkspaceMfaPolicyUpdate,
     WorkspaceScimConfigUpdate,
-    WorkspaceVerificationPolicyUpdate,
     WorkspaceSsoConfigUpdate,
     WorkspaceSsoEnforcementUpdate,
+    WorkspaceVerificationPolicyUpdate,
 )
 from amazon_geo_rank_monitor.api.session_cookies import session_payload, set_session_cookies
 from amazon_geo_rank_monitor.auth.accounts import ROLES, HumanPrincipal
