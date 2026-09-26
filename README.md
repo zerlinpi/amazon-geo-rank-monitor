@@ -1293,6 +1293,16 @@ Supported rule types:
 - `not_found`: the ASIN has zero aggregate found weight in the current run.
 - `geo_not_found`: the ASIN is not found for a matching geographic observation.
 - `geo_rank_above`: a geographic observation has an effective rank worse than the configured threshold.
+- `strict_verification_failed`: a strict upstream verification attempt fails.
+- `strict_insufficient_credits`: strict verification is requested but skipped because prepaid credits are insufficient.
+- `strict_probe_budget_exhausted`: a requested strict probe is skipped because the per-run upstream budget is exhausted.
+- `strict_provider_unavailable`: the strict browser provider is unavailable when verification is requested.
+- `strict_runtime_disabled`: a manually forced strict verification is blocked by the runtime global kill switch.
+
+Strict verification rules are probe-level rather than ASIN-level. They may optionally
+scope to one Geo in the Monitor; otherwise they watch every verification event in the
+run. A single strict SERP probe therefore produces at most one matching alert event per
+rule and Geo instead of one duplicate notification per tracked ASIN.
 
 Rules are always evaluated against the same `monitor_target_id`; a run from another Monitor with the same keyword cannot become the comparison baseline.
 
