@@ -27,6 +27,15 @@ class TenantRow(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     require_mfa: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    auto_strict_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    auto_strict_min_confidence: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 4),
+        nullable=True,
+    )
+    auto_strict_max_probes_per_run: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
