@@ -34,6 +34,9 @@ def create_monitor(
             provider_mode=body.provider_mode,
             auto_strict_enabled=body.auto_strict_enabled,
             auto_strict_min_confidence=body.auto_strict_min_confidence,
+            auto_strict_max_probes_per_run=(
+                body.auto_strict_max_probes_per_run
+            ),
             schedule=body.schedule,
         )
     except KeyError as exc:
