@@ -145,6 +145,16 @@ class WorkspaceMfaPolicyUpdate(BaseModel):
     require_mfa: bool
 
 
+class WorkspaceVerificationPolicyUpdate(BaseModel):
+    enabled: bool | None = None
+    min_confidence: float | None = Field(default=None, gt=0, le=1)
+    max_upstream_probes_per_run: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+    )
+
+
 class SsoStartRequest(BaseModel):
     workspace_id: str = Field(min_length=1)
     email: str | None = Field(default=None, min_length=3, max_length=320)
