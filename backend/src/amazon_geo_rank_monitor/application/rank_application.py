@@ -75,6 +75,30 @@ async def execute_rank_check(
                 owner_id,
                 provider_mode,
             )
+    workspace_policy: dict = {}
+    tenant_repository = getattr(services, "tenant_repository", None)
+    if (
+        tenant_repository is not None
+        and hasattr(tenant_repository, "get_workspace_verification_policy")
+    ):
+        try:
+            workspace_policy = tenant_repository.get_workspace_verification_policy(
+                owner_id=owner_id
+            )
+        except KeyError:
+            workspace_policy = {}
+
+    strict_verifier = getattr(services, "auto_strict_verifier", None)
+    if strict_verifier is not None and hasattr(strict_verifier, "for_monitor"):
+        strict_verifier = strict_verifier.for_monitor(
+            enabled=workspace_policy.get("enabled"),
+            min_confidence=workspace_policy.get("min_confidence"),
+            max_upstream_probes_per_run=workspace_policy.get(
+                "max_upstream_probes_per_run"
+            ),
+            force_strict=force_strict_verification,
+        )
+
     service = RankMonitorService(
         provider=provider,
         repository=services.rank_repository,
@@ -85,7 +109,7 @@ async def execute_rank_check(
             "competitive_intelligence",
             None,
         ),
-        strict_verifier=getattr(services, "auto_strict_verifier", None),
+        strict_verifier=strict_verifier,
     )
 
     billing = getattr(services, "billing_repository", None)
