@@ -21,6 +21,7 @@ def _register_tools(
         geo_profile_ids: list[str],
         search_depth: int = 100,
         provider_mode: str = "managed",
+        force_strict_verification: bool = False,
     ) -> dict:
         """Check current Amazon geographic organic rank."""
         return await tools_factory().check_rank(
@@ -30,6 +31,7 @@ def _register_tools(
             geo_profile_ids=geo_profile_ids,
             search_depth=search_depth,
             provider_mode=provider_mode,
+            force_strict_verification=force_strict_verification,
         )
 
     @server.tool()
@@ -61,9 +63,15 @@ def _register_tools(
         )
 
     @server.tool()
-    def run_monitor(monitor_id: str) -> dict:
-        """Queue a saved monitor for execution."""
-        return tools_factory().run_monitor(monitor_id=monitor_id)
+    def run_monitor(
+        monitor_id: str,
+        force_strict_verification: bool = False,
+    ) -> dict:
+        """Queue a saved monitor for execution, optionally forcing strict verification."""
+        return tools_factory().run_monitor(
+            monitor_id=monitor_id,
+            force_strict_verification=force_strict_verification,
+        )
 
     @server.tool()
     def get_rank_run(run_id: str) -> dict:
