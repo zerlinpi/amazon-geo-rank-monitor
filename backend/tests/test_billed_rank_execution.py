@@ -145,7 +145,6 @@ async def test_partial_success_settles_only_successful_probe_cost() -> None:
     }
 
 
-
 class SequenceRankProvider:
     provider_name = "managed-sequence"
 
@@ -213,6 +212,12 @@ async def test_auto_strict_escalation_uses_strict_result_and_bills_separately() 
         "strict",
     }
     assert second.verification_events[0]["succeeded"] is True
+    saved = services.rank_repository.get_run(
+        second.run_id,
+        owner_id="tenant-1",
+    )
+    assert saved["verification_metadata"]["strict_succeeded_count"] == 1
+    assert saved["verification_metadata"]["events"][0]["succeeded"] is True
     assert strict.calls == 1
     assert billing.get_balance("tenant-1") == {
         "balance": 13,
