@@ -13,6 +13,10 @@ from amazon_geo_rank_monitor.domain.models import (
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
+from amazon_geo_rank_monitor.verification import (
+    AutoStrictVerificationPolicy,
+    AutoStrictVerifier,
+)
 from amazon_geo_rank_monitor.workers.rank_worker import RankWorker
 
 
@@ -69,10 +73,19 @@ def test_claim_one_is_single_consumer_transition() -> None:
 class FakeProvider:
     provider_name = "fake"
 
+    def __init__(self, position: int = 4) -> None:
+        self.position = position
+        self.calls = 0
+
     async def search(self, **kwargs):
+        self.calls += 1
         return SerpResult(
             organic_products=[
-                SerpProduct(asin="B0TARGET01", position=4, page=1),
+                SerpProduct(
+                    asin="B0TARGET01",
+                    position=self.position,
+                    page=1,
+                ),
             ]
         )
 
@@ -85,6 +98,8 @@ async def test_worker_runs_tenant_aware_rank_service_and_completes_job() -> None
     payload["_verification_policy"] = {
         "enabled": None,
         "min_confidence": None,
+        "max_upstream_probes_per_run": None,
+        "force_strict_verification": False,
     }
     created = jobs.enqueue(
         owner_id="tenant-a",
@@ -108,3 +123,52 @@ async def test_worker_runs_tenant_aware_rank_service_and_completes_job() -> None
     saved_run = rank_repo.get_run(completed["run_id"], owner_id="tenant-a")
     assert saved_run["owner_id"] == "tenant-a"
     assert saved_run["snapshots"][0]["weighted_rank"] == Decimal("1.00")
+
+
+async def test_worker_honors_manual_force_when_automatic_policy_is_off() -> None:
+    db = engine()
+    jobs = JobRepository(db)
+    rank_repo = RankRepository(db)
+    managed = FakeProvider(position=4)
+    strict = FakeProvider(position=7)
+    payload = request_payload()
+    payload["_verification_policy"] = {
+        "enabled": False,
+        "min_confidence": "0.75",
+        "max_upstream_probes_per_run": 1,
+        "force_strict_verification": True,
+    }
+    created = jobs.enqueue(
+        owner_id="tenant-a",
+        provider_mode="managed",
+        request_payload=payload,
+    )
+    verifier = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(enabled=True),
+        strict_provider=strict,
+        max_upstream_probes_per_run=3,
+    )
+    worker = RankWorker(
+        job_repository=jobs,
+        rank_repository=rank_repo,
+        provider_registry=ProviderRegistry(
+            managed=managed,
+            strict=strict,
+        ),
+        auto_strict_verifier=verifier,
+    )
+
+    completed = await worker.run_once()
+
+    assert completed["id"] == created["id"]
+    assert completed["status"] == "succeeded"
+    assert managed.calls == 1
+    assert strict.calls == 1
+    saved = rank_repo.get_run(completed["run_id"], owner_id="tenant-a")
+    assert saved["snapshots"][0]["weighted_rank"] == Decimal("7.00")
+    assert saved["verification_metadata"]["manual_force_requested"] is True
+    assert saved["verification_metadata"]["manual_force_effective"] is True
+    assert saved["verification_metadata"]["auto_strict_enabled"] is False
+    assert saved["verification_metadata"]["events"][0]["triggers"] == [
+        "manual_force"
+    ]
