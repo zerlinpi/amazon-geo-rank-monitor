@@ -243,6 +243,34 @@ class RankRepository:
         }
 
 
+    def verification_summary(self) -> dict[str, int]:
+        totals = {
+            "strict_requested": 0,
+            "strict_attempted": 0,
+            "strict_succeeded": 0,
+            "strict_skipped": 0,
+        }
+        with self._sessions() as session:
+            rows = session.scalars(
+                select(RankRunRow.verification_metadata)
+            ).all()
+        for metadata in rows:
+            if not isinstance(metadata, dict):
+                continue
+            totals["strict_requested"] += int(
+                metadata.get("strict_requested_count") or 0
+            )
+            totals["strict_attempted"] += int(
+                metadata.get("strict_attempted_count") or 0
+            )
+            totals["strict_succeeded"] += int(
+                metadata.get("strict_succeeded_count") or 0
+            )
+            totals["strict_skipped"] += int(
+                metadata.get("strict_skipped_count") or 0
+            )
+        return totals
+
     def list_runs(self, *, owner_id: str, limit: int = 50) -> list[dict]:
         with self._sessions() as session:
             run_ids = session.scalars(
