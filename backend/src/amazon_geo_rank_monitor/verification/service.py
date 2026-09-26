@@ -68,6 +68,10 @@ class AutoStrictVerifier:
     def enabled(self) -> bool:
         return self._policy.enabled
 
+    @property
+    def min_confidence(self) -> Decimal:
+        return self._policy.min_confidence
+
     def for_monitor(
         self,
         *,
