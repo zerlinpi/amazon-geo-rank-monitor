@@ -150,6 +150,9 @@ class RankWorker:
                 strict_verifier = strict_verifier.for_monitor(
                     enabled=verification_policy.get("enabled"),
                     min_confidence=verification_policy.get("min_confidence"),
+                    max_upstream_probes_per_run=verification_policy.get(
+                        "max_upstream_probes_per_run"
+                    ),
                 )
             service = RankMonitorService(
                 provider=provider,
