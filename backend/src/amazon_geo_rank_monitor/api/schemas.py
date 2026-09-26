@@ -17,6 +17,11 @@ class MonitorCreate(BaseModel):
         gt=0,
         le=1,
     )
+    auto_strict_max_probes_per_run: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+    )
     schedule: str | None = None
 
 
@@ -33,6 +38,11 @@ class MonitorUpdate(BaseModel):
         default=None,
         gt=0,
         le=1,
+    )
+    auto_strict_max_probes_per_run: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
     )
     schedule: str | None = None
     enabled: bool | None = None
