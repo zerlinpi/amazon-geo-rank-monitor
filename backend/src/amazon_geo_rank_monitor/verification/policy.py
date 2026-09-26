@@ -17,9 +17,11 @@ class AutoStrictVerificationPolicy:
     min_confidence: Decimal = Decimal("0.75")
 
     def __post_init__(self) -> None:
+        confidence = Decimal(str(self.min_confidence))
+        object.__setattr__(self, "min_confidence", confidence)
         if self.rank_delta_threshold < 1:
             raise ValueError("rank_delta_threshold must be at least 1")
-        if self.min_confidence <= 0 or self.min_confidence > 1:
+        if confidence <= 0 or confidence > 1:
             raise ValueError("min_confidence must be greater than 0 and at most 1")
 
     def evaluate(
