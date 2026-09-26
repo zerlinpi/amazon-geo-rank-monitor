@@ -35,12 +35,13 @@ def build_system_client():
     keys = ApiKeyService(repository=tenants, pepper="pepper")
     jobs = JobRepository(engine, default_max_attempts=1)
     workers = WorkerStatusRepository(engine)
+    rank_repository = RankRepository(engine)
     services = AppServices(
         tenant_repository=tenants,
         geo_repository=GeoRepository(engine),
         monitor_repository=MonitorRepository(engine),
         job_repository=jobs,
-        rank_repository=RankRepository(engine),
+        rank_repository=rank_repository,
         api_keys=keys,
         provider_registry=ProviderRegistry(
             managed=FakeProvider(),
@@ -49,11 +50,18 @@ def build_system_client():
         database_engine=engine,
         worker_status_repository=workers,
     )
-    return TestClient(create_app(services)), tenants, keys, jobs, workers
+    return (
+        TestClient(create_app(services)),
+        tenants,
+        keys,
+        jobs,
+        workers,
+        rank_repository,
+    )
 
 
 def test_system_queue_metrics_and_dead_letter_requeue_are_scoped() -> None:
-    client, tenants, keys, jobs, workers = build_system_client()
+    client, tenants, keys, jobs, workers, rank_repository = build_system_client()
     tenant = tenants.create_tenant("Acme")
     root = keys.create(owner_id=tenant["id"], name="root")
     reader = keys.create(
@@ -78,6 +86,23 @@ def test_system_queue_metrics_and_dead_letter_requeue_are_scoped() -> None:
         last_error="fatal",
         processed_delta=1,
     )
+    run_id = rank_repository.create_run(
+        owner_id=tenant["id"],
+        marketplace="amazon.com",
+        keyword="walking pad",
+        requested_probe_count=1,
+    )
+    rank_repository.complete_run(
+        run_id,
+        status="succeeded",
+        settled_probe_count=2,
+        verification_metadata={
+            "strict_requested_count": 1,
+            "strict_attempted_count": 1,
+            "strict_succeeded_count": 1,
+            "strict_skipped_count": 0,
+        },
+    )
 
     queue = client.get("/api/v1/system/queue", headers=read_headers)
     assert queue.status_code == 200
@@ -95,6 +120,14 @@ def test_system_queue_metrics_and_dead_letter_requeue_are_scoped() -> None:
     assert 'agrm_rank_jobs{status="dead_letter"} 1' in metrics.text
     assert "agrm_service_heartbeat_age_seconds" in metrics.text
     assert "agrm_service_processed_jobs_total" in metrics.text
+    assert (
+        'agrm_auto_strict_verification_total{outcome="requested"} 1'
+        in metrics.text
+    )
+    assert (
+        'agrm_auto_strict_verification_total{outcome="succeeded"} 1'
+        in metrics.text
+    )
 
     denied = client.post(
         f"/api/v1/system/dead-letters/{created['id']}/requeue",
