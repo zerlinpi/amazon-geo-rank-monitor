@@ -351,6 +351,12 @@ class RankMonitorService:
                 and self._strict_verifier is not None
                 and getattr(self._strict_verifier, "enabled", False)
             ),
+            "auto_strict_min_confidence": (
+                str(self._strict_verifier.min_confidence)
+                if self._strict_verifier is not None
+                and hasattr(self._strict_verifier, "min_confidence")
+                else None
+            ),
             "strict_requested_count": len(verification_events),
             "strict_attempted_count": sum(
                 1 for item in verification_events if item.get("attempted")
