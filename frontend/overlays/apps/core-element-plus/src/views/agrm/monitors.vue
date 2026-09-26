@@ -23,11 +23,13 @@ const form = reactive({
   provider_mode: 'managed' as 'managed' | 'strict',
   auto_strict_mode: 'inherit' as 'inherit' | 'on' | 'off',
   auto_strict_min_confidence: 75,
+  auto_strict_max_probes_per_run: 3,
   schedule: '',
 })
 const policyForm = reactive({
   mode: 'inherit' as 'inherit' | 'on' | 'off',
   minConfidence: 75,
+  maxProbes: 3,
 })
 
 async function load() {
@@ -56,6 +58,7 @@ function resetForm() {
     provider_mode: 'managed',
     auto_strict_mode: 'inherit',
     auto_strict_min_confidence: 75,
+    auto_strict_max_probes_per_run: 3,
     schedule: '',
   })
 }
@@ -88,6 +91,11 @@ async function create() {
         form.auto_strict_mode === 'inherit'
           ? null
           : form.auto_strict_min_confidence / 100
+      ),
+      auto_strict_max_probes_per_run: (
+        form.auto_strict_mode === 'inherit'
+          ? null
+          : form.auto_strict_max_probes_per_run
       ),
       schedule: form.schedule.trim() || null,
     })
@@ -122,7 +130,8 @@ function policyLabel(row: Monitor) {
   const confidence = row.auto_strict_min_confidence == null
     ? 75
     : Math.round(Number(row.auto_strict_min_confidence) * 100)
-  return `On · ${confidence}%`
+  const maxProbes = row.auto_strict_max_probes_per_run ?? 3
+  return `On · ${confidence}% · max ${maxProbes}`
 }
 
 function openPolicy(row: Monitor) {
@@ -131,6 +140,7 @@ function openPolicy(row: Monitor) {
   policyForm.minConfidence = row.auto_strict_min_confidence == null
     ? 75
     : Math.round(Number(row.auto_strict_min_confidence) * 100)
+  policyForm.maxProbes = row.auto_strict_max_probes_per_run ?? 3
   policyDialog.value = true
 }
 
@@ -150,6 +160,11 @@ async function savePolicy() {
         policyForm.mode === 'inherit'
           ? null
           : policyForm.minConfidence / 100
+      ),
+      auto_strict_max_probes_per_run: (
+        policyForm.mode === 'inherit'
+          ? null
+          : policyForm.maxProbes
       ),
     })
     ElMessage.success('Auto strict policy updated')
@@ -241,7 +256,7 @@ onMounted(load)
             <el-tag :type="row.provider_mode === 'strict' ? 'warning' : 'info'">{{ row.provider_mode }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="Auto strict" width="130">
+        <el-table-column label="Auto strict" width="190">
           <template #default="{ row }">
             <el-tag
               :type="policyMode(row as Monitor) === 'on'
@@ -317,6 +332,16 @@ onMounted(load)
             />
             <span class="ml-2 text-xs text-muted-foreground">%</span>
           </el-form-item>
+          <el-form-item
+            v-if="form.auto_strict_mode !== 'inherit'"
+            label="Max paid strict probes / run"
+          >
+            <el-input-number
+              v-model="form.auto_strict_max_probes_per_run"
+              :min="0"
+              :max="100"
+            />
+          </el-form-item>
         </div>
         <el-form-item label="Keyword">
           <el-input v-model="form.keyword" placeholder="walking pad" />
@@ -379,6 +404,19 @@ onMounted(load)
                 :step="5"
               />
               <span class="text-sm text-muted-foreground">%</span>
+            </div>
+          </el-form-item>
+          <el-form-item
+            v-if="policyForm.mode !== 'inherit'"
+            label="Max paid strict probes / run"
+          >
+            <el-input-number
+              v-model="policyForm.maxProbes"
+              :min="0"
+              :max="100"
+            />
+            <div class="text-xs text-muted-foreground mt-1">
+              0 keeps strict cache reuse enabled but blocks new strict browser probes.
             </div>
           </el-form-item>
           <el-alert

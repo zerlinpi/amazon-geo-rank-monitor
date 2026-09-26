@@ -151,6 +151,9 @@ def enqueue_monitor(
             if confidence is not None
             else None
         ),
+        "max_upstream_probes_per_run": monitor.get(
+            "auto_strict_max_probes_per_run"
+        ),
     }
     return services.job_repository.enqueue(
         owner_id=owner_id,

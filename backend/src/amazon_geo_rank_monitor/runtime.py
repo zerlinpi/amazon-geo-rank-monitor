@@ -284,6 +284,7 @@ def build_services(settings: AppSettings) -> AppServices:
             managed_serp=settings.managed_serp_credit_cost,
             browser_verified_serp=settings.strict_serp_credit_cost,
         ),
+        max_upstream_probes_per_run=settings.auto_strict_max_probes_per_run,
     )
     return AppServices(
         tenant_repository=tenants,

@@ -423,6 +423,10 @@ class MonitorTargetRow(Base):
         Numeric(5, 4),
         nullable=True,
     )
+    auto_strict_max_probes_per_run: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
     schedule: Mapped[str | None] = mapped_column(String(128))
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(

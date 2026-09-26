@@ -42,7 +42,13 @@ class CountingProvider:
         )
 
 
-def make_services(provider, *, strict_provider=None, auto_strict=False):
+def make_services(
+    provider,
+    *,
+    strict_provider=None,
+    auto_strict=False,
+    strict_probe_budget=None,
+):
     engine = create_engine(
         "sqlite+pysqlite://",
         connect_args={"check_same_thread": False},
@@ -80,6 +86,7 @@ def make_services(provider, *, strict_provider=None, auto_strict=False):
             strict_provider=registry.get("strict"),
             billing_repository=billing,
             rate_card=rate_card,
+            max_upstream_probes_per_run=strict_probe_budget,
         )
     return services, geo, billing
 
@@ -146,6 +153,23 @@ async def test_partial_success_settles_only_successful_probe_cost() -> None:
         "reserved": 0,
         "available": 9,
     }
+
+
+class MultiFailProvider:
+    provider_name = "managed-multi-fail"
+
+    def __init__(self, fail_zips: set[str] | None = None) -> None:
+        self.fail_zips = fail_zips or set()
+        self.calls = 0
+
+    async def search(self, **kwargs):
+        self.calls += 1
+        geo = kwargs["geo_profile"]
+        if geo.delivery_postal_code in self.fail_zips:
+            raise ProviderUnavailableError("timeout")
+        return SerpResult(
+            organic_products=[SerpProduct(asin="B0TARGET01", position=4)]
+        )
 
 
 class SequenceRankProvider:
@@ -387,6 +411,66 @@ async def test_low_confidence_recovers_failed_geo_with_billed_strict_probe() -> 
     assert "low_confidence:0.50" in result.verification_events[0]["triggers"]
     assert "managed_probe_failed" in result.verification_events[0]["triggers"]
     assert result.verification_events[0]["succeeded"] is True
+    assert billing.get_balance("tenant-1") == {
+        "balance": 14,
+        "reserved": 0,
+        "available": 14,
+    }
+
+
+@pytest.mark.asyncio
+async def test_strict_probe_budget_caps_upstream_attempts_and_credit_spend() -> None:
+    managed = MultiFailProvider(fail_zips={"90001", "75201"})
+    strict = MultiFailProvider()
+    services, geo, billing = make_services(
+        managed,
+        strict_provider=strict,
+        auto_strict=True,
+        strict_probe_budget=1,
+    )
+    ny = add_geo(geo, "ny", "10001")
+    la = add_geo(geo, "la", "90001")
+    tx = add_geo(geo, "tx", "75201")
+    billing.grant(
+        owner_id="tenant-1",
+        credits=20,
+        idempotency_key="grant:strict-budget",
+    )
+
+    result = await execute_rank_check(
+        services=services,
+        owner_id="tenant-1",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        asins=["B0TARGET01"],
+        geo_profile_ids=[ny["id"], la["id"], tx["id"]],
+        search_depth=100,
+        provider_mode="managed",
+        reference_id="strict-budget",
+    )
+
+    assert result.status == "partially_succeeded"
+    assert result.primary_upstream_probe_count == 1
+    assert result.strict_verification_upstream_probe_count == 1
+    assert strict.calls == 1
+    assert result.snapshots[0].confidence == Decimal("0.67")
+    assert len(result.verification_events) == 2
+    assert result.verification_events[0]["succeeded"] is True
+    assert (
+        result.verification_events[1]["skipped_reason"]
+        == "probe_budget_exhausted"
+    )
+    saved = services.rank_repository.get_run(
+        result.run_id,
+        owner_id="tenant-1",
+    )
+    assert (
+        saved["verification_metadata"][
+            "auto_strict_max_upstream_probes_per_run"
+        ]
+        == 1
+    )
+    assert saved["verification_metadata"]["strict_upstream_attempt_count"] == 1
     assert billing.get_balance("tenant-1") == {
         "balance": 14,
         "reserved": 0,

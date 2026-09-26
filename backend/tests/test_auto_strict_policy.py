@@ -1,9 +1,15 @@
+from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
+
+import pytest
 
 from amazon_geo_rank_monitor.domain.models import (
     GeoProfile,
     ProbeStatus,
     RankObservation,
+    SerpProduct,
+    SerpResult,
     VerificationLevel,
 )
 from amazon_geo_rank_monitor.verification import (
@@ -127,14 +133,17 @@ def test_monitor_policy_can_disable_but_not_bypass_global_kill_switch() -> None:
             min_confidence=Decimal("0.75"),
         ),
         strict_provider=provider,
+        max_upstream_probes_per_run=3,
     )
 
     disabled = global_on.for_monitor(
         enabled=False,
         min_confidence="0.90",
+        max_upstream_probes_per_run=1,
     )
     assert disabled.enabled is False
     assert disabled.min_confidence == Decimal("0.90")
+    assert disabled.max_upstream_probes_per_run == 1
 
     global_off = AutoStrictVerifier(
         policy=AutoStrictVerificationPolicy(enabled=False),
@@ -145,3 +154,60 @@ def test_monitor_policy_can_disable_but_not_bypass_global_kill_switch() -> None:
         min_confidence="0.90",
     )
     assert requested_on.enabled is False
+
+
+class NeverCalledStrictProvider:
+    provider_name = "strict-cache-only"
+    verification_level = VerificationLevel.STRICT
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def search(self, **kwargs):
+        self.calls += 1
+        raise AssertionError("strict provider should not be called")
+
+
+class StrictCacheHitService:
+    def lookup(self, **kwargs):
+        return SimpleNamespace(
+            result=SerpResult(
+                organic_products=[
+                    SerpProduct(asin="B0TARGET01", position=3),
+                ]
+            ),
+            fetched_at=datetime.now(UTC),
+            age_seconds=2,
+        )
+
+    def store(self, **kwargs):
+        raise AssertionError("cache store should not be called")
+
+
+@pytest.mark.asyncio
+async def test_exhausted_probe_budget_still_allows_strict_cache_hits() -> None:
+    provider = NeverCalledStrictProvider()
+    verifier = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(enabled=True),
+        strict_provider=provider,
+        probe_cache=StrictCacheHitService(),
+        max_upstream_probes_per_run=0,
+    )
+
+    outcome = await verifier.verify_for_triggers(
+        owner_id="tenant-1",
+        reference_id="run-1",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        geo_profile=geo(),
+        search_depth=100,
+        asins=["B0TARGET01"],
+        triggers=["rank_movement:B0TARGET01:25"],
+        allow_upstream=False,
+    )
+
+    assert outcome.succeeded is True
+    assert outcome.cache_hit is True
+    assert outcome.cache_hit_count == 1
+    assert outcome.upstream_probe_count == 0
+    assert provider.calls == 0

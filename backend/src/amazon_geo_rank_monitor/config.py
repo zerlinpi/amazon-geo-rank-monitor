@@ -82,6 +82,7 @@ class AppSettings(BaseSettings):
     auto_strict_verify_geo_mismatch: bool = True
     auto_strict_recover_low_confidence: bool = True
     auto_strict_min_confidence: float = 0.75
+    auto_strict_max_probes_per_run: int = 3
     probe_cache_managed_ttl_seconds: int = 300
     probe_cache_strict_ttl_seconds: int = 0
     probe_cache_retention_hours: int = 24

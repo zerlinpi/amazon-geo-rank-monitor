@@ -57,12 +57,19 @@ class AutoStrictVerifier:
         probe_cache=None,
         billing_repository=None,
         rate_card: RateCard | None = None,
+        max_upstream_probes_per_run: int | None = None,
     ) -> None:
         self._policy = policy
         self._provider = strict_provider
         self._probe_cache = probe_cache
         self._billing = billing_repository
         self._rate_card = rate_card or RateCard()
+        if (
+            max_upstream_probes_per_run is not None
+            and max_upstream_probes_per_run < 0
+        ):
+            raise ValueError("max_upstream_probes_per_run must be non-negative")
+        self._max_upstream_probes_per_run = max_upstream_probes_per_run
 
     @property
     def enabled(self) -> bool:
@@ -72,11 +79,16 @@ class AutoStrictVerifier:
     def min_confidence(self) -> Decimal:
         return self._policy.min_confidence
 
+    @property
+    def max_upstream_probes_per_run(self) -> int | None:
+        return self._max_upstream_probes_per_run
+
     def for_monitor(
         self,
         *,
         enabled: bool | None,
         min_confidence: Decimal | str | float | None,
+        max_upstream_probes_per_run: int | None = None,
     ) -> AutoStrictVerifier:
         effective_enabled = self._policy.enabled and enabled is not False
         effective_confidence = (
@@ -94,6 +106,11 @@ class AutoStrictVerifier:
             probe_cache=self._probe_cache,
             billing_repository=self._billing,
             rate_card=self._rate_card,
+            max_upstream_probes_per_run=(
+                self._max_upstream_probes_per_run
+                if max_upstream_probes_per_run is None
+                else max_upstream_probes_per_run
+            ),
         )
 
     def low_confidence_trigger(
@@ -120,6 +137,7 @@ class AutoStrictVerifier:
         managed_result,
         managed_observations: list[RankObservation],
         previous_observations: list[RankObservation],
+        allow_upstream: bool = True,
     ) -> StrictVerificationOutcome:
         triggers = self._policy.evaluate(
             managed_observations=managed_observations,
@@ -136,6 +154,7 @@ class AutoStrictVerifier:
             search_depth=search_depth,
             asins=asins,
             triggers=triggers,
+            allow_upstream=allow_upstream,
         )
 
     async def verify_for_triggers(
@@ -149,6 +168,7 @@ class AutoStrictVerifier:
         search_depth: int,
         asins: list[str],
         triggers: list[str],
+        allow_upstream: bool = True,
     ) -> StrictVerificationOutcome:
         if not triggers:
             return StrictVerificationOutcome()
@@ -188,6 +208,9 @@ class AutoStrictVerifier:
             outcome.cache_hit = True
             outcome.cache_hit_count = 1
         else:
+            if not allow_upstream:
+                outcome.skipped_reason = "probe_budget_exhausted"
+                return outcome
             if self._billing is not None and owner_id is not None:
                 idempotency_key = (
                     f"auto_strict:{reference_id}:{geo_profile.id}"

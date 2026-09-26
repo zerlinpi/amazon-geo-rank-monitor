@@ -33,6 +33,7 @@ class MonitorRepository:
         provider_mode: str,
         auto_strict_enabled: bool | None = None,
         auto_strict_min_confidence: Decimal | float | str | None = None,
+        auto_strict_max_probes_per_run: int | None = None,
         schedule: str | None = None,
     ) -> dict:
         if provider_mode not in {"managed", "strict"}:
@@ -45,6 +46,13 @@ class MonitorRepository:
         if confidence is not None and (confidence <= 0 or confidence > 1):
             raise ValueError(
                 "auto_strict_min_confidence must be greater than 0 and at most 1"
+            )
+        if (
+            auto_strict_max_probes_per_run is not None
+            and auto_strict_max_probes_per_run < 0
+        ):
+            raise ValueError(
+                "auto_strict_max_probes_per_run must be non-negative"
             )
         normalized_schedule = normalize_schedule(schedule)
         normalized_asins = list(
@@ -79,6 +87,9 @@ class MonitorRepository:
                     provider_mode=provider_mode,
                     auto_strict_enabled=auto_strict_enabled,
                     auto_strict_min_confidence=confidence,
+                    auto_strict_max_probes_per_run=(
+                        auto_strict_max_probes_per_run
+                    ),
                     schedule=normalized_schedule,
                 )
             )
@@ -175,6 +186,14 @@ class MonitorRepository:
                             "and at most 1"
                         )
                     row.auto_strict_min_confidence = confidence
+
+            if "auto_strict_max_probes_per_run" in changes:
+                value = changes["auto_strict_max_probes_per_run"]
+                if value is not None and value < 0:
+                    raise ValueError(
+                        "auto_strict_max_probes_per_run must be non-negative"
+                    )
+                row.auto_strict_max_probes_per_run = value
 
             if "schedule" in changes:
                 row.schedule = normalize_schedule(changes["schedule"])
@@ -311,6 +330,9 @@ class MonitorRepository:
             "provider_mode": row.provider_mode,
             "auto_strict_enabled": row.auto_strict_enabled,
             "auto_strict_min_confidence": row.auto_strict_min_confidence,
+            "auto_strict_max_probes_per_run": (
+                row.auto_strict_max_probes_per_run
+            ),
             "schedule": row.schedule,
             "enabled": row.enabled,
             "asins": asins,
