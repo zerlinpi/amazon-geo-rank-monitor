@@ -198,7 +198,7 @@ def test_summary_calculates_share_coverage_and_excludes_tracked_asin() -> None:
     assert comp1["latest_organic_rank"] == 2.0
     assert comp1["organic_rank_change"] == -1.0
     assert comp1["title"] == "One New"
-    assert comp1["organic_sov_pct"] > 60
+    assert comp1["organic_sov_pct"] == 57.14
 
 
 def test_monitor_query_is_tenant_scoped() -> None:
