@@ -27,6 +27,21 @@ function view(row: any) {
 function strictStatus(row: RankRun) {
   const meta = row.verification_metadata
   const requested = meta?.strict_requested_count || 0
+  if (meta?.manual_force_requested) {
+    if (!requested) {
+      return { label: 'Forced · no event', type: 'warning' as const }
+    }
+    if ((meta.strict_succeeded_count || 0) === requested) {
+      return { label: `Forced ${requested}/${requested}`, type: 'success' as const }
+    }
+    if (meta.strict_skipped_count) {
+      return { label: `Forced · skipped ${meta.strict_skipped_count}`, type: 'warning' as const }
+    }
+    return {
+      label: `Forced ${meta.strict_succeeded_count || 0}/${requested}`,
+      type: 'warning' as const,
+    }
+  }
   if (!meta?.auto_strict_enabled) {
     return { label: 'Off', type: 'info' as const }
   }
@@ -52,6 +67,7 @@ function skipReasonLabel(reason?: string | null) {
     probe_budget_exhausted: 'Strict probe budget exhausted',
     already_settled: 'Already settled on a previous attempt',
     previous_attempt_released: 'Previous attempt was released',
+    runtime_kill_switch_disabled: 'Runtime Auto Strict kill switch is disabled',
   }
   return reason ? (labels[reason] || reason) : ''
 }
@@ -68,6 +84,7 @@ function triggerLabel(trigger: string) {
     return `Previously found ASIN disappeared: ${trigger.split(':')[1]}`
   }
   const labels: Record<string, string> = {
+    manual_force: 'Manually forced strict verification',
     managed_probe_failed: 'Managed probe failed',
     geo_country_mismatch: 'IP country mismatch',
     geo_postal_mismatch: 'IP postal mismatch',
@@ -148,19 +165,29 @@ onMounted(load)
           </div>
         </div>
         <el-card
-          v-if="selected.verification_metadata?.auto_strict_enabled"
+          v-if="
+            selected.verification_metadata?.auto_strict_enabled
+            || selected.verification_metadata?.manual_force_requested
+          "
           shadow="never"
           class="mb-5"
         >
           <template #header>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <div class="font-medium">Automatic strict verification</div>
+                <div class="font-medium">Strict verification evidence</div>
                 <div class="text-xs text-muted-foreground mt-1">
-                  Managed anomalies and low-confidence Geo failures are rechecked with the strict browser provider.
+                  Automatic anomalies, low-confidence recovery, and manually forced verification are recorded here.
                 </div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
+                <el-tag
+                  v-if="selected.verification_metadata.manual_force_requested"
+                  type="warning"
+                  effect="plain"
+                >
+                  Manual force
+                </el-tag>
                 <el-tag type="info" effect="plain">
                   Budget {{ selected.verification_metadata.auto_strict_max_upstream_probes_per_run ?? '∞' }}
                 </el-tag>
