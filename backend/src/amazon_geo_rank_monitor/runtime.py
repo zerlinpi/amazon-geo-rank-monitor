@@ -52,6 +52,10 @@ from amazon_geo_rank_monitor.repositories.tenant_repository import TenantReposit
 from amazon_geo_rank_monitor.repositories.worker_status_repository import (
     WorkerStatusRepository,
 )
+from amazon_geo_rank_monitor.verification import (
+    AutoStrictVerificationPolicy,
+    AutoStrictVerifier,
+)
 
 
 class UnavailableProvider:
@@ -64,6 +68,7 @@ class UnavailableProvider:
     ) -> None:
         self.provider_name = provider_name
         self.verification_level = verification_level
+        self.available = False
         self._reason = reason
 
     async def search(self, **_: Any):
@@ -255,6 +260,28 @@ def build_services(settings: AppSettings) -> AppServices:
 
     billing = BillingRepository(engine)
     _seed_credit_packs(billing, settings)
+    provider_registry = ProviderRegistry(
+        managed=_managed_provider(settings),
+        strict=_strict_provider(settings),
+    )
+    auto_strict_verifier = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(
+            enabled=settings.auto_strict_verification_enabled,
+            rank_delta_threshold=settings.auto_strict_rank_delta_threshold,
+            verify_not_found_after_found=(
+                settings.auto_strict_verify_not_found_after_found
+            ),
+            verify_geo_mismatch=settings.auto_strict_verify_geo_mismatch,
+        ),
+        strict_provider=provider_registry.get("strict"),
+        probe_cache=probe_cache,
+        billing_repository=billing,
+        rate_card=RateCard(
+            managed_serp=settings.managed_serp_credit_cost,
+            browser_verified_serp=settings.strict_serp_credit_cost,
+        ),
+        auto_strict_verifier=auto_strict_verifier,
+    )
     return AppServices(
         tenant_repository=tenants,
         geo_repository=geo_repository,
@@ -269,10 +296,7 @@ def build_services(settings: AppSettings) -> AppServices:
             repository=tenants,
             pepper=settings.api_key_pepper,
         ),
-        provider_registry=ProviderRegistry(
-            managed=_managed_provider(settings),
-            strict=_strict_provider(settings),
-        ),
+        provider_registry=provider_registry,
         alert_repository=alert_repository,
         alerts=alerts,
         analytics_repository=analytics_repository,
