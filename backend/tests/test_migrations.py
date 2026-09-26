@@ -104,7 +104,7 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
     rank_run_columns = {
         column["name"] for column in inspector.get_columns("rank_runs")
     }
-    assert {"cache_hit_count"} <= rank_run_columns
+    assert {"cache_hit_count", "verification_metadata"} <= rank_run_columns
     rank_observation_columns = {
         column["name"] for column in inspector.get_columns("rank_observations")
     }
