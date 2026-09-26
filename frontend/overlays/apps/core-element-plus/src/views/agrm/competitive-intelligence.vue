@@ -10,6 +10,7 @@ import { agrmApi } from '@/api/agrm'
 
 defineOptions({ name: 'CompetitiveIntelligence' })
 
+const router = useRouter()
 const loading = ref(false)
 const monitors = ref<Monitor[]>([])
 const geos = ref<GeoProfile[]>([])
@@ -96,6 +97,19 @@ function sparklinePoints(asin: string) {
       return `${x.toFixed(1)},${y.toFixed(1)}`
     })
     .join(' ')
+}
+
+function createCompetitorAlert(asin: string) {
+  if (!selectedMonitorId.value) {
+    return
+  }
+  void router.push({
+    name: 'rankAlerts',
+    query: {
+      monitor: selectedMonitorId.value,
+      competitor: asin,
+    },
+  })
 }
 
 async function loadIntelligence() {
@@ -330,6 +344,17 @@ onMounted(load)
                 vector-effect="non-scaling-stroke"
               />
             </svg>
+          </template>
+        </el-table-column>
+        <el-table-column label="Actions" width="120" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              v-if="!row.tracked"
+              size="small"
+              @click="createCompetitorAlert(row.asin)"
+            >
+              Create alert
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
