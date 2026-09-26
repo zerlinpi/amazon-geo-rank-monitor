@@ -23,6 +23,7 @@ class RankWorker:
         worker_status_repository=None,
         alert_service=None,
         probe_cache=None,
+        auto_strict_verifier=None,
         worker_id: str = "rank-worker",
         lease_seconds: float = 900.0,
         retry_base_seconds: float = 30.0,
@@ -36,6 +37,7 @@ class RankWorker:
         self._worker_status = worker_status_repository
         self._alerts = alert_service
         self._probe_cache = probe_cache
+        self._auto_strict_verifier = auto_strict_verifier
         self._worker_id = worker_id
         self._lease_seconds = lease_seconds
         self._retry_base_seconds = retry_base_seconds
@@ -140,11 +142,13 @@ class RankWorker:
                 repository=self._rank_repository,
                 probe_cache=self._probe_cache,
                 provider_mode=job["provider_mode"],
+                strict_verifier=self._auto_strict_verifier,
             )
             result = await service.check_with_result(
                 request,
                 owner_id=job["owner_id"],
                 prepared_cache=prepared_cache,
+                verification_reference_id=f"job:{job['id']}",
             )
 
             if reservation is not None:
@@ -152,7 +156,7 @@ class RankWorker:
                     reservation["id"],
                     credits_used=self._rate_card.quote(
                         job["provider_mode"],
-                        result.upstream_probe_count,
+                        result.primary_upstream_probe_count,
                     ),
                 )
 

@@ -57,6 +57,7 @@ async def execute_rank_check(
         search_depth=search_depth,
     )
     provider = services.provider_registry.get(provider_mode)
+    reference_id = reference_id or uuid4().hex
     prepared_cache = {}
     probe_cache = getattr(services, "probe_cache", None)
     if probe_cache is not None:
@@ -83,6 +84,7 @@ async def execute_rank_check(
             "competitive_intelligence",
             None,
         ),
+        strict_verifier=getattr(services, "auto_strict_verifier", None),
     )
 
     billing = getattr(services, "billing_repository", None)
@@ -93,7 +95,6 @@ async def execute_rank_check(
         0,
     )
     if billing is not None and reserve_probe_count > 0:
-        reference_id = reference_id or uuid4().hex
         reservation = billing.reserve(
             owner_id=owner_id,
             credits=rate_card.quote(provider_mode, reserve_probe_count),
@@ -107,6 +108,7 @@ async def execute_rank_check(
             request,
             owner_id=owner_id,
             prepared_cache=prepared_cache,
+            verification_reference_id=reference_id,
         )
     except Exception:
         if reservation is not None:
@@ -118,7 +120,7 @@ async def execute_rank_check(
             reservation["id"],
             credits_used=rate_card.quote(
                 provider_mode,
-                result.upstream_probe_count,
+                result.primary_upstream_probe_count,
             ),
         )
     return result
@@ -159,6 +161,23 @@ def serialize_execution_result(result) -> dict:
             "upstream_probe_count": result.upstream_probe_count,
             "cache_hit_count": result.cache_hit_count,
             "billable_probe_count": result.upstream_probe_count,
+            "primary_upstream_probe_count": result.primary_upstream_probe_count,
+            "primary_cache_hit_count": result.primary_cache_hit_count,
+            "strict_verification_upstream_probe_count": (
+                result.strict_verification_upstream_probe_count
+            ),
+            "strict_verification_cache_hit_count": (
+                result.strict_verification_cache_hit_count
+            ),
+        },
+        "verification": {
+            "auto_strict_events": result.verification_events,
+            "strict_attempted": any(
+                item.get("attempted") for item in result.verification_events
+            ),
+            "strict_succeeded": any(
+                item.get("succeeded") for item in result.verification_events
+            ),
         },
         "observations": [
             item.model_dump(mode="json") for item in result.observations

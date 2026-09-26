@@ -464,6 +464,11 @@ class RankRunRow(Base):
     requested_probe_count: Mapped[int] = mapped_column(Integer, nullable=False)
     settled_probe_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cache_hit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    verification_metadata: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
     error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

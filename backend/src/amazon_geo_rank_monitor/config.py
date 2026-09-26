@@ -76,6 +76,10 @@ class AppSettings(BaseSettings):
     mcp_tenant_id: str | None = None
     managed_serp_credit_cost: int = 1
     strict_serp_credit_cost: int = 5
+    auto_strict_verification_enabled: bool = False
+    auto_strict_rank_delta_threshold: int = 20
+    auto_strict_verify_not_found_after_found: bool = True
+    auto_strict_verify_geo_mismatch: bool = True
     probe_cache_managed_ttl_seconds: int = 300
     probe_cache_strict_ttl_seconds: int = 0
     probe_cache_retention_hours: int = 24

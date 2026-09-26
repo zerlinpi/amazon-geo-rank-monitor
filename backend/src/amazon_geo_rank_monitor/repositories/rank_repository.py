@@ -89,6 +89,7 @@ class RankRepository:
         status: str,
         settled_probe_count: int,
         cache_hit_count: int = 0,
+        verification_metadata: dict | None = None,
         error_summary: str | None = None,
     ) -> None:
         with self._sessions.begin() as session:
@@ -98,6 +99,7 @@ class RankRepository:
             row.status = status
             row.settled_probe_count = settled_probe_count
             row.cache_hit_count = cache_hit_count
+            row.verification_metadata = verification_metadata or {}
             row.error_summary = error_summary
             row.completed_at = datetime.now(UTC)
 
@@ -110,6 +112,77 @@ class RankRepository:
             if run is None:
                 raise KeyError(f"rank run not found: {run_id}")
             return self._serialize_run(session, run)
+
+    def previous_observations(
+        self,
+        *,
+        owner_id: str | None,
+        marketplace: str,
+        keyword: str,
+        geo_profile_id: str,
+        exclude_run_id: str,
+    ) -> list[RankObservation]:
+        with self._sessions() as session:
+            statement = (
+                select(RankRunRow)
+                .where(
+                    RankRunRow.marketplace == marketplace,
+                    RankRunRow.keyword == keyword,
+                    RankRunRow.id != exclude_run_id,
+                    RankRunRow.status.in_(("succeeded", "partially_succeeded")),
+                )
+                .order_by(
+                    RankRunRow.completed_at.desc(),
+                    RankRunRow.started_at.desc(),
+                )
+                .limit(1)
+            )
+            if owner_id is None:
+                statement = statement.where(RankRunRow.owner_id.is_(None))
+            else:
+                statement = statement.where(RankRunRow.owner_id == owner_id)
+            previous_run = session.scalar(statement)
+            if previous_run is None:
+                return []
+
+            rows = session.scalars(
+                select(RankObservationRow)
+                .where(
+                    RankObservationRow.rank_run_id == previous_run.id,
+                    RankObservationRow.geo_profile_id == geo_profile_id,
+                )
+                .order_by(RankObservationRow.id)
+            ).all()
+
+            preferred: dict[str, RankObservationRow] = {}
+            for row in rows:
+                current = preferred.get(row.asin)
+                if current is None or (
+                    row.verification_level == "strict"
+                    and current.verification_level != "strict"
+                ):
+                    preferred[row.asin] = row
+
+            return [
+                RankObservation(
+                    asin=row.asin,
+                    geo_profile_id=row.geo_profile_id,
+                    provider=row.provider,
+                    verification_level=row.verification_level,
+                    status=row.status,
+                    found=row.found,
+                    organic_rank=row.organic_rank,
+                    absolute_rank=row.absolute_rank,
+                    sponsored_rank=row.sponsored_rank,
+                    effective_rank=row.effective_rank,
+                    page=row.page,
+                    observed_at=row.observed_at,
+                    raw_result_reference=row.raw_result_reference,
+                    probe_source=row.probe_source,
+                    cache_age_seconds=row.cache_age_seconds,
+                )
+                for row in preferred.values()
+            ]
 
     @staticmethod
     def _serialize_run(session: Session, run: RankRunRow) -> dict:
@@ -132,6 +205,7 @@ class RankRepository:
             "requested_probe_count": run.requested_probe_count,
             "settled_probe_count": run.settled_probe_count,
             "cache_hit_count": run.cache_hit_count,
+            "verification_metadata": run.verification_metadata or {},
             "error_summary": run.error_summary,
             "started_at": run.started_at,
             "completed_at": run.completed_at,

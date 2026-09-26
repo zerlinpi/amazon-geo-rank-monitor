@@ -29,12 +29,14 @@ class RankMonitorService:
         probe_cache=None,
         provider_mode: str | None = None,
         competitive_intelligence=None,
+        strict_verifier=None,
     ) -> None:
         self._provider = provider
         self._repository = repository
         self._probe_cache = probe_cache
         self._provider_mode = provider_mode
         self._competitive_intelligence = competitive_intelligence
+        self._strict_verifier = strict_verifier
 
     async def check(self, request: RankCheckRequest) -> list[RankSnapshot]:
         return (await self.check_with_result(request)).snapshots
@@ -45,6 +47,7 @@ class RankMonitorService:
         *,
         owner_id: str | None = None,
         prepared_cache: dict[str, Any] | None = None,
+        verification_reference_id: str | None = None,
     ) -> RankExecutionResult:
         if not request.geo_profiles:
             raise ValueError("at least one geo profile is required")
@@ -56,10 +59,14 @@ class RankMonitorService:
             owner_id=owner_id,
         )
         observations: list[RankObservation] = []
+        preferred_observations: list[RankObservation] = []
         errors: list[str] = []
+        verification_events: list[dict] = []
         successful_probe_count = 0
-        upstream_probe_count = 0
-        cache_hit_count = 0
+        primary_upstream_probe_count = 0
+        primary_cache_hit_count = 0
+        strict_upstream_probe_count = 0
+        strict_cache_hit_count = 0
 
         prepared_cache = prepared_cache or {}
         for geo_profile in request.geo_profiles:
@@ -88,7 +95,7 @@ class RankMonitorService:
 
             if cache_hit is not None:
                 result = cache_hit.result
-                cache_hit_count += 1
+                primary_cache_hit_count += 1
             else:
                 try:
                     result = await self._provider.search(
@@ -101,7 +108,7 @@ class RankMonitorService:
                 except RankMonitorError as exc:
                     errors.append(f"{geo_profile.id}: {exc}")
                     continue
-                upstream_probe_count += 1
+                primary_upstream_probe_count += 1
                 if self._probe_cache is not None and self._provider_mode is not None:
                     try:
                         self._probe_cache.store(
@@ -181,18 +188,85 @@ class RankMonitorService:
                     )
                     for observation in geo_observations
                 ]
-            self._repository.save_observations(run_id, geo_observations)
-            observations.extend(geo_observations)
+
+            persisted_geo_observations = list(geo_observations)
+            preferred_geo_observations = list(geo_observations)
+
+            if (
+                self._provider_mode == "managed"
+                and self._strict_verifier is not None
+                and getattr(self._strict_verifier, "enabled", False)
+            ):
+                previous_observations: list[RankObservation] = []
+                if hasattr(self._repository, "previous_observations"):
+                    try:
+                        previous_observations = (
+                            self._repository.previous_observations(
+                                owner_id=owner_id,
+                                marketplace=request.marketplace,
+                                keyword=request.keyword,
+                                geo_profile_id=geo_profile.id,
+                                exclude_run_id=run_id,
+                            )
+                        )
+                    except Exception:
+                        logger.exception(
+                            "auto_strict_history_lookup_failed "
+                            "owner_id=%s run_id=%s geo_profile_id=%s",
+                            owner_id,
+                            run_id,
+                            geo_profile.id,
+                        )
+
+                outcome = await self._strict_verifier.verify_if_needed(
+                    owner_id=owner_id,
+                    reference_id=verification_reference_id or run_id,
+                    marketplace=request.marketplace,
+                    keyword=request.keyword,
+                    geo_profile=geo_profile,
+                    search_depth=request.search_depth,
+                    asins=request.asins,
+                    managed_result=result,
+                    managed_observations=geo_observations,
+                    previous_observations=previous_observations,
+                )
+                if outcome.requested:
+                    verification_events.append(
+                        outcome.as_dict(geo_profile_id=geo_profile.id)
+                    )
+                strict_upstream_probe_count += outcome.upstream_probe_count
+                strict_cache_hit_count += outcome.cache_hit_count
+                if outcome.observations:
+                    persisted_geo_observations.extend(outcome.observations)
+                    if outcome.succeeded:
+                        preferred_geo_observations = list(outcome.observations)
+                if outcome.error:
+                    errors.append(
+                        f"strict:{geo_profile.id}: {outcome.error}"
+                    )
+
+            self._repository.save_observations(
+                run_id,
+                persisted_geo_observations,
+            )
+            observations.extend(persisted_geo_observations)
+            preferred_observations.extend(preferred_geo_observations)
             successful_probe_count += 1
 
         snapshots: list[RankSnapshot] = []
         if successful_probe_count:
             for asin in request.asins:
-                asin_observations = [obs for obs in observations if obs.asin == asin]
+                asin_observations = [
+                    obs for obs in preferred_observations if obs.asin == asin
+                ]
                 if not asin_observations:
                     continue
                 snapshots.append(
-                    calculate_weighted_rank(asin, asin_observations, request.geo_profiles)
+                    calculate_weighted_rank(
+                        asin,
+                        asin_observations,
+                        request.geo_profiles,
+                    )
                 )
             if snapshots:
                 self._repository.save_snapshots(run_id, snapshots)
@@ -204,11 +278,36 @@ class RankMonitorService:
         else:
             status = "partially_succeeded"
 
+        upstream_probe_count = (
+            primary_upstream_probe_count + strict_upstream_probe_count
+        )
+        cache_hit_count = primary_cache_hit_count + strict_cache_hit_count
+        verification_metadata = {
+            "auto_strict_enabled": bool(
+                self._provider_mode == "managed"
+                and self._strict_verifier is not None
+                and getattr(self._strict_verifier, "enabled", False)
+            ),
+            "strict_requested_count": len(verification_events),
+            "strict_attempted_count": sum(
+                1 for item in verification_events if item.get("attempted")
+            ),
+            "strict_succeeded_count": sum(
+                1 for item in verification_events if item.get("succeeded")
+            ),
+            "strict_skipped_count": sum(
+                1
+                for item in verification_events
+                if item.get("skipped_reason") is not None
+            ),
+            "events": verification_events,
+        }
         self._repository.complete_run(
             run_id,
             status=status,
             settled_probe_count=upstream_probe_count,
             cache_hit_count=cache_hit_count,
+            verification_metadata=verification_metadata,
             error_summary="; ".join(errors) if errors else None,
         )
         return RankExecutionResult(
@@ -220,4 +319,9 @@ class RankMonitorService:
             requested_probe_count=len(request.geo_profiles),
             upstream_probe_count=upstream_probe_count,
             cache_hit_count=cache_hit_count,
+            primary_upstream_probe_count=primary_upstream_probe_count,
+            primary_cache_hit_count=primary_cache_hit_count,
+            strict_verification_upstream_probe_count=strict_upstream_probe_count,
+            strict_verification_cache_hit_count=strict_cache_hit_count,
+            verification_events=verification_events,
         )
