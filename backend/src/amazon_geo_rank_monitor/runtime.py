@@ -280,7 +280,6 @@ def build_services(settings: AppSettings) -> AppServices:
             managed_serp=settings.managed_serp_credit_cost,
             browser_verified_serp=settings.strict_serp_credit_cost,
         ),
-        auto_strict_verifier=auto_strict_verifier,
     )
     return AppServices(
         tenant_repository=tenants,
@@ -308,6 +307,7 @@ def build_services(settings: AppSettings) -> AppServices:
             managed_serp=settings.managed_serp_credit_cost,
             browser_verified_serp=settings.strict_serp_credit_cost,
         ),
+        auto_strict_verifier=auto_strict_verifier,
         stripe_billing=_stripe_billing(billing, settings),
         database_engine=engine,
         worker_status_repository=worker_status_repository,
