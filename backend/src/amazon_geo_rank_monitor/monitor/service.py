@@ -389,7 +389,11 @@ class RankMonitorService:
             "auto_strict_enabled": bool(
                 self._provider_mode == "managed"
                 and self._strict_verifier is not None
-                and getattr(self._strict_verifier, "enabled", False)
+                and getattr(
+                    self._strict_verifier,
+                    "automatic_enabled",
+                    getattr(self._strict_verifier, "enabled", False),
+                )
             ),
             "auto_strict_min_confidence": (
                 str(self._strict_verifier.min_confidence)
