@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.domain.errors import (
@@ -67,6 +68,17 @@ class AutoStrictVerifier:
     def enabled(self) -> bool:
         return self._policy.enabled
 
+    def low_confidence_trigger(
+        self,
+        *,
+        successful_weight: Decimal,
+        total_weight: Decimal,
+    ) -> str | None:
+        return self._policy.low_confidence_trigger(
+            successful_weight=successful_weight,
+            total_weight=total_weight,
+        )
+
     async def verify_if_needed(
         self,
         *,
@@ -87,12 +99,35 @@ class AutoStrictVerifier:
             geo_profile=geo_profile,
             geo_metadata=managed_result.geo_metadata,
         )
+        return await self.verify_for_triggers(
+            owner_id=owner_id,
+            reference_id=reference_id,
+            marketplace=marketplace,
+            keyword=keyword,
+            geo_profile=geo_profile,
+            search_depth=search_depth,
+            asins=asins,
+            triggers=triggers,
+        )
+
+    async def verify_for_triggers(
+        self,
+        *,
+        owner_id: str | None,
+        reference_id: str,
+        marketplace: str,
+        keyword: str,
+        geo_profile: GeoProfile,
+        search_depth: int,
+        asins: list[str],
+        triggers: list[str],
+    ) -> StrictVerificationOutcome:
         if not triggers:
             return StrictVerificationOutcome()
 
         outcome = StrictVerificationOutcome(
             requested=True,
-            triggers=triggers,
+            triggers=list(dict.fromkeys(triggers)),
         )
         if not getattr(self._provider, "available", True):
             outcome.skipped_reason = "strict_provider_unavailable"
@@ -112,7 +147,8 @@ class AutoStrictVerifier:
                 )
             except Exception:
                 logger.exception(
-                    "auto_strict_cache_lookup_failed owner_id=%s geo_profile_id=%s",
+                    "auto_strict_cache_lookup_failed "
+                    "owner_id=%s geo_profile_id=%s",
                     owner_id,
                     geo_profile.id,
                 )
@@ -192,7 +228,8 @@ class AutoStrictVerifier:
                     )
                 except Exception:
                     logger.exception(
-                        "auto_strict_cache_store_failed owner_id=%s geo_profile_id=%s",
+                        "auto_strict_cache_store_failed "
+                        "owner_id=%s geo_profile_id=%s",
                         owner_id,
                         geo_profile.id,
                     )

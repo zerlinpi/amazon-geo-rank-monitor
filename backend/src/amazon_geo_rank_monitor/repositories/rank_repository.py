@@ -243,7 +243,11 @@ class RankRepository:
         }
 
 
-    def verification_summary(self) -> dict[str, int]:
+    def verification_summary(
+        self,
+        *,
+        owner_id: str | None = None,
+    ) -> dict[str, int]:
         totals = {
             "strict_requested": 0,
             "strict_attempted": 0,
@@ -251,9 +255,10 @@ class RankRepository:
             "strict_skipped": 0,
         }
         with self._sessions() as session:
-            rows = session.scalars(
-                select(RankRunRow.verification_metadata)
-            ).all()
+            statement = select(RankRunRow.verification_metadata)
+            if owner_id is not None:
+                statement = statement.where(RankRunRow.owner_id == owner_id)
+            rows = session.scalars(statement).all()
         for metadata in rows:
             if not isinstance(metadata, dict):
                 continue

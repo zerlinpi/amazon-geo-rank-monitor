@@ -280,7 +280,6 @@ async def test_auto_strict_insufficient_credits_keeps_managed_result() -> None:
     }
 
 
-
 class FailingStrictProvider:
     provider_name = "strict-failing"
 
@@ -342,4 +341,54 @@ async def test_auto_strict_failure_preserves_managed_success_and_releases_credit
         "balance": 8,
         "reserved": 0,
         "available": 8,
+    }
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_recovers_failed_geo_with_billed_strict_probe() -> None:
+    managed = CountingProvider(fail_zip="90001")
+    strict = CountingProvider()
+    services, geo, billing = make_services(
+        managed,
+        strict_provider=strict,
+        auto_strict=True,
+    )
+    ny = add_geo(geo, "ny", "10001")
+    la = add_geo(geo, "la", "90001")
+    billing.grant(
+        owner_id="tenant-1",
+        credits=20,
+        idempotency_key="grant:low-confidence-recovery",
+    )
+
+    result = await execute_rank_check(
+        services=services,
+        owner_id="tenant-1",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        asins=["B0TARGET01"],
+        geo_profile_ids=[ny["id"], la["id"]],
+        search_depth=100,
+        provider_mode="managed",
+        reference_id="low-confidence-recovery",
+    )
+
+    assert result.status == "succeeded"
+    assert result.primary_upstream_probe_count == 1
+    assert result.strict_verification_upstream_probe_count == 1
+    assert result.snapshots[0].confidence == Decimal("1.00")
+    assert {
+        (item.geo_profile_id, item.verification_level.value)
+        for item in result.observations
+    } == {
+        (ny["id"], "managed"),
+        (la["id"], "strict"),
+    }
+    assert "low_confidence:0.50" in result.verification_events[0]["triggers"]
+    assert "managed_probe_failed" in result.verification_events[0]["triggers"]
+    assert result.verification_events[0]["succeeded"] is True
+    assert billing.get_balance("tenant-1") == {
+        "balance": 14,
+        "reserved": 0,
+        "available": 14,
     }

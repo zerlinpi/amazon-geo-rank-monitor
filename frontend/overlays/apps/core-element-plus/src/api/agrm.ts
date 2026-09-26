@@ -566,6 +566,33 @@ export interface AlertEvent {
   deliveries: AlertDelivery[]
 }
 
+export interface VerificationEvent {
+  geo_profile_id: string
+  requested: boolean
+  attempted: boolean
+  succeeded: boolean
+  cache_hit: boolean
+  triggers: string[]
+  skipped_reason?: string | null
+  error?: string | null
+}
+
+export interface VerificationMetadata {
+  auto_strict_enabled?: boolean
+  strict_requested_count?: number
+  strict_attempted_count?: number
+  strict_succeeded_count?: number
+  strict_skipped_count?: number
+  events?: VerificationEvent[]
+}
+
+export interface VerificationSummary {
+  strict_requested: number
+  strict_attempted: number
+  strict_succeeded: number
+  strict_skipped: number
+}
+
 export interface RankRun {
   id: string
   marketplace: string
@@ -574,6 +601,7 @@ export interface RankRun {
   requested_probe_count: number
   settled_probe_count: number
   cache_hit_count: number
+  verification_metadata?: VerificationMetadata
   error_summary?: string | null
   started_at: string
   completed_at?: string | null
@@ -884,6 +912,9 @@ export const agrmApi = {
   ),
   revokeApiKey: (id: string) => data<void>(client.delete('/api/v1/api-keys/' + id)),
   getSystemWorkers: () => data<WorkerStatus[]>(client.get('/api/v1/system/workers')),
+  getVerificationSummary: () => data<VerificationSummary>(
+    client.get('/api/v1/system/verification-summary'),
+  ),
   getQueueSummary: () => data<QueueSummary>(client.get('/api/v1/system/queue')),
   getDeadLetters: (limit = 50) => data<RankJob[]>(
     client.get('/api/v1/system/dead-letters', { params: { limit } }),

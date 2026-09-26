@@ -82,6 +82,20 @@ def list_audit_events(
     )
 
 
+@router.get("/verification-summary")
+def verification_summary(
+    request: Request,
+    owner_id: str = Depends(require_scope("system:read")),
+):
+    repository = get_services(request).rank_repository
+    if repository is None or not hasattr(repository, "verification_summary"):
+        raise HTTPException(
+            status_code=503,
+            detail="verification summary is unavailable",
+        )
+    return repository.verification_summary(owner_id=owner_id)
+
+
 @router.get("/metrics")
 def prometheus_metrics(
     request: Request,

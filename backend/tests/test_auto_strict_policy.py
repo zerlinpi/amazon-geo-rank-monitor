@@ -98,3 +98,19 @@ def test_explicit_geo_mismatch_triggers_strict_verification() -> None:
         "geo_postal_mismatch",
         "delivery_postal_mismatch",
     ]
+
+
+def test_low_confidence_trigger_uses_configured_weight_threshold() -> None:
+    policy = AutoStrictVerificationPolicy(
+        enabled=True,
+        min_confidence=Decimal("0.75"),
+    )
+
+    assert policy.low_confidence_trigger(
+        successful_weight=Decimal("60"),
+        total_weight=Decimal("100"),
+    ) == "low_confidence:0.60"
+    assert policy.low_confidence_trigger(
+        successful_weight=Decimal("80"),
+        total_weight=Decimal("100"),
+    ) is None

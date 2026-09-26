@@ -24,6 +24,47 @@ function view(row: any) {
   dialog.value = true
 }
 
+function strictStatus(row: RankRun) {
+  const meta = row.verification_metadata
+  const requested = meta?.strict_requested_count || 0
+  if (!meta?.auto_strict_enabled) {
+    return { label: 'Off', type: 'info' as const }
+  }
+  if (!requested) {
+    return { label: 'Not triggered', type: 'success' as const }
+  }
+  if ((meta.strict_succeeded_count || 0) === requested) {
+    return { label: `Strict ${requested}/${requested}`, type: 'success' as const }
+  }
+  if (meta.strict_skipped_count) {
+    return { label: `Skipped ${meta.strict_skipped_count}`, type: 'warning' as const }
+  }
+  return {
+    label: `Strict ${meta.strict_succeeded_count || 0}/${requested}`,
+    type: 'warning' as const,
+  }
+}
+
+function triggerLabel(trigger: string) {
+  if (trigger.startsWith('low_confidence:')) {
+    return `Low confidence ${Math.round(Number(trigger.split(':')[1]) * 100)}%`
+  }
+  if (trigger.startsWith('rank_movement:')) {
+    const [, asin, delta] = trigger.split(':')
+    return `Rank moved ${asin} by ${delta}`
+  }
+  if (trigger.startsWith('not_found_after_found:')) {
+    return `Previously found ASIN disappeared: ${trigger.split(':')[1]}`
+  }
+  const labels: Record<string, string> = {
+    managed_probe_failed: 'Managed probe failed',
+    geo_country_mismatch: 'IP country mismatch',
+    geo_postal_mismatch: 'IP postal mismatch',
+    delivery_postal_mismatch: 'Delivery postal mismatch',
+  }
+  return labels[trigger] || trigger
+}
+
 onMounted(load)
 </script>
 
@@ -63,6 +104,13 @@ onMounted(load)
             <span v-else>0</span>
           </template>
         </el-table-column>
+        <el-table-column label="Auto verify" width="140">
+          <template #default="{ row }">
+            <el-tag :type="strictStatus(row as RankRun).type" size="small">
+              {{ strictStatus(row as RankRun).label }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="Started" min-width="170">
           <template #default="{ row }">{{ new Date(row.started_at).toLocaleString() }}</template>
         </el-table-column>
@@ -88,6 +136,68 @@ onMounted(load)
             <div class="text-2xl font-semibold mt-1">{{ selected.cache_hit_count }}</div>
           </div>
         </div>
+        <el-card
+          v-if="selected.verification_metadata?.auto_strict_enabled"
+          shadow="never"
+          class="mb-5"
+        >
+          <template #header>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div class="font-medium">Automatic strict verification</div>
+                <div class="text-xs text-muted-foreground mt-1">
+                  Managed anomalies and low-confidence Geo failures are rechecked with the strict browser provider.
+                </div>
+              </div>
+              <el-tag :type="strictStatus(selected).type">
+                {{ strictStatus(selected).label }}
+              </el-tag>
+            </div>
+          </template>
+          <div
+            v-if="selected.verification_metadata.events?.length"
+            class="space-y-3"
+          >
+            <div
+              v-for="event in selected.verification_metadata.events"
+              :key="event.geo_profile_id + event.triggers.join(':')"
+              class="rounded-lg border p-3"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="font-mono text-xs">{{ event.geo_profile_id }}</div>
+                <div class="flex items-center gap-2">
+                  <el-tag v-if="event.cache_hit" type="success" size="small">Strict cache</el-tag>
+                  <el-tag
+                    :type="event.succeeded ? 'success' : event.skipped_reason ? 'warning' : 'danger'"
+                    size="small"
+                  >
+                    {{ event.succeeded ? 'Verified' : event.skipped_reason ? 'Skipped' : 'Failed' }}
+                  </el-tag>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2 mt-3">
+                <el-tag
+                  v-for="trigger in event.triggers"
+                  :key="trigger"
+                  type="info"
+                  size="small"
+                  effect="plain"
+                >
+                  {{ triggerLabel(trigger) }}
+                </el-tag>
+              </div>
+              <div v-if="event.skipped_reason" class="text-xs text-muted-foreground mt-2">
+                Skip reason: {{ event.skipped_reason }}
+              </div>
+              <div v-if="event.error" class="text-xs text-red-500 mt-2">
+                {{ event.error }}
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-sm text-muted-foreground">
+            No strict verification was required for this run.
+          </div>
+        </el-card>
         <div class="grid gap-3 mb-5 sm:grid-cols-2 xl:grid-cols-4">
           <el-card v-for="snapshot in selected.snapshots" :key="snapshot.asin" shadow="never">
             <div class="font-mono text-xs text-muted-foreground">{{ snapshot.asin }}</div>
@@ -104,7 +214,16 @@ onMounted(load)
           <el-table-column prop="absolute_rank" label="Absolute" width="100" />
           <el-table-column prop="sponsored_rank" label="Sponsored" width="110" />
           <el-table-column prop="provider" label="Provider" width="120" />
-          <el-table-column prop="verification_level" label="Verification" width="130" />
+          <el-table-column label="Verification" width="130">
+            <template #default="{ row }">
+              <el-tag
+                :type="row.verification_level === 'strict' ? 'success' : 'info'"
+                size="small"
+              >
+                {{ row.verification_level }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="Source" width="150">
             <template #default="{ row }">
               <el-tag :type="row.probe_source === 'cache' ? 'success' : 'info'" size="small">

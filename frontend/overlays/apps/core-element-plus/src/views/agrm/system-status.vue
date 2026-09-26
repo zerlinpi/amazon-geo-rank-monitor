@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { AuditEvent, QueueSummary, RankJob, WorkerStatus } from '@/api/agrm'
+import type {
+  AuditEvent,
+  QueueSummary,
+  RankJob,
+  VerificationSummary,
+  WorkerStatus,
+} from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
 
@@ -10,6 +16,12 @@ const queue = ref<QueueSummary>({ counts: {} })
 const workers = ref<WorkerStatus[]>([])
 const deadLetters = ref<RankJob[]>([])
 const auditEvents = ref<AuditEvent[]>([])
+const verification = ref<VerificationSummary>({
+  strict_requested: 0,
+  strict_attempted: 0,
+  strict_succeeded: 0,
+  strict_skipped: 0,
+})
 let timer: ReturnType<typeof setInterval> | undefined
 
 const pending = computed(() => queue.value.counts.pending || 0)
@@ -51,16 +63,24 @@ async function load(showLoading = true) {
     loading.value = true
   }
   try {
-    const [queueResult, workerResult, deadLetterResult, auditResult] = await Promise.all([
+    const [
+      queueResult,
+      workerResult,
+      deadLetterResult,
+      auditResult,
+      verificationResult,
+    ] = await Promise.all([
       agrmApi.getQueueSummary(),
       agrmApi.getSystemWorkers(),
       agrmApi.getDeadLetters(100),
       agrmApi.getAuditEvents(100),
+      agrmApi.getVerificationSummary(),
     ])
     queue.value = queueResult
     workers.value = workerResult
     deadLetters.value = deadLetterResult
     auditEvents.value = auditResult
+    verification.value = verificationResult
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Failed to load system status')
@@ -135,6 +155,35 @@ onUnmounted(() => {
         <div class="text-3xl font-semibold mt-2">{{ oldestPending }}</div>
       </el-card>
     </div>
+
+    <el-card shadow="never">
+      <template #header>
+        <div>
+          <div class="font-medium">Automatic strict verification</div>
+          <div class="text-xs text-muted-foreground mt-1">
+            Current workspace totals for anomaly and low-confidence recovery.
+          </div>
+        </div>
+      </template>
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-lg border p-4">
+          <div class="text-sm text-muted-foreground">Requested</div>
+          <div class="text-3xl font-semibold mt-2">{{ verification.strict_requested }}</div>
+        </div>
+        <div class="rounded-lg border p-4">
+          <div class="text-sm text-muted-foreground">Attempted upstream</div>
+          <div class="text-3xl font-semibold mt-2">{{ verification.strict_attempted }}</div>
+        </div>
+        <div class="rounded-lg border p-4">
+          <div class="text-sm text-muted-foreground">Succeeded</div>
+          <div class="text-3xl font-semibold mt-2">{{ verification.strict_succeeded }}</div>
+        </div>
+        <div class="rounded-lg border p-4">
+          <div class="text-sm text-muted-foreground">Skipped</div>
+          <div class="text-3xl font-semibold mt-2">{{ verification.strict_skipped }}</div>
+        </div>
+      </div>
+    </el-card>
 
     <el-card shadow="never">
       <template #header>
