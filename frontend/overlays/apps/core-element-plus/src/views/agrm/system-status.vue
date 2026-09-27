@@ -82,6 +82,10 @@ const oldestPending = computed(() => {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
 })
 
+function formatUtc(value: string) {
+  return new Date(value).toISOString().replace('T', ' ').replace('.000Z', ' UTC')
+}
+
 function verificationTriggerLabel(value: string) {
   const labels: Record<string, string> = {
     low_confidence: 'Low confidence',
@@ -313,7 +317,7 @@ onUnmounted(() => {
                 : dailyBudgetStatus.utilization_pct + '% of ' + dailyBudgetStatus.limit }}
             </div>
             <div class="mt-1">
-              Resets {{ new Date(dailyBudgetStatus.reset_at).toLocaleString() }}
+              Resets {{ formatUtc(dailyBudgetStatus.reset_at) }}
             </div>
           </div>
         </div>
