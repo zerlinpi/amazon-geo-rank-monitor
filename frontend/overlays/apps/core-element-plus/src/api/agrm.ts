@@ -630,6 +630,47 @@ export interface VerificationSummary {
   strict_skipped: number
 }
 
+export interface VerificationAnalyticsDaily {
+  date: string
+  requested: number
+  attempted: number
+  succeeded: number
+  skipped: number
+  manual_requested: number
+  cache_hits: number
+  recovered_failed_geos: number
+  credits_spent: number
+}
+
+export interface VerificationAnalytics {
+  window: {
+    hours: number
+    since: string
+    until: string
+  }
+  run_count: number
+  strict_requested: number
+  strict_attempted: number
+  strict_succeeded: number
+  strict_skipped: number
+  manual_requested: number
+  automatic_requested: number
+  unclassified_requested: number
+  cache_hits: number
+  recovered_failed_geos: number
+  trigger_counts: Record<string, number>
+  skip_reason_counts: Record<string, number>
+  success_rate_pct: number
+  skip_rate_pct: number
+  billing_available: boolean
+  strict_credit_rate: number
+  billed_strict_probes: number
+  credits_spent: number | null
+  credits_per_success: number | null
+  estimated_cache_savings_credits: number
+  daily: VerificationAnalyticsDaily[]
+}
+
 export interface RankRun {
   id: string
   marketplace: string
@@ -964,6 +1005,9 @@ export const agrmApi = {
   getSystemWorkers: () => data<WorkerStatus[]>(client.get('/api/v1/system/workers')),
   getVerificationSummary: () => data<VerificationSummary>(
     client.get('/api/v1/system/verification-summary'),
+  ),
+  getVerificationAnalytics: (hours = 168) => data<VerificationAnalytics>(
+    client.get('/api/v1/system/verification-analytics', { params: { hours } }),
   ),
   getQueueSummary: () => data<QueueSummary>(client.get('/api/v1/system/queue')),
   getDeadLetters: (limit = 50) => data<RankJob[]>(
