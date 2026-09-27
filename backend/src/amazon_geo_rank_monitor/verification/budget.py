@@ -130,7 +130,10 @@ def evaluate_daily_budget_pacing(
 
     # Let the authoritative hard-cap reservation path report exhaustion when
     # even one more probe would exceed the configured daily limit.
-    if probe_credits <= 0 or required > int(limit):
+    if probe_credits <= 0:
+        return result
+    if required > int(limit):
+        result["reason"] = "hard_cap_authoritative"
         return result
 
     if required > allowance:
