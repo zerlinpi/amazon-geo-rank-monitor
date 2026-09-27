@@ -326,6 +326,32 @@ onUnmounted(() => {
           class="mt-3"
           :percentage="Math.min(dailyBudgetStatus.utilization_pct, 100)"
         />
+        <div
+          v-if="dailyBudgetStatus.forecast.available"
+          class="grid gap-3 mt-3 sm:grid-cols-3"
+        >
+          <div class="rounded border p-3">
+            <div class="text-xs text-muted-foreground">Burn rate</div>
+            <div class="font-semibold mt-1">
+              {{ dailyBudgetStatus.forecast.burn_rate_credits_per_hour }} credits/hour
+            </div>
+          </div>
+          <div class="rounded border p-3">
+            <div class="text-xs text-muted-foreground">Projected EOD</div>
+            <div class="font-semibold mt-1">
+              {{ dailyBudgetStatus.forecast.projected_committed_credits }} credits
+              · {{ dailyBudgetStatus.forecast.projected_utilization_pct }}%
+            </div>
+          </div>
+          <div class="rounded border p-3">
+            <div class="text-xs text-muted-foreground">Estimated exhaustion</div>
+            <div class="font-semibold mt-1">
+              {{ dailyBudgetStatus.forecast.estimated_exhaustion_at
+                ? formatUtc(dailyBudgetStatus.forecast.estimated_exhaustion_at)
+                : 'Not projected today' }}
+            </div>
+          </div>
+        </div>
         <el-alert
           v-if="dailyBudgetStatus.limit != null && dailyBudgetStatus.remaining_credits === 0"
           class="mt-3"
