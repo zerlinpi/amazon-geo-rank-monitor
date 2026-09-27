@@ -2,9 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
-from amazon_geo_rank_monitor.billing.rate_card import RateCard
-
 from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
+from amazon_geo_rank_monitor.billing.rate_card import RateCard
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 
