@@ -4,8 +4,8 @@ from sqlalchemy.pool import StaticPool
 
 from amazon_geo_rank_monitor.api.app import AppServices, create_app
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
-from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
+from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.domain.models import SerpResult
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
