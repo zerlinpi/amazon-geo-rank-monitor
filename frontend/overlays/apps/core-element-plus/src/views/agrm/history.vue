@@ -195,6 +195,20 @@ onMounted(load)
                 <el-tag type="info" effect="plain">
                   Daily credits {{ selected.verification_metadata.auto_strict_daily_credit_budget ?? '∞' }}
                 </el-tag>
+                <el-tag
+                  v-if="selected.verification_metadata.daily_budget_status?.limit != null"
+                  :type="
+                    selected.verification_metadata.daily_budget_status.utilization_pct >= 100
+                      ? 'danger'
+                      : selected.verification_metadata.daily_budget_status.utilization_pct >= 80
+                        ? 'warning'
+                        : 'success'
+                  "
+                  effect="plain"
+                >
+                  Daily used
+                  {{ selected.verification_metadata.daily_budget_status.utilization_pct }}%
+                </el-tag>
                 <el-tag type="info" effect="plain">
                   Attempts {{ selected.verification_metadata.strict_upstream_attempt_count || 0 }}
                 </el-tag>
@@ -204,6 +218,61 @@ onMounted(load)
               </div>
             </div>
           </template>
+          <div
+            v-if="selected.verification_metadata.daily_budget_status?.limit != null"
+            class="mb-4 rounded-lg border p-3"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div class="text-sm font-medium">Completion-time daily budget</div>
+                <div class="text-xs text-muted-foreground mt-1">
+                  Immutable UTC-day budget state captured when this run completed.
+                </div>
+              </div>
+              <el-tag
+                :type="
+                  selected.verification_metadata.daily_budget_status.utilization_pct >= 100
+                    ? 'danger'
+                    : selected.verification_metadata.daily_budget_status.utilization_pct >= 80
+                      ? 'warning'
+                      : 'success'
+                "
+              >
+                {{ selected.verification_metadata.daily_budget_status.utilization_pct }}%
+              </el-tag>
+            </div>
+            <div class="grid gap-2 mt-3 sm:grid-cols-4">
+              <div>
+                <div class="text-xs text-muted-foreground">Settled</div>
+                <div class="font-semibold">
+                  {{ selected.verification_metadata.daily_budget_status.settled_credits }}
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">Reserved</div>
+                <div class="font-semibold">
+                  {{ selected.verification_metadata.daily_budget_status.reserved_credits }}
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">Committed</div>
+                <div class="font-semibold">
+                  {{ selected.verification_metadata.daily_budget_status.committed_credits }}
+                  / {{ selected.verification_metadata.daily_budget_status.limit }}
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">Remaining</div>
+                <div class="font-semibold">
+                  {{ selected.verification_metadata.daily_budget_status.remaining_credits ?? 0 }}
+                </div>
+              </div>
+            </div>
+            <div class="text-xs text-muted-foreground mt-3">
+              Resets {{ new Date(selected.verification_metadata.daily_budget_status.reset_at).toLocaleString() }}
+            </div>
+          </div>
+
           <div
             v-if="selected.verification_metadata.events?.length"
             class="space-y-3"
