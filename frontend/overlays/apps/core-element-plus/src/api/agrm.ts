@@ -632,6 +632,7 @@ export interface VerificationMetadata {
   auto_strict_min_confidence?: string | number | null
   auto_strict_max_upstream_probes_per_run?: number | null
   auto_strict_daily_credit_budget?: number | null
+  daily_budget_status?: WorkspaceVerificationBudgetStatus | null
   strict_upstream_attempt_count?: number
   strict_requested_count?: number
   strict_attempted_count?: number
