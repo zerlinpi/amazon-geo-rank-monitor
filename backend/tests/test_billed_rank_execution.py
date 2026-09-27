@@ -489,6 +489,10 @@ async def test_manual_force_verifies_stable_managed_result_and_bills_strict() ->
         auto_strict=True,
         strict_probe_budget=1,
     )
+    services.tenant_repository.update_workspace_verification_policy(
+        owner_id="tenant-1",
+        changes={"daily_credit_budget": 10},
+    )
     ny = add_geo(geo, "ny", "10001")
     billing.grant(
         owner_id="tenant-1",
@@ -525,6 +529,17 @@ async def test_manual_force_verifies_stable_managed_result_and_bills_strict() ->
     assert saved["verification_metadata"]["manual_force_requested"] is True
     assert saved["verification_metadata"]["manual_force_effective"] is True
     assert saved["verification_metadata"]["auto_strict_enabled"] is True
+    budget_status = saved["verification_metadata"][
+        "auto_strict_daily_budget_status"
+    ]
+    assert budget_status["limit"] == 10
+    assert budget_status["settled_credits"] == 5
+    assert budget_status["reserved_credits"] == 0
+    assert budget_status["committed_credits"] == 5
+    assert budget_status["remaining_credits"] == 5
+    assert budget_status["utilization_pct"] == 50.0
+    assert budget_status["window_start"].endswith("T00:00:00+00:00")
+    assert budget_status["reset_at"].endswith("T00:00:00+00:00")
     assert billing.get_balance("tenant-1") == {
         "balance": 4,
         "reserved": 0,
