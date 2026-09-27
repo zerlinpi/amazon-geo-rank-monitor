@@ -208,6 +208,7 @@ async def test_exhausted_probe_budget_still_allows_strict_cache_hits() -> None:
         strict_provider=provider,
         probe_cache=StrictCacheHitService(),
         max_upstream_probes_per_run=0,
+        daily_budget_pacing_enabled=True,
     )
 
     outcome = await verifier.verify_for_triggers(
@@ -227,6 +228,103 @@ async def test_exhausted_probe_budget_still_allows_strict_cache_hits() -> None:
     assert outcome.cache_hit_count == 1
     assert outcome.upstream_probe_count == 0
     assert provider.calls == 0
+
+
+class SuccessfulStrictProvider:
+    provider_name = "strict-success"
+    verification_level = VerificationLevel.STRICT
+    available = True
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def search(self, **kwargs):
+        self.calls += 1
+        return SerpResult(
+            organic_products=[
+                SerpProduct(asin="B0TARGET01", position=2),
+            ]
+        )
+
+
+@pytest.mark.asyncio
+async def test_forecast_pacing_defers_paid_automatic_probe(monkeypatch) -> None:
+    provider = NeverCalledStrictProvider()
+    verifier = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(enabled=True),
+        strict_provider=provider,
+        daily_credit_budget=100,
+        daily_budget_pacing_enabled=True,
+    )
+
+    monkeypatch.setattr(
+        "amazon_geo_rank_monitor.verification.service.build_daily_budget_status",
+        lambda **kwargs: {
+            "pacing": {
+                "defer_next_probe": True,
+                "resume_at": "2026-09-27T15:36:00+00:00",
+                "allowance_credits": 50,
+            }
+        },
+    )
+
+    outcome = await verifier.verify_for_triggers(
+        owner_id="tenant-1",
+        reference_id="paced-run",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        geo_profile=geo(),
+        search_depth=100,
+        asins=["B0TARGET01"],
+        triggers=["rank_movement:B0TARGET01:25"],
+    )
+
+    assert outcome.requested is True
+    assert outcome.attempted is False
+    assert outcome.skipped_reason == "daily_budget_pacing_deferred"
+    assert outcome.pacing_allowance_credits == 50
+    assert outcome.pacing_resume_at == "2026-09-27T15:36:00+00:00"
+    assert provider.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_manual_force_bypasses_forecast_pacing(monkeypatch) -> None:
+    provider = SuccessfulStrictProvider()
+    verifier = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(enabled=True),
+        strict_provider=provider,
+        daily_credit_budget=100,
+        daily_budget_pacing_enabled=True,
+    )
+
+    def fail_if_pacing_checked(**kwargs):
+        raise AssertionError("manual force must bypass pacing")
+
+    monkeypatch.setattr(
+        "amazon_geo_rank_monitor.verification.service.build_daily_budget_status",
+        fail_if_pacing_checked,
+    )
+
+    outcome = await verifier.verify_if_needed(
+        owner_id="tenant-1",
+        reference_id="manual-force-paced",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        geo_profile=geo(),
+        search_depth=100,
+        asins=["B0TARGET01"],
+        managed_result=SerpResult(),
+        managed_observations=[observation()],
+        previous_observations=[observation()],
+        force_strict=True,
+    )
+
+    assert outcome.requested is True
+    assert outcome.attempted is True
+    assert outcome.succeeded is True
+    assert outcome.skipped_reason is None
+    assert "manual_force" in outcome.triggers
+    assert provider.calls == 1
 
 
 @pytest.mark.asyncio
