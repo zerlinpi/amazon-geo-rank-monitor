@@ -3,7 +3,7 @@ import type {
   AuditEvent,
   QueueSummary,
   RankJob,
-  VerificationSummary,
+  VerificationAnalytics,
   WorkerStatus,
 } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -16,17 +16,49 @@ const queue = ref<QueueSummary>({ counts: {} })
 const workers = ref<WorkerStatus[]>([])
 const deadLetters = ref<RankJob[]>([])
 const auditEvents = ref<AuditEvent[]>([])
-const verification = ref<VerificationSummary>({
+const verificationHours = ref(168)
+const verification = ref<VerificationAnalytics>({
+  window: { hours: 168, since: '', until: '' },
+  run_count: 0,
   strict_requested: 0,
   strict_attempted: 0,
   strict_succeeded: 0,
   strict_skipped: 0,
+  manual_requested: 0,
+  automatic_requested: 0,
+  unclassified_requested: 0,
+  cache_hits: 0,
+  recovered_failed_geos: 0,
+  trigger_counts: {},
+  skip_reason_counts: {},
+  success_rate_pct: 0,
+  skip_rate_pct: 0,
+  billing_available: false,
+  strict_credit_rate: 0,
+  billed_strict_probes: 0,
+  credits_spent: null,
+  credits_per_success: null,
+  estimated_cache_savings_credits: 0,
+  daily: [],
 })
 let timer: ReturnType<typeof setInterval> | undefined
 
 const pending = computed(() => queue.value.counts.pending || 0)
 const running = computed(() => queue.value.counts.running || 0)
 const deadLetterCount = computed(() => queue.value.counts.dead_letter || 0)
+const verificationTriggerRows = computed(() =>
+  Object.entries(verification.value.trigger_counts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count),
+)
+const verificationSkipRows = computed(() =>
+  Object.entries(verification.value.skip_reason_counts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count),
+)
+const verificationDailyRows = computed(() =>
+  [...verification.value.daily].reverse().slice(0, 14),
+)
 
 const oldestPending = computed(() => {
   if (!queue.value.oldest_pending_at) {
@@ -44,6 +76,32 @@ const oldestPending = computed(() => {
   }
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
 })
+
+function verificationTriggerLabel(value: string) {
+  const labels: Record<string, string> = {
+    low_confidence: 'Low confidence',
+    rank_movement: 'Rank movement',
+    not_found_after_found: 'Previously found → missing',
+    manual_force: 'Manual force',
+    managed_probe_failed: 'Managed probe failed',
+    geo_country_mismatch: 'IP country mismatch',
+    geo_postal_mismatch: 'IP postal mismatch',
+    delivery_postal_mismatch: 'Delivery postal mismatch',
+  }
+  return labels[value] || value
+}
+
+function verificationSkipLabel(value: string) {
+  const labels: Record<string, string> = {
+    insufficient_credits: 'Insufficient credits',
+    probe_budget_exhausted: 'Probe budget exhausted',
+    strict_provider_unavailable: 'Strict provider unavailable',
+    runtime_kill_switch_disabled: 'Runtime kill switch',
+    already_settled: 'Already settled',
+    previous_attempt_released: 'Previous attempt released',
+  }
+  return labels[value] || value
+}
 
 function statusType(status: string): 'danger' | 'info' | 'success' | 'warning' {
   if (['error', 'dead_letter'].includes(status)) {
@@ -74,7 +132,7 @@ async function load(showLoading = true) {
       agrmApi.getSystemWorkers(),
       agrmApi.getDeadLetters(100),
       agrmApi.getAuditEvents(100),
-      agrmApi.getVerificationSummary(),
+      agrmApi.getVerificationAnalytics(verificationHours.value),
     ])
     queue.value = queueResult
     workers.value = workerResult
@@ -158,30 +216,121 @@ onUnmounted(() => {
 
     <el-card shadow="never">
       <template #header>
-        <div>
-          <div class="font-medium">Automatic strict verification</div>
-          <div class="text-xs text-muted-foreground mt-1">
-            Current workspace totals for anomaly and low-confidence recovery.
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div class="font-medium">Strict verification effectiveness</div>
+            <div class="text-xs text-muted-foreground mt-1">
+              Verification outcomes, recovered managed failures, cache savings and exact strict credit spend.
+            </div>
           </div>
+          <el-select
+            v-model="verificationHours"
+            style="width: 150px"
+            @change="load(false)"
+          >
+            <el-option label="Last 24 hours" :value="24" />
+            <el-option label="Last 7 days" :value="168" />
+            <el-option label="Last 30 days" :value="720" />
+            <el-option label="Last 90 days" :value="2160" />
+          </el-select>
         </div>
       </template>
-      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <div class="rounded-lg border p-4">
           <div class="text-sm text-muted-foreground">Requested</div>
           <div class="text-3xl font-semibold mt-2">{{ verification.strict_requested }}</div>
+          <div class="text-xs text-muted-foreground mt-2">
+            {{ verification.automatic_requested }} auto · {{ verification.manual_requested }} manual
+          </div>
         </div>
         <div class="rounded-lg border p-4">
-          <div class="text-sm text-muted-foreground">Attempted upstream</div>
-          <div class="text-3xl font-semibold mt-2">{{ verification.strict_attempted }}</div>
+          <div class="text-sm text-muted-foreground">Success rate</div>
+          <div class="text-3xl font-semibold mt-2">{{ verification.success_rate_pct }}%</div>
+          <div class="text-xs text-muted-foreground mt-2">
+            {{ verification.strict_succeeded }} succeeded · {{ verification.strict_skipped }} skipped
+          </div>
         </div>
         <div class="rounded-lg border p-4">
-          <div class="text-sm text-muted-foreground">Succeeded</div>
-          <div class="text-3xl font-semibold mt-2">{{ verification.strict_succeeded }}</div>
+          <div class="text-sm text-muted-foreground">Recovered Geo failures</div>
+          <div class="text-3xl font-semibold mt-2">{{ verification.recovered_failed_geos }}</div>
+          <div class="text-xs text-muted-foreground mt-2">Managed probe failures rescued by strict</div>
         </div>
         <div class="rounded-lg border p-4">
-          <div class="text-sm text-muted-foreground">Skipped</div>
-          <div class="text-3xl font-semibold mt-2">{{ verification.strict_skipped }}</div>
+          <div class="text-sm text-muted-foreground">Strict credits spent</div>
+          <div class="text-3xl font-semibold mt-2">
+            {{ verification.credits_spent ?? '—' }}
+          </div>
+          <div class="text-xs text-muted-foreground mt-2">
+            {{ verification.billed_strict_probes }} billed probes
+          </div>
         </div>
+        <div class="rounded-lg border p-4">
+          <div class="text-sm text-muted-foreground">Strict cache hits</div>
+          <div class="text-3xl font-semibold mt-2">{{ verification.cache_hits }}</div>
+          <div class="text-xs text-muted-foreground mt-2">
+            ≈ {{ verification.estimated_cache_savings_credits }} credits avoided
+          </div>
+        </div>
+        <div class="rounded-lg border p-4">
+          <div class="text-sm text-muted-foreground">Credits / success</div>
+          <div class="text-3xl font-semibold mt-2">
+            {{ verification.credits_per_success ?? '—' }}
+          </div>
+          <div class="text-xs text-muted-foreground mt-2">
+            Strict upstream rate {{ verification.strict_credit_rate }} credits
+          </div>
+        </div>
+      </div>
+
+      <el-alert
+        v-if="!verification.billing_available"
+        class="mt-4"
+        type="warning"
+        :closable="false"
+        title="Billing attribution is unavailable; verification outcome counts are still accurate."
+      />
+
+      <div class="grid gap-4 mt-5 lg:grid-cols-2">
+        <div class="rounded-lg border p-4">
+          <div class="font-medium mb-3">Trigger breakdown</div>
+          <el-table :data="verificationTriggerRows" size="small" empty-text="No strict triggers in this window">
+            <el-table-column label="Trigger" min-width="210">
+              <template #default="{ row }">{{ verificationTriggerLabel(row.name) }}</template>
+            </el-table-column>
+            <el-table-column prop="count" label="Count" width="90" />
+          </el-table>
+        </div>
+        <div class="rounded-lg border p-4">
+          <div class="font-medium mb-3">Skip reasons</div>
+          <el-table :data="verificationSkipRows" size="small" empty-text="No skipped strict verification">
+            <el-table-column label="Reason" min-width="210">
+              <template #default="{ row }">{{ verificationSkipLabel(row.name) }}</template>
+            </el-table-column>
+            <el-table-column prop="count" label="Count" width="90" />
+          </el-table>
+        </div>
+      </div>
+
+      <div class="rounded-lg border p-4 mt-5">
+        <div class="flex flex-wrap items-end justify-between gap-2 mb-3">
+          <div>
+            <div class="font-medium">Daily verification activity</div>
+            <div class="text-xs text-muted-foreground mt-1">Most recent 14 active days in the selected window.</div>
+          </div>
+          <div class="text-xs text-muted-foreground">
+            {{ verification.run_count }} runs with strict verification activity
+          </div>
+        </div>
+        <el-table :data="verificationDailyRows" size="small" empty-text="No verification activity">
+          <el-table-column prop="date" label="UTC date" min-width="120" />
+          <el-table-column prop="requested" label="Requested" width="100" />
+          <el-table-column prop="succeeded" label="Succeeded" width="100" />
+          <el-table-column prop="skipped" label="Skipped" width="90" />
+          <el-table-column prop="recovered_failed_geos" label="Recovered" width="100" />
+          <el-table-column prop="cache_hits" label="Cache" width="80" />
+          <el-table-column prop="credits_spent" label="Credits" width="90" />
+        </el-table>
       </div>
     </el-card>
 

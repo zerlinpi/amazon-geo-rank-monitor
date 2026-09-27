@@ -211,6 +211,45 @@ class BillingRepository:
             return None
         return self.release(reservation_id)
 
+    def reference_credit_usage(
+        self,
+        *,
+        owner_id: str,
+        reference_type: str,
+        since: datetime,
+        until: datetime,
+    ) -> dict:
+        with self._sessions() as session:
+            rows = session.execute(
+                select(
+                    CreditLedgerEntryRow.created_at,
+                    CreditLedgerEntryRow.delta_credits,
+                ).where(
+                    CreditLedgerEntryRow.owner_id == owner_id,
+                    CreditLedgerEntryRow.entry_type == "settlement",
+                    CreditLedgerEntryRow.reference_type == reference_type,
+                    CreditLedgerEntryRow.created_at >= since,
+                    CreditLedgerEntryRow.created_at <= until,
+                )
+            ).all()
+
+        credits_spent = 0
+        daily: dict[str, int] = {}
+        for created_at, delta_credits in rows:
+            spent = max(-int(delta_credits), 0)
+            credits_spent += spent
+            date_key = created_at.date().isoformat()
+            daily[date_key] = daily.get(date_key, 0) + spent
+
+        return {
+            "settlement_count": len(rows),
+            "credits_spent": credits_spent,
+            "daily": [
+                {"date": key, "credits_spent": daily[key]}
+                for key in sorted(daily)
+            ],
+        }
+
     def list_ledger(self, *, owner_id: str, limit: int = 100) -> list[dict]:
         with self._sessions() as session:
             rows = session.scalars(

@@ -243,6 +243,133 @@ class RankRepository:
         }
 
 
+    @staticmethod
+    def _verification_trigger_category(trigger: str) -> str:
+        for prefix in (
+            "low_confidence:",
+            "rank_movement:",
+            "not_found_after_found:",
+        ):
+            if trigger.startswith(prefix):
+                return prefix.removesuffix(":")
+        return trigger
+
+    def verification_analytics(
+        self,
+        *,
+        owner_id: str,
+        since: datetime,
+        until: datetime,
+    ) -> dict:
+        totals = {
+            "run_count": 0,
+            "strict_requested": 0,
+            "strict_attempted": 0,
+            "strict_succeeded": 0,
+            "strict_skipped": 0,
+            "manual_requested": 0,
+            "automatic_requested": 0,
+            "unclassified_requested": 0,
+            "cache_hits": 0,
+            "recovered_failed_geos": 0,
+        }
+        trigger_counts: dict[str, int] = {}
+        skip_reason_counts: dict[str, int] = {}
+        daily: dict[str, dict] = {}
+
+        with self._sessions() as session:
+            rows = session.execute(
+                select(
+                    RankRunRow.completed_at,
+                    RankRunRow.verification_metadata,
+                ).where(
+                    RankRunRow.owner_id == owner_id,
+                    RankRunRow.completed_at.is_not(None),
+                    RankRunRow.completed_at >= since,
+                    RankRunRow.completed_at <= until,
+                )
+            ).all()
+
+        for completed_at, metadata in rows:
+            if not isinstance(metadata, dict):
+                continue
+            requested = int(metadata.get("strict_requested_count") or 0)
+            attempted = int(metadata.get("strict_attempted_count") or 0)
+            succeeded = int(metadata.get("strict_succeeded_count") or 0)
+            skipped = int(metadata.get("strict_skipped_count") or 0)
+            events = metadata.get("events") or []
+            if not requested and not events:
+                continue
+
+            totals["run_count"] += 1
+            totals["strict_requested"] += requested
+            totals["strict_attempted"] += attempted
+            totals["strict_succeeded"] += succeeded
+            totals["strict_skipped"] += skipped
+
+            date_key = completed_at.date().isoformat()
+            point = daily.setdefault(
+                date_key,
+                {
+                    "date": date_key,
+                    "requested": 0,
+                    "attempted": 0,
+                    "succeeded": 0,
+                    "skipped": 0,
+                    "manual_requested": 0,
+                    "cache_hits": 0,
+                    "recovered_failed_geos": 0,
+                },
+            )
+            point["requested"] += requested
+            point["attempted"] += attempted
+            point["succeeded"] += succeeded
+            point["skipped"] += skipped
+
+            classified_events = 0
+            for event in events:
+                if not isinstance(event, dict):
+                    continue
+                classified_events += 1
+                triggers = [
+                    str(item)
+                    for item in (event.get("triggers") or [])
+                    if str(item)
+                ]
+                is_manual = "manual_force" in triggers
+                if is_manual:
+                    totals["manual_requested"] += 1
+                    point["manual_requested"] += 1
+                else:
+                    totals["automatic_requested"] += 1
+
+                if event.get("cache_hit"):
+                    totals["cache_hits"] += 1
+                    point["cache_hits"] += 1
+
+                if event.get("succeeded") and "managed_probe_failed" in triggers:
+                    totals["recovered_failed_geos"] += 1
+                    point["recovered_failed_geos"] += 1
+
+                for trigger in triggers:
+                    category = self._verification_trigger_category(trigger)
+                    trigger_counts[category] = trigger_counts.get(category, 0) + 1
+
+                skipped_reason = event.get("skipped_reason")
+                if skipped_reason:
+                    key = str(skipped_reason)
+                    skip_reason_counts[key] = skip_reason_counts.get(key, 0) + 1
+
+            if requested > classified_events:
+                totals["unclassified_requested"] += requested - classified_events
+
+        return {
+            **totals,
+            "trigger_counts": dict(sorted(trigger_counts.items())),
+            "skip_reason_counts": dict(sorted(skip_reason_counts.items())),
+            "daily": [daily[key] for key in sorted(daily)],
+        }
+
     def verification_summary(
         self,
         *,
