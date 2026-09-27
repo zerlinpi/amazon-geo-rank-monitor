@@ -554,7 +554,7 @@ export interface AlertRule {
   owner_id: string
   monitor_target_id: string
   name: string
-  rule_type: 'rank_drop' | 'rank_improve' | 'enters_top_n' | 'exits_top_n' | 'not_found' | 'geo_not_found' | 'geo_rank_above' | 'competitor_enters_top_n' | 'competitor_exits_top_n' | 'competitor_sov_gain' | 'competitor_sov_loss' | 'competitor_overtakes_tracked' | 'strict_verification_failed' | 'strict_insufficient_credits' | 'strict_daily_budget_exhausted' | 'strict_probe_budget_exhausted' | 'strict_provider_unavailable' | 'strict_runtime_disabled' | string
+  rule_type: 'rank_drop' | 'rank_improve' | 'enters_top_n' | 'exits_top_n' | 'not_found' | 'geo_not_found' | 'geo_rank_above' | 'competitor_enters_top_n' | 'competitor_exits_top_n' | 'competitor_sov_gain' | 'competitor_sov_loss' | 'competitor_overtakes_tracked' | 'strict_verification_failed' | 'strict_insufficient_credits' | 'strict_daily_budget_exhausted' | 'strict_daily_budget_utilization' | 'strict_probe_budget_exhausted' | 'strict_provider_unavailable' | 'strict_runtime_disabled' | string
   threshold?: string | number | null
   asin?: string | null
   geo_profile_id?: string | null
@@ -632,6 +632,16 @@ export interface VerificationMetadata {
   auto_strict_min_confidence?: string | number | null
   auto_strict_max_upstream_probes_per_run?: number | null
   auto_strict_daily_credit_budget?: number | null
+  auto_strict_daily_budget_status?: {
+    window_start: string
+    reset_at: string
+    limit: number
+    settled_credits: number
+    reserved_credits: number
+    committed_credits: number
+    remaining_credits: number
+    utilization_pct: number
+  } | null
   strict_upstream_attempt_count?: number
   strict_requested_count?: number
   strict_attempted_count?: number
