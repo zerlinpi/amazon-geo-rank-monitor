@@ -67,6 +67,24 @@ retries preserve the exact execution intent. Run evidence records the
 `manual_force` trigger and whether the runtime kill switch allowed the
 verification path.
 
+## Operational alerts
+
+Completed Monitor runs may emit the existing notification pipeline for strict
+verification incidents. These rules use the same encrypted Email / Slack /
+allowlisted webhook destinations, cooldown semantics, and per-run deduplication
+as rank alerts:
+
+- `strict_verification_failed`;
+- `strict_insufficient_credits`;
+- `strict_probe_budget_exhausted`;
+- `strict_provider_unavailable`;
+- `strict_runtime_disabled`.
+
+Verification alerts are probe-level and may optionally be scoped to a Geo.
+They do not accept ASIN scope because one strict SERP probe verifies all tracked
+ASINs for that Geo. Notification delivery remains best-effort and never changes
+an already completed rank job back to failed.
+
 ## Billing
 
 Billing remains probe-based.
