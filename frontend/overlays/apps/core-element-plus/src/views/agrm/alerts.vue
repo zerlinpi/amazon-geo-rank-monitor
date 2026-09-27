@@ -51,6 +51,7 @@ const ruleTypes = [
   { value: 'competitor_overtakes_tracked', label: 'Competitor overtakes tracked ASINs' },
   { value: 'strict_verification_failed', label: 'Strict verification fails' },
   { value: 'strict_insufficient_credits', label: 'Strict skipped · insufficient credits' },
+  { value: 'strict_daily_credit_budget_exhausted', label: 'Strict skipped · daily credit cap exhausted' },
   { value: 'strict_probe_budget_exhausted', label: 'Strict skipped · probe budget exhausted' },
   { value: 'strict_provider_unavailable', label: 'Strict skipped · provider unavailable' },
   { value: 'strict_runtime_disabled', label: 'Strict blocked · runtime kill switch' },
