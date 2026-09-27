@@ -424,7 +424,10 @@ class AlertService:
                     current_value=Decimal(str(runway_minutes)),
                     details={
                         "scope": "verification",
-                        "runway_threshold_minutes": str(threshold),
+                        "runway_threshold_minutes": format(
+                            threshold.normalize(),
+                            "f",
+                        ),
                         "budget_limit": status.get("limit"),
                         "budget_committed_credits": status.get(
                             "committed_credits"
