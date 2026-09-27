@@ -20,6 +20,7 @@ VERIFICATION_TYPES = frozenset(
         "strict_verification_failed",
         "strict_insufficient_credits",
         "strict_daily_budget_exhausted",
+        "strict_daily_budget_near_cap",
         "strict_probe_budget_exhausted",
         "strict_provider_unavailable",
         "strict_runtime_disabled",
@@ -61,6 +62,7 @@ THRESHOLD_TYPES = frozenset(
         "competitor_exits_top_n",
         "competitor_sov_gain",
         "competitor_sov_loss",
+        "strict_daily_budget_near_cap",
     }
 )
 GEO_TYPES = frozenset({"geo_not_found", "geo_rank_above"})
@@ -320,6 +322,7 @@ class AlertService:
                 rule_type=rule_type,
                 current=current,
                 geo_filter=geo_filter,
+                threshold=threshold,
             )
 
         if rule_type in GEO_TYPES:
@@ -392,8 +395,43 @@ class AlertService:
         rule_type: str,
         current: dict,
         geo_filter: str | None,
+        threshold: Decimal | None,
     ) -> list[dict]:
         metadata = current.get("verification_metadata") or {}
+        if rule_type == "strict_daily_budget_near_cap":
+            status = metadata.get("daily_budget_status") or {}
+            utilization = status.get("utilization_pct")
+            limit = status.get("limit")
+            if (
+                geo_filter
+                or not status.get("billing_available")
+                or limit is None
+                or utilization is None
+                or threshold is None
+                or Decimal(str(utilization)) < threshold
+            ):
+                return []
+            return [
+                self._candidate(
+                    asin="VERIFICATION",
+                    event_type=rule_type,
+                    previous_value=None,
+                    current_value=Decimal(str(utilization)),
+                    details={
+                        "scope": "verification",
+                        "budget_utilization_pct": utilization,
+                        "budget_limit": limit,
+                        "budget_committed_credits": status.get(
+                            "committed_credits"
+                        ),
+                        "budget_remaining_credits": status.get(
+                            "remaining_credits"
+                        ),
+                        "budget_reset_at": status.get("reset_at"),
+                    },
+                )
+            ]
+
         events = metadata.get("events") or []
         skip_reason_by_type = {
             "strict_insufficient_credits": "insufficient_credits",
@@ -854,11 +892,20 @@ class AlertService:
         )
         geo = event["geo_profile_id"] or "aggregate"
         if event.get("details", {}).get("scope") == "verification":
-            reason = (
-                event["details"].get("skipped_reason")
-                or event["details"].get("error")
-                or "strict verification failed"
-            )
+            if event["event_type"] == "strict_daily_budget_near_cap":
+                details = event["details"]
+                reason = (
+                    "daily budget utilization "
+                    f"{details.get('budget_utilization_pct')}% "
+                    f"(remaining {details.get('budget_remaining_credits')} "
+                    f"of {details.get('budget_limit')} credits)"
+                )
+            else:
+                reason = (
+                    event["details"].get("skipped_reason")
+                    or event["details"].get("error")
+                    or "strict verification failed"
+                )
             return (
                 f"Rule: {rule['name']}\n"
                 f"Event: {event['event_type']}\n"
@@ -900,6 +947,13 @@ class AlertService:
         if rule_type in THRESHOLD_TYPES:
             if normalized_threshold is None or normalized_threshold <= 0:
                 raise ValueError("positive threshold is required for this rule")
+            if (
+                rule_type == "strict_daily_budget_near_cap"
+                and normalized_threshold > 100
+            ):
+                raise ValueError(
+                    "strict daily budget threshold must be at most 100"
+                )
         else:
             normalized_threshold = None
         normalized_asin = asin.strip().upper() if asin else None
@@ -923,6 +977,10 @@ class AlertService:
         normalized_geo = geo_profile_id.strip() if geo_profile_id else None
         if normalized_geo and normalized_geo not in monitor["geo_profile_ids"]:
             raise ValueError("alert geo profile is not part of the monitor")
+        if rule_type == "strict_daily_budget_near_cap" and normalized_geo:
+            raise ValueError(
+                "strict daily budget alerts are workspace-wide"
+            )
         if rule_type not in GEO_SCOPE_TYPES and normalized_geo:
             raise ValueError(
                 "geo_profile_id is only valid for geo or verification alert rules"

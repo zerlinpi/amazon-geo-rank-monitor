@@ -84,12 +84,14 @@ def verification_run(
     error: str | None = None,
     attempted: bool = False,
     succeeded: bool = False,
+    daily_budget_status: dict | None = None,
 ) -> dict:
     run = aggregate_run(run_id, 10)
     run["verification_metadata"] = {
         "manual_force_requested": True,
         "auto_strict_max_upstream_probes_per_run": 1,
         "strict_upstream_attempt_count": 1 if attempted else 0,
+        "daily_budget_status": daily_budget_status,
         "events": [
             {
                 "geo_profile_id": GEO_ID,
@@ -430,6 +432,87 @@ def test_verification_skip_rules_emit_probe_level_alerts(
     assert len(mailer.messages) == 1
     assert "Scope: strict verification" in mailer.messages[0].text
     assert f"Reason: {skipped_reason}" in mailer.messages[0].text
+
+
+def test_strict_daily_budget_near_cap_alert_uses_live_status() -> None:
+    service, mailer = build_service(
+        runs={
+            "current": verification_run(
+                "current",
+                daily_budget_status={
+                    "billing_available": True,
+                    "limit": 100,
+                    "settled_credits": 75,
+                    "reserved_credits": 10,
+                    "committed_credits": 85,
+                    "remaining_credits": 15,
+                    "utilization_pct": 85.0,
+                    "reset_at": "2026-09-28T00:00:00+00:00",
+                },
+            )
+        },
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict budget near cap",
+        rule_type="strict_daily_budget_near_cap",
+        threshold=80,
+        asin=None,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=60,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+
+    assert len(events) == 1
+    assert events[0]["event_type"] == "strict_daily_budget_near_cap"
+    assert events[0]["current_value"] == Decimal("85.0")
+    assert events[0]["details"]["budget_remaining_credits"] == 15
+    assert len(mailer.messages) == 1
+    assert "daily budget utilization 85.0%" in mailer.messages[0].text
+
+
+def test_strict_daily_budget_near_cap_requires_configured_limit() -> None:
+    service, _mailer = build_service(
+        runs={
+            "current": verification_run(
+                "current",
+                daily_budget_status={
+                    "billing_available": True,
+                    "limit": None,
+                    "committed_credits": 85,
+                    "remaining_credits": None,
+                    "utilization_pct": 0.0,
+                    "reset_at": "2026-09-28T00:00:00+00:00",
+                },
+            )
+        },
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict budget near cap",
+        rule_type="strict_daily_budget_near_cap",
+        threshold=80,
+        asin=None,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=60,
+    )
+
+    assert service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    ) == []
 
 
 def test_strict_verification_failure_alert_includes_provider_error() -> None:
