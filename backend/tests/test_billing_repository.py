@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from sqlalchemy import create_engine
 
@@ -161,3 +163,47 @@ def test_release_by_idempotency_key_unlocks_stale_attempt_reservation() -> None:
         "available": 10,
     }
     assert repo.release_by_idempotency_key("missing") is None
+
+
+def test_reference_credit_usage_counts_only_settled_matching_reference() -> None:
+    repo = repository()
+    repo.grant(owner_id="tenant-1", credits=20, idempotency_key="grant:usage")
+
+    strict = repo.reserve(
+        owner_id="tenant-1",
+        credits=5,
+        idempotency_key="strict:1",
+        reference_type="auto_strict_verification",
+        reference_id="run-1",
+    )
+    repo.settle(strict["id"], credits_used=5)
+
+    released = repo.reserve(
+        owner_id="tenant-1",
+        credits=5,
+        idempotency_key="strict:2",
+        reference_type="auto_strict_verification",
+        reference_id="run-2",
+    )
+    repo.release(released["id"])
+
+    rank = repo.reserve(
+        owner_id="tenant-1",
+        credits=3,
+        idempotency_key="rank:usage",
+        reference_type="rank_check",
+        reference_id="run-3",
+    )
+    repo.settle(rank["id"], credits_used=3)
+
+    usage = repo.reference_credit_usage(
+        owner_id="tenant-1",
+        reference_type="auto_strict_verification",
+        since=datetime.now(UTC) - timedelta(hours=1),
+        until=datetime.now(UTC) + timedelta(hours=1),
+    )
+
+    assert usage["settlement_count"] == 1
+    assert usage["credits_spent"] == 5
+    assert len(usage["daily"]) == 1
+    assert usage["daily"][0]["credits_spent"] == 5
