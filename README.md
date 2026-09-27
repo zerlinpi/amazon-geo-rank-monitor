@@ -547,6 +547,46 @@ spend and cache savings.
 The detailed semantics are documented in
 `docs/superpowers/specs/2026-09-27-phase-23-verification-analytics.md`.
 
+## Daily Strict Verification credit guardrail
+
+Workspace administrators can optionally set a live daily cap for new paid
+Strict Verification credits under **Workspace → Team → Automatic strict
+verification**.
+
+The cap uses UTC-day accounting:
+
+- unset: unlimited;
+- `0`: block new paid Auto Strict / manually forced strict probes;
+- positive integer: maximum committed Strict Verification credits for the UTC
+  day.
+
+The guardrail counts both settled Strict Verification credits and currently
+reserved Strict Verification credits. Released reservations do not consume the
+daily cap. Enforcement happens under the Workspace credit-account database row
+lock, so concurrent PostgreSQL workers cannot overspend the same remaining
+allowance.
+
+The daily cap is intentionally live rather than snapshotted into queued jobs.
+Lowering it affects jobs that are already queued. Manual force cannot bypass
+it. Compatible strict cache hits remain allowed because they create no new
+credit reservation.
+
+A blocked verification is recorded as:
+
+```text
+skipped_reason = daily_credit_budget_exhausted
+```
+
+Run History records the effective cap, Rank Alerts can notify on
+`strict_daily_credit_budget_exhausted`, and System Status includes the reason
+in its verification analytics.
+
+Schema revision `20260927_0019` adds
+`tenants.auto_strict_daily_credit_budget`.
+
+Detailed semantics:
+`docs/superpowers/specs/2026-09-27-phase-24-daily-strict-credit-guardrail.md`.
+
 ## Phase 9 migration
 
 Schema revision `20260924_0003` adds rank-job availability, worker ownership, lease expiry, and maximum-attempt fields.
