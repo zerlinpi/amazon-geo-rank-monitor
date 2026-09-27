@@ -288,6 +288,67 @@ async def test_forecast_pacing_defers_paid_automatic_probe(monkeypatch) -> None:
     assert provider.calls == 0
 
 
+class RecordingBillingRepository:
+    def __init__(self) -> None:
+        self.reserve_kwargs = None
+        self.settled = []
+
+    def reserve(self, **kwargs):
+        self.reserve_kwargs = kwargs
+        return {"id": "reservation-1", "status": "reserved"}
+
+    def settle(self, reservation_id: str, *, credits_used: int):
+        self.settled.append((reservation_id, credits_used))
+        return {"id": reservation_id, "status": "settled"}
+
+    def release(self, reservation_id: str):
+        raise AssertionError("successful strict probe should not release")
+
+
+@pytest.mark.asyncio
+async def test_active_pacing_uses_allowance_as_atomic_reservation_limit(
+    monkeypatch,
+) -> None:
+    provider = SuccessfulStrictProvider()
+    billing = RecordingBillingRepository()
+    verifier = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(enabled=True),
+        strict_provider=provider,
+        billing_repository=billing,
+        daily_credit_budget=100,
+        daily_budget_pacing_enabled=True,
+    )
+
+    monkeypatch.setattr(
+        "amazon_geo_rank_monitor.verification.service.build_daily_budget_status",
+        lambda **kwargs: {
+            "pacing": {
+                "active": True,
+                "defer_next_probe": False,
+                "reason": "within_paced_allowance",
+                "resume_at": None,
+                "allowance_credits": 50,
+            }
+        },
+    )
+
+    outcome = await verifier.verify_for_triggers(
+        owner_id="tenant-1",
+        reference_id="atomic-paced-run",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        geo_profile=geo(),
+        search_depth=100,
+        asins=["B0TARGET01"],
+        triggers=["rank_movement:B0TARGET01:25"],
+    )
+
+    assert outcome.succeeded is True
+    assert billing.reserve_kwargs is not None
+    assert billing.reserve_kwargs["reference_budget_limit"] == 50
+    assert billing.settled == [("reservation-1", 5)]
+
+
 @pytest.mark.asyncio
 async def test_manual_force_bypasses_forecast_pacing(monkeypatch) -> None:
     provider = SuccessfulStrictProvider()
