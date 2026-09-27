@@ -86,3 +86,24 @@ def test_monitor_is_owner_scoped_and_keeps_asins_and_geos() -> None:
     assert loaded["asins"] == ["B0AAA11111", "B0BBB22222"]
     assert loaded["geo_profile_ids"] == [geo["id"]]
     assert monitor_repo.get(monitor["id"], owner_id=b["id"]) is None
+
+
+
+def test_workspace_verification_policy_persists_budget_pacing() -> None:
+    tenant_repo, _, _ = repositories()
+    tenant = tenant_repo.create_tenant("Paced")
+
+    initial = tenant_repo.get_workspace_verification_policy(
+        owner_id=tenant["id"],
+    )
+    assert initial["daily_budget_pacing_enabled"] is False
+
+    updated = tenant_repo.update_workspace_verification_policy(
+        owner_id=tenant["id"],
+        changes={
+            "daily_credit_budget": 100,
+            "daily_budget_pacing_enabled": True,
+        },
+    )
+    assert updated["daily_credit_budget"] == 100
+    assert updated["daily_budget_pacing_enabled"] is True
