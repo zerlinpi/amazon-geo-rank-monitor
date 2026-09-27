@@ -18,6 +18,7 @@ class RankWorker:
         job_repository,
         rank_repository,
         provider_registry,
+        tenant_repository=None,
         billing_repository=None,
         rate_card: RateCard | None = None,
         worker_status_repository=None,
@@ -32,6 +33,7 @@ class RankWorker:
         self._jobs = job_repository
         self._rank_repository = rank_repository
         self._providers = provider_registry
+        self._tenants = tenant_repository
         self._billing = billing_repository
         self._rate_card = rate_card or RateCard()
         self._worker_status = worker_status_repository
@@ -146,6 +148,24 @@ class RankWorker:
                 isinstance(verification_policy, dict)
                 and verification_policy.get("force_strict_verification")
             )
+            live_daily_credit_budget = None
+            if (
+                self._tenants is not None
+                and hasattr(
+                    self._tenants,
+                    "get_workspace_verification_policy",
+                )
+            ):
+                try:
+                    live_policy = self._tenants.get_workspace_verification_policy(
+                        owner_id=job["owner_id"]
+                    )
+                    live_daily_credit_budget = live_policy.get(
+                        "daily_credit_budget"
+                    )
+                except KeyError:
+                    live_daily_credit_budget = None
+
             strict_verifier = self._auto_strict_verifier
             if (
                 strict_verifier is not None
@@ -158,6 +178,7 @@ class RankWorker:
                         "max_upstream_probes_per_run"
                     ),
                     force_strict=force_strict_verification,
+                    daily_credit_budget=live_daily_credit_budget,
                 )
             service = RankMonitorService(
                 provider=provider,
