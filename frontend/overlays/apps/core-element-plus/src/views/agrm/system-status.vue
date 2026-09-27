@@ -4,6 +4,7 @@ import type {
   QueueSummary,
   RankJob,
   VerificationAnalytics,
+  WorkspaceVerificationPolicy,
   WorkerStatus,
 } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -17,6 +18,7 @@ const workers = ref<WorkerStatus[]>([])
 const deadLetters = ref<RankJob[]>([])
 const auditEvents = ref<AuditEvent[]>([])
 const verificationHours = ref(168)
+const verificationPolicy = ref<WorkspaceVerificationPolicy>()
 const verification = ref<VerificationAnalytics>({
   window: { hours: 168, since: '', until: '' },
   run_count: 0,
@@ -59,6 +61,9 @@ const verificationSkipRows = computed(() =>
 const verificationDailyRows = computed(() =>
   [...verification.value.daily].reverse().slice(0, 14),
 )
+const dailyBudgetStatus = computed(() =>
+  verificationPolicy.value?.daily_budget_status,
+)
 
 const oldestPending = computed(() => {
   if (!queue.value.oldest_pending_at) {
@@ -76,6 +81,10 @@ const oldestPending = computed(() => {
   }
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
 })
+
+function formatUtc(value: string) {
+  return new Date(value).toISOString().replace('T', ' ').replace('.000Z', ' UTC')
+}
 
 function verificationTriggerLabel(value: string) {
   const labels: Record<string, string> = {
@@ -128,18 +137,21 @@ async function load(showLoading = true) {
       deadLetterResult,
       auditResult,
       verificationResult,
+      verificationPolicyResult,
     ] = await Promise.all([
       agrmApi.getQueueSummary(),
       agrmApi.getSystemWorkers(),
       agrmApi.getDeadLetters(100),
       agrmApi.getAuditEvents(100),
       agrmApi.getVerificationAnalytics(verificationHours.value),
+      agrmApi.getWorkspaceVerificationPolicy(),
     ])
     queue.value = queueResult
     workers.value = workerResult
     deadLetters.value = deadLetterResult
     auditEvents.value = auditResult
     verification.value = verificationResult
+    verificationPolicy.value = verificationPolicyResult
   }
   catch (error: any) {
     ElMessage.error(error.response?.data?.detail || 'Failed to load system status')
@@ -282,6 +294,55 @@ onUnmounted(() => {
             Strict upstream rate {{ verification.strict_credit_rate }} credits
           </div>
         </div>
+      </div>
+
+      <div
+        v-if="dailyBudgetStatus"
+        class="rounded-lg border p-4 mt-4"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div class="font-medium">Live UTC daily credit guardrail</div>
+            <div class="text-xs text-muted-foreground mt-1">
+              Settled {{ dailyBudgetStatus.settled_credits }}
+              · reserved {{ dailyBudgetStatus.reserved_credits }}
+              · committed {{ dailyBudgetStatus.committed_credits }}
+              · remaining {{ dailyBudgetStatus.remaining_credits ?? '∞' }}
+            </div>
+          </div>
+          <div class="text-right text-xs text-muted-foreground">
+            <div>
+              {{ dailyBudgetStatus.limit == null
+                ? 'Unlimited'
+                : dailyBudgetStatus.utilization_pct + '% of ' + dailyBudgetStatus.limit }}
+            </div>
+            <div class="mt-1">
+              Resets {{ formatUtc(dailyBudgetStatus.reset_at) }}
+            </div>
+          </div>
+        </div>
+        <el-progress
+          v-if="dailyBudgetStatus.limit != null && dailyBudgetStatus.limit > 0"
+          class="mt-3"
+          :percentage="Math.min(dailyBudgetStatus.utilization_pct, 100)"
+        />
+        <el-alert
+          v-if="dailyBudgetStatus.limit != null && dailyBudgetStatus.remaining_credits === 0"
+          class="mt-3"
+          type="error"
+          :closable="false"
+          title="Daily Strict Verification credit cap reached."
+        />
+        <el-alert
+          v-else-if="
+            dailyBudgetStatus.limit != null
+            && dailyBudgetStatus.utilization_pct >= 80
+          "
+          class="mt-3"
+          type="warning"
+          :closable="false"
+          title="Daily Strict Verification credit cap is approaching."
+        />
       </div>
 
       <el-alert

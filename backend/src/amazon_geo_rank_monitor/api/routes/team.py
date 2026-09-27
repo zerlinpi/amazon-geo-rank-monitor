@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -46,8 +47,47 @@ def _workspace_verification_policy(services, *, owner_id: str) -> dict:
     stored_confidence = stored.get("min_confidence")
     stored_budget = stored.get("max_upstream_probes_per_run")
     stored_daily_budget = stored.get("daily_credit_budget")
+    now = datetime.now(UTC)
+    window_start = now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    reset_at = window_start + timedelta(days=1)
+    billing = services.billing_repository
+    if billing is not None and hasattr(billing, "reference_budget_status"):
+        daily_budget_status = {
+            "billing_available": True,
+            "window_start": window_start,
+            "reset_at": reset_at,
+            **billing.reference_budget_status(
+                owner_id=owner_id,
+                reference_type="auto_strict_verification",
+                since=window_start,
+                until=now,
+                limit=stored_daily_budget,
+            ),
+        }
+    else:
+        daily_budget_status = {
+            "billing_available": False,
+            "window_start": window_start,
+            "reset_at": reset_at,
+            "limit": stored_daily_budget,
+            "settled_credits": 0,
+            "reserved_credits": 0,
+            "committed_credits": 0,
+            "remaining_credits": (
+                stored_daily_budget
+                if stored_daily_budget is not None
+                else None
+            ),
+            "utilization_pct": 0.0,
+        }
     return {
         **stored,
+        "daily_budget_status": daily_budget_status,
         "runtime": runtime,
         "effective": {
             "enabled": bool(

@@ -231,6 +231,21 @@ def test_reference_budget_counts_reserved_and_settled_but_not_released() -> None
         reference_budget_limit=5,
         reference_budget_window_start=window_start,
     )
+    first_status = repo.reference_budget_status(
+        owner_id="tenant-1",
+        reference_type="auto_strict_verification",
+        since=window_start,
+        until=datetime.now(UTC) + timedelta(minutes=1),
+        limit=5,
+    )
+    assert first_status == {
+        "limit": 5,
+        "settled_credits": 0,
+        "reserved_credits": 5,
+        "committed_credits": 5,
+        "remaining_credits": 0,
+        "utilization_pct": 100.0,
+    }
     with pytest.raises(CreditBudgetExceededError):
         repo.reserve(
             owner_id="tenant-1",
@@ -253,6 +268,21 @@ def test_reference_budget_counts_reserved_and_settled_but_not_released() -> None
         reference_budget_window_start=window_start,
     )
     repo.settle(second["id"], credits_used=5)
+    settled_status = repo.reference_budget_status(
+        owner_id="tenant-1",
+        reference_type="auto_strict_verification",
+        since=window_start,
+        until=datetime.now(UTC) + timedelta(minutes=1),
+        limit=10,
+    )
+    assert settled_status == {
+        "limit": 10,
+        "settled_credits": 5,
+        "reserved_credits": 0,
+        "committed_credits": 5,
+        "remaining_credits": 5,
+        "utilization_pct": 50.0,
+    }
 
     with pytest.raises(CreditBudgetExceededError):
         repo.reserve(

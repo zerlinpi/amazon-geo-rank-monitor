@@ -104,12 +104,25 @@ export interface WorkspaceSecurityPolicy {
   require_mfa: boolean
 }
 
+export interface WorkspaceVerificationBudgetStatus {
+  billing_available: boolean
+  window_start: string
+  reset_at: string
+  limit?: number | null
+  settled_credits: number
+  reserved_credits: number
+  committed_credits: number
+  remaining_credits?: number | null
+  utilization_pct: number
+}
+
 export interface WorkspaceVerificationPolicy {
   owner_id: string
   enabled?: boolean | null
   min_confidence?: string | number | null
   max_upstream_probes_per_run?: number | null
   daily_credit_budget?: number | null
+  daily_budget_status: WorkspaceVerificationBudgetStatus
   runtime: {
     enabled: boolean
     min_confidence: string | number

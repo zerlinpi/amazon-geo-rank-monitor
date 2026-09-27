@@ -64,6 +64,25 @@ const roleOptions = computed(() => (
     ? ['owner', 'admin', 'analyst', 'viewer']
     : ['analyst', 'viewer']
 ))
+const dailyBudgetStatus = computed(() =>
+  verificationPolicy.value?.daily_budget_status,
+)
+const dailyBudgetReached = computed(() => {
+  const status = dailyBudgetStatus.value
+  return status?.limit != null && status.remaining_credits === 0
+})
+const dailyBudgetNearLimit = computed(() => {
+  const status = dailyBudgetStatus.value
+  return (
+    status?.limit != null
+    && !dailyBudgetReached.value
+    && status.utilization_pct >= 80
+  )
+})
+
+function formatUtc(value: string) {
+  return new Date(value).toISOString().replace('T', ' ').replace('.000Z', ' UTC')
+}
 
 function invitationLink(token: string) {
   return `${location.origin}${location.pathname}#/login?invite=${encodeURIComponent(token)}`
@@ -643,6 +662,95 @@ onMounted(load)
           title="The daily cap is a live Workspace guardrail."
           description="It counts settled and currently reserved Auto Strict credits for the UTC day. Lowering the cap applies immediately to already queued jobs; cached strict results remain allowed because they consume no new credits."
         />
+
+        <div
+          v-if="dailyBudgetStatus"
+          class="rounded-lg border p-4 mb-4"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <div class="font-medium">Today's Strict Verification budget</div>
+              <div class="text-xs text-muted-foreground mt-1">
+                UTC window · resets
+                {{ formatUtc(dailyBudgetStatus.reset_at) }}
+              </div>
+            </div>
+            <el-tag
+              :type="dailyBudgetReached
+                ? 'danger'
+                : dailyBudgetNearLimit
+                  ? 'warning'
+                  : dailyBudgetStatus.limit == null
+                    ? 'info'
+                    : 'success'"
+            >
+              {{ dailyBudgetStatus.limit == null
+                ? 'Unlimited'
+                : dailyBudgetReached
+                  ? 'Cap reached'
+                  : dailyBudgetNearLimit
+                    ? 'Approaching cap'
+                    : dailyBudgetStatus.utilization_pct + '% used' }}
+            </el-tag>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <div class="text-xs text-muted-foreground">Settled</div>
+              <div class="text-xl font-semibold mt-1">
+                {{ dailyBudgetStatus.settled_credits }}
+              </div>
+            </div>
+            <div>
+              <div class="text-xs text-muted-foreground">Reserved</div>
+              <div class="text-xl font-semibold mt-1">
+                {{ dailyBudgetStatus.reserved_credits }}
+              </div>
+            </div>
+            <div>
+              <div class="text-xs text-muted-foreground">Committed</div>
+              <div class="text-xl font-semibold mt-1">
+                {{ dailyBudgetStatus.committed_credits }}
+              </div>
+            </div>
+            <div>
+              <div class="text-xs text-muted-foreground">Remaining</div>
+              <div class="text-xl font-semibold mt-1">
+                {{ dailyBudgetStatus.remaining_credits ?? '∞' }}
+              </div>
+            </div>
+          </div>
+
+          <el-progress
+            v-if="dailyBudgetStatus.limit != null && dailyBudgetStatus.limit > 0"
+            class="mt-4"
+            :percentage="Math.min(dailyBudgetStatus.utilization_pct, 100)"
+          />
+
+          <el-alert
+            v-if="!dailyBudgetStatus.billing_available"
+            class="mt-4"
+            type="warning"
+            :closable="false"
+            title="Live billing status is unavailable."
+          />
+          <el-alert
+            v-else-if="dailyBudgetReached"
+            class="mt-4"
+            type="error"
+            :closable="false"
+            title="The daily Strict Verification credit cap has been reached."
+            description="New paid Auto Strict and manually forced strict probes are blocked until the next UTC day or until an administrator raises/removes the cap. Compatible strict cache hits still work."
+          />
+          <el-alert
+            v-else-if="dailyBudgetNearLimit"
+            class="mt-4"
+            type="warning"
+            :closable="false"
+            title="Strict Verification is approaching the daily credit cap."
+            :description="String(dailyBudgetStatus.remaining_credits) + ' credits remain before new paid strict probes are blocked.'"
+          />
+        </div>
 
         <el-alert
           v-if="verificationPolicy"
