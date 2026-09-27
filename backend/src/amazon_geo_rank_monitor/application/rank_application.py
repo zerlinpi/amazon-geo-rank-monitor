@@ -97,6 +97,9 @@ async def execute_rank_check(
                 "max_upstream_probes_per_run"
             ),
             force_strict=force_strict_verification,
+            daily_credit_budget=workspace_policy.get(
+                "daily_credit_budget"
+            ),
         )
 
     service = RankMonitorService(
