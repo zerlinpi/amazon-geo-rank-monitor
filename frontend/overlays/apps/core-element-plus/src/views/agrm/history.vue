@@ -271,6 +271,34 @@ onMounted(load)
             <div class="text-xs text-muted-foreground mt-3">
               Resets {{ new Date(selected.verification_metadata.daily_budget_status.reset_at).toLocaleString() }}
             </div>
+            <div
+              v-if="selected.verification_metadata.daily_budget_status.forecast.available"
+              class="grid gap-2 mt-3 border-t pt-3 sm:grid-cols-3"
+            >
+              <div>
+                <div class="text-xs text-muted-foreground">Burn rate at completion</div>
+                <div class="font-semibold">
+                  {{ selected.verification_metadata.daily_budget_status.forecast.burn_rate_credits_per_hour }}
+                  credits/hour
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">Projected UTC EOD</div>
+                <div class="font-semibold">
+                  {{ selected.verification_metadata.daily_budget_status.forecast.projected_committed_credits }}
+                  credits ·
+                  {{ selected.verification_metadata.daily_budget_status.forecast.projected_utilization_pct }}%
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">Estimated exhaustion</div>
+                <div class="font-semibold">
+                  {{ selected.verification_metadata.daily_budget_status.forecast.estimated_exhaustion_at
+                    ? new Date(selected.verification_metadata.daily_budget_status.forecast.estimated_exhaustion_at).toLocaleString()
+                    : 'Not projected that UTC day' }}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div
