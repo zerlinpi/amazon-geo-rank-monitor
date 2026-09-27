@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
@@ -138,6 +138,38 @@ class AutoStrictVerifier:
             automatic_enabled=automatic_enabled,
             daily_credit_budget=daily_credit_budget,
         )
+
+    def daily_budget_status(
+        self,
+        *,
+        owner_id: str | None,
+        now: datetime | None = None,
+    ) -> dict | None:
+        if (
+            owner_id is None
+            or self._daily_credit_budget is None
+            or self._billing is None
+            or not hasattr(self._billing, "reference_budget_status")
+        ):
+            return None
+        current = now or datetime.now(UTC)
+        window_start = current.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        return {
+            "window_start": window_start.isoformat(),
+            "reset_at": (window_start + timedelta(days=1)).isoformat(),
+            **self._billing.reference_budget_status(
+                owner_id=owner_id,
+                reference_type="auto_strict_verification",
+                since=window_start,
+                until=current,
+                limit=self._daily_credit_budget,
+            ),
+        }
 
     def low_confidence_trigger(
         self,
