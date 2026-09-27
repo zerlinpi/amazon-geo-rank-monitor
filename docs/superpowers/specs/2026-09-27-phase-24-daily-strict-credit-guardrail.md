@@ -134,7 +134,7 @@ evidence.
 Rank Alerts adds:
 
 ```text
-strict_daily_credit_budget_exhausted
+strict_daily_budget_exhausted
 ```
 
 The rule is probe-level and can optionally scope to a Geo, consistent with the
