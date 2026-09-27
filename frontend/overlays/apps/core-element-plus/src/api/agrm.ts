@@ -123,6 +123,15 @@ export interface WorkspaceVerificationBudgetStatus {
     estimated_exhaustion_at?: string | null
     runway_minutes?: number | null
   }
+  pacing: {
+    enabled: boolean
+    active: boolean
+    defer_next_probe: boolean
+    next_probe_credits: number
+    allowance_credits?: number | null
+    resume_at?: string | null
+    reason: string
+  }
 }
 
 export interface WorkspaceVerificationPolicy {
@@ -131,6 +140,7 @@ export interface WorkspaceVerificationPolicy {
   min_confidence?: string | number | null
   max_upstream_probes_per_run?: number | null
   daily_credit_budget?: number | null
+  daily_budget_pacing_enabled: boolean
   daily_budget_status: WorkspaceVerificationBudgetStatus
   runtime: {
     enabled: boolean
@@ -142,6 +152,7 @@ export interface WorkspaceVerificationPolicy {
     min_confidence: string | number
     max_upstream_probes_per_run: number
     daily_credit_budget?: number | null
+    daily_budget_pacing_enabled: boolean
   }
 }
 
@@ -150,6 +161,7 @@ export interface WorkspaceVerificationPolicyUpdate {
   min_confidence?: number | null
   max_upstream_probes_per_run?: number | null
   daily_credit_budget?: number | null
+  daily_budget_pacing_enabled?: boolean
 }
 
 export interface SsoDiscovery {
@@ -632,6 +644,8 @@ export interface VerificationEvent {
   triggers: string[]
   skipped_reason?: string | null
   error?: string | null
+  pacing_resume_at?: string | null
+  pacing_allowance_credits?: number | null
 }
 
 export interface VerificationMetadata {
@@ -641,6 +655,7 @@ export interface VerificationMetadata {
   auto_strict_min_confidence?: string | number | null
   auto_strict_max_upstream_probes_per_run?: number | null
   auto_strict_daily_credit_budget?: number | null
+  auto_strict_daily_budget_pacing_enabled?: boolean
   daily_budget_status?: WorkspaceVerificationBudgetStatus | null
   strict_upstream_attempt_count?: number
   strict_requested_count?: number

@@ -36,6 +36,8 @@ class StrictVerificationOutcome:
     error: str | None = None
     upstream_probe_count: int = 0
     cache_hit_count: int = 0
+    pacing_resume_at: str | None = None
+    pacing_allowance_credits: int | None = None
 
     def as_dict(self, *, geo_profile_id: str) -> dict:
         return {
@@ -47,6 +49,8 @@ class StrictVerificationOutcome:
             "triggers": list(self.triggers),
             "skipped_reason": self.skipped_reason,
             "error": self.error,
+            "pacing_resume_at": self.pacing_resume_at,
+            "pacing_allowance_credits": self.pacing_allowance_credits,
         }
 
 
@@ -62,6 +66,7 @@ class AutoStrictVerifier:
         max_upstream_probes_per_run: int | None = None,
         automatic_enabled: bool | None = None,
         daily_credit_budget: int | None = None,
+        daily_budget_pacing_enabled: bool = False,
     ) -> None:
         self._policy = policy
         self._provider = strict_provider
@@ -82,6 +87,7 @@ class AutoStrictVerifier:
         if daily_credit_budget is not None and daily_credit_budget < 0:
             raise ValueError("daily_credit_budget must be non-negative")
         self._daily_credit_budget = daily_credit_budget
+        self._daily_budget_pacing_enabled = bool(daily_budget_pacing_enabled)
 
     @property
     def enabled(self) -> bool:
@@ -103,6 +109,10 @@ class AutoStrictVerifier:
     def daily_credit_budget(self) -> int | None:
         return self._daily_credit_budget
 
+    @property
+    def daily_budget_pacing_enabled(self) -> bool:
+        return self._daily_budget_pacing_enabled
+
     def daily_budget_status(self, *, owner_id: str | None) -> dict | None:
         if owner_id is None:
             return None
@@ -110,6 +120,8 @@ class AutoStrictVerifier:
             billing_repository=self._billing,
             owner_id=owner_id,
             limit=self._daily_credit_budget,
+            pacing_enabled=self._daily_budget_pacing_enabled,
+            next_probe_credits=self._rate_card.quote("strict", 1),
         )
 
     def for_monitor(
@@ -120,6 +132,7 @@ class AutoStrictVerifier:
         max_upstream_probes_per_run: int | None = None,
         force_strict: bool = False,
         daily_credit_budget: int | None = None,
+        daily_budget_pacing_enabled: bool = False,
     ) -> AutoStrictVerifier:
         automatic_enabled = self._policy.enabled and enabled is not False
         effective_enabled = automatic_enabled or (
@@ -147,6 +160,7 @@ class AutoStrictVerifier:
             ),
             automatic_enabled=automatic_enabled,
             daily_credit_budget=daily_credit_budget,
+            daily_budget_pacing_enabled=daily_budget_pacing_enabled,
         )
 
     def low_confidence_trigger(
@@ -253,19 +267,55 @@ class AutoStrictVerifier:
             if not allow_upstream:
                 outcome.skipped_reason = "probe_budget_exhausted"
                 return outcome
+
+            strict_probe_credits = self._rate_card.quote("strict", 1)
+            now = datetime.now(UTC)
+            reservation_budget_limit = self._daily_credit_budget
+            pacing_enforced = False
+            if (
+                self._daily_budget_pacing_enabled
+                and "manual_force" not in outcome.triggers
+                and owner_id is not None
+            ):
+                budget_status = build_daily_budget_status(
+                    billing_repository=self._billing,
+                    owner_id=owner_id,
+                    limit=self._daily_credit_budget,
+                    now=now,
+                    pacing_enabled=True,
+                    next_probe_credits=strict_probe_credits,
+                )
+                pacing = budget_status.get("pacing") or {}
+                if pacing.get("active"):
+                    outcome.pacing_resume_at = pacing.get("resume_at")
+                    outcome.pacing_allowance_credits = pacing.get(
+                        "allowance_credits"
+                    )
+                if pacing.get("defer_next_probe"):
+                    outcome.skipped_reason = "daily_budget_pacing_deferred"
+                    return outcome
+                if (
+                    pacing.get("active")
+                    and pacing.get("reason") == "within_paced_allowance"
+                    and pacing.get("allowance_credits") is not None
+                ):
+                    reservation_budget_limit = int(
+                        pacing["allowance_credits"]
+                    )
+                    pacing_enforced = True
+
             if self._billing is not None and owner_id is not None:
                 idempotency_key = (
                     f"auto_strict:{reference_id}:{geo_profile.id}"
                 )
                 try:
-                    now = datetime.now(UTC)
                     reservation = self._billing.reserve(
                         owner_id=owner_id,
-                        credits=self._rate_card.quote("strict", 1),
+                        credits=strict_probe_credits,
                         idempotency_key=idempotency_key,
                         reference_type="auto_strict_verification",
                         reference_id=reference_id,
-                        reference_budget_limit=self._daily_credit_budget,
+                        reference_budget_limit=reservation_budget_limit,
                         reference_budget_window_start=(
                             now.replace(
                                 hour=0,
@@ -273,12 +323,27 @@ class AutoStrictVerifier:
                                 second=0,
                                 microsecond=0,
                             )
-                            if self._daily_credit_budget is not None
+                            if reservation_budget_limit is not None
                             else None
                         ),
                     )
                 except CreditBudgetExceededError:
-                    outcome.skipped_reason = "daily_credit_budget_exhausted"
+                    if pacing_enforced:
+                        outcome.skipped_reason = "daily_budget_pacing_deferred"
+                        refreshed = build_daily_budget_status(
+                            billing_repository=self._billing,
+                            owner_id=owner_id,
+                            limit=self._daily_credit_budget,
+                            pacing_enabled=True,
+                            next_probe_credits=strict_probe_credits,
+                        )
+                        pacing = refreshed.get("pacing") or {}
+                        outcome.pacing_resume_at = pacing.get("resume_at")
+                        outcome.pacing_allowance_credits = pacing.get(
+                            "allowance_credits"
+                        )
+                    else:
+                        outcome.skipped_reason = "daily_credit_budget_exhausted"
                     return outcome
                 except InsufficientCreditsError:
                     outcome.skipped_reason = "insufficient_credits"
@@ -320,7 +385,7 @@ class AutoStrictVerifier:
             if reservation is not None:
                 self._billing.settle(
                     reservation["id"],
-                    credits_used=self._rate_card.quote("strict", 1),
+                    credits_used=strict_probe_credits,
                 )
             if self._probe_cache is not None:
                 try:

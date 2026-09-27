@@ -33,6 +33,7 @@ const verificationForm = reactive({
   maxProbes: 3,
   dailyBudgetEnabled: false,
   dailyCreditBudget: 100,
+  dailyBudgetPacingEnabled: false,
 })
 const ssoConfig = ref<WorkspaceSsoConfig | null>(null)
 const savingSso = ref(false)
@@ -119,6 +120,9 @@ async function load() {
       loadedVerificationPolicy.daily_credit_budget
       ?? verificationForm.dailyCreditBudget
     )
+    verificationForm.dailyBudgetPacingEnabled = Boolean(
+      loadedVerificationPolicy.daily_budget_pacing_enabled,
+    )
     if (currentRole.value === 'owner') {
       const [loadedSso, loadedScim, loadedScimGroups] = await Promise.all([
         agrmApi.getWorkspaceSsoConfig(),
@@ -201,6 +205,7 @@ async function saveVerificationPolicy() {
       daily_credit_budget: verificationForm.dailyBudgetEnabled
         ? verificationForm.dailyCreditBudget
         : null,
+      daily_budget_pacing_enabled: verificationForm.dailyBudgetPacingEnabled,
     })
     ElMessage.success('Workspace Auto Strict defaults updated')
     await load()
@@ -654,13 +659,21 @@ onMounted(load)
               </span>
             </div>
           </el-form-item>
+          <el-form-item label="Forecast-aware pacing" class="mb-0">
+            <el-switch
+              v-model="verificationForm.dailyBudgetPacingEnabled"
+              :disabled="!canManage || !verificationForm.dailyBudgetEnabled"
+              active-text="On"
+              inactive-text="Off"
+            />
+          </el-form-item>
         </div>
         <el-alert
           class="mb-4"
           type="info"
           :closable="false"
           title="The daily cap is a live Workspace guardrail."
-          description="It counts settled and currently reserved Auto Strict credits for the UTC day. Lowering the cap applies immediately to already queued jobs; cached strict results remain allowed because they consume no new credits."
+          description="It counts settled and currently reserved Strict Verification credits for the UTC day. Forecast-aware pacing only defers paid automatic Strict probes when the current burn rate predicts cap exhaustion today; cache hits and manual force remain available, while the hard cap stays authoritative."
         />
 
         <div
@@ -757,6 +770,22 @@ onMounted(load)
           </div>
 
           <el-alert
+            v-if="dailyBudgetStatus.pacing.enabled && dailyBudgetStatus.pacing.active"
+            class="mt-4"
+            :type="dailyBudgetStatus.pacing.defer_next_probe ? 'warning' : 'info'"
+            :closable="false"
+            :title="dailyBudgetStatus.pacing.defer_next_probe
+              ? 'Automatic Strict Verification is being paced.'
+              : 'Forecast-aware pacing is active.'"
+            :description="dailyBudgetStatus.pacing.defer_next_probe
+              ? 'The next paid automatic Strict probe would exceed the current paced allowance of '
+                + String(dailyBudgetStatus.pacing.allowance_credits)
+                + ' credits. Automatic paid Strict probes resume around '
+                + (dailyBudgetStatus.pacing.resume_at ? formatUtc(dailyBudgetStatus.pacing.resume_at) : 'the next allowance window')
+                + '. Manual force and cache hits are not paced.'
+              : 'The burn-rate forecast currently predicts cap exhaustion, but the next paid automatic Strict probe still fits the current paced allowance.'"
+          />
+          <el-alert
             v-if="!dailyBudgetStatus.billing_available"
             class="mt-4"
             type="warning"
@@ -798,6 +827,8 @@ onMounted(load)
             {{ verificationPolicy.effective.daily_credit_budget == null
               ? 'unlimited'
               : verificationPolicy.effective.daily_credit_budget + ' credits' }}
+            · pacing
+            {{ verificationPolicy.effective.daily_budget_pacing_enabled ? 'on' : 'off' }}
           </template>
           <div class="mt-1 text-xs">
             The runtime switch is the global safety kill switch. Monitor-level overrides

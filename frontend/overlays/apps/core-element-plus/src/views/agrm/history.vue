@@ -64,6 +64,7 @@ function skipReasonLabel(reason?: string | null) {
   const labels: Record<string, string> = {
     insufficient_credits: 'Insufficient credits',
     daily_credit_budget_exhausted: 'Daily strict credit cap exhausted',
+    daily_budget_pacing_deferred: 'Deferred by forecast-aware daily budget pacing',
     strict_provider_unavailable: 'Strict provider unavailable',
     probe_budget_exhausted: 'Strict probe budget exhausted',
     already_settled: 'Already settled on a previous attempt',
@@ -196,6 +197,13 @@ onMounted(load)
                   Daily credits {{ selected.verification_metadata.auto_strict_daily_credit_budget ?? '∞' }}
                 </el-tag>
                 <el-tag
+                  v-if="selected.verification_metadata.auto_strict_daily_budget_pacing_enabled"
+                  type="warning"
+                  effect="plain"
+                >
+                  Pacing on
+                </el-tag>
+                <el-tag
                   v-if="selected.verification_metadata.daily_budget_status?.limit != null"
                   :type="
                     selected.verification_metadata.daily_budget_status.utilization_pct >= 100
@@ -272,6 +280,19 @@ onMounted(load)
               Resets {{ new Date(selected.verification_metadata.daily_budget_status.reset_at).toLocaleString() }}
             </div>
             <div
+              v-if="selected.verification_metadata.daily_budget_status.pacing.enabled"
+              class="mt-3 border-t pt-3 text-xs text-muted-foreground"
+            >
+              Forecast-aware pacing:
+              {{ selected.verification_metadata.daily_budget_status.pacing.active ? 'active' : 'standby' }}
+              · allowance
+              {{ selected.verification_metadata.daily_budget_status.pacing.allowance_credits ?? 'n/a' }} credits
+              <span v-if="selected.verification_metadata.daily_budget_status.pacing.resume_at">
+                · next paid automatic probe around
+                {{ new Date(selected.verification_metadata.daily_budget_status.pacing.resume_at).toLocaleString() }}
+              </span>
+            </div>
+            <div
               v-if="selected.verification_metadata.daily_budget_status.forecast.available"
               class="grid gap-2 mt-3 border-t pt-3 sm:grid-cols-3"
             >
@@ -335,6 +356,15 @@ onMounted(load)
               </div>
               <div v-if="event.skipped_reason" class="text-xs text-muted-foreground mt-2">
                 Skip reason: {{ skipReasonLabel(event.skipped_reason) }}
+              </div>
+              <div
+                v-if="event.skipped_reason === 'daily_budget_pacing_deferred'"
+                class="text-xs text-muted-foreground mt-1"
+              >
+                Paced allowance {{ event.pacing_allowance_credits ?? 'n/a' }} credits
+                <span v-if="event.pacing_resume_at">
+                  · resume around {{ new Date(event.pacing_resume_at).toLocaleString() }}
+                </span>
               </div>
               <div v-if="event.error" class="text-xs text-red-500 mt-2">
                 {{ event.error }}

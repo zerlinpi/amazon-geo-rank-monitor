@@ -163,6 +163,7 @@ class WorkspaceVerificationPolicyUpdate(BaseModel):
         ge=0,
         le=1_000_000,
     )
+    daily_budget_pacing_enabled: bool | None = None
 
 
 class SsoStartRequest(BaseModel):

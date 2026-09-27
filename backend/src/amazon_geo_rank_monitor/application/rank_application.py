@@ -100,6 +100,9 @@ async def execute_rank_check(
             daily_credit_budget=workspace_policy.get(
                 "daily_credit_budget"
             ),
+            daily_budget_pacing_enabled=bool(
+                workspace_policy.get("daily_budget_pacing_enabled")
+            ),
         )
 
     service = RankMonitorService(

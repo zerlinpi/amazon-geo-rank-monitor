@@ -152,6 +152,7 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
         "min_confidence": 0.75,
         "max_upstream_probes_per_run": 3,
         "daily_credit_budget": None,
+        "daily_budget_pacing_enabled": False,
     }
 
     updated = client.patch(
@@ -162,6 +163,7 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
             "min_confidence": 0.9,
             "max_upstream_probes_per_run": 1,
             "daily_credit_budget": 25,
+            "daily_budget_pacing_enabled": True,
         },
     )
     assert updated.status_code == 200
@@ -170,6 +172,7 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
         "min_confidence": 0.9,
         "max_upstream_probes_per_run": 1,
         "daily_credit_budget": 25,
+        "daily_budget_pacing_enabled": True,
     }
     stored = services.tenant_repository.get_workspace_verification_policy(
         owner_id=owner_id
@@ -178,6 +181,7 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
     assert str(stored["min_confidence"]) == "0.9000"
     assert stored["max_upstream_probes_per_run"] == 1
     assert stored["daily_credit_budget"] == 25
+    assert stored["daily_budget_pacing_enabled"] is True
 
     billing = services.billing_repository
     billing.grant(
@@ -213,6 +217,7 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
     assert status["utilization_pct"] == 40.0
     assert status["window_start"].endswith("+00:00")
     assert status["reset_at"].endswith("+00:00")
+    assert status["pacing"]["enabled"] is True
 
 
 def test_login_returns_cookie_without_exposing_session_token() -> None:

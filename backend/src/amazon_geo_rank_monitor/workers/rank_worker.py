@@ -149,6 +149,7 @@ class RankWorker:
                 and verification_policy.get("force_strict_verification")
             )
             live_daily_credit_budget = None
+            live_daily_budget_pacing_enabled = False
             if (
                 self._tenants is not None
                 and hasattr(
@@ -163,8 +164,12 @@ class RankWorker:
                     live_daily_credit_budget = live_policy.get(
                         "daily_credit_budget"
                     )
+                    live_daily_budget_pacing_enabled = bool(
+                        live_policy.get("daily_budget_pacing_enabled")
+                    )
                 except KeyError:
                     live_daily_credit_budget = None
+                    live_daily_budget_pacing_enabled = False
 
             strict_verifier = self._auto_strict_verifier
             if (
@@ -179,6 +184,9 @@ class RankWorker:
                     ),
                     force_strict=force_strict_verification,
                     daily_credit_budget=live_daily_credit_budget,
+                    daily_budget_pacing_enabled=(
+                        live_daily_budget_pacing_enabled
+                    ),
                 )
             service = RankMonitorService(
                 provider=provider,

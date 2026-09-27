@@ -22,6 +22,7 @@ from amazon_geo_rank_monitor.api.schemas import (
 from amazon_geo_rank_monitor.api.session_cookies import session_payload, set_session_cookies
 from amazon_geo_rank_monitor.auth.accounts import ROLES, HumanPrincipal
 from amazon_geo_rank_monitor.auth.api_keys import ApiPrincipal
+from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.verification.budget import build_daily_budget_status
 
 router = APIRouter(prefix="/api/v1/team", tags=["team"])
@@ -47,10 +48,14 @@ def _workspace_verification_policy(services, *, owner_id: str) -> dict:
     stored_confidence = stored.get("min_confidence")
     stored_budget = stored.get("max_upstream_probes_per_run")
     stored_daily_budget = stored.get("daily_credit_budget")
+    stored_pacing = bool(stored.get("daily_budget_pacing_enabled"))
+    rate_card = getattr(services, "rate_card", None) or RateCard()
     daily_budget_status = build_daily_budget_status(
         billing_repository=services.billing_repository,
         owner_id=owner_id,
         limit=stored_daily_budget,
+        pacing_enabled=stored_pacing,
+        next_probe_credits=rate_card.quote("strict", 1),
     )
     return {
         **stored,
@@ -72,6 +77,7 @@ def _workspace_verification_policy(services, *, owner_id: str) -> dict:
                 else runtime.get("max_upstream_probes_per_run", 3)
             ),
             "daily_credit_budget": stored_daily_budget,
+            "daily_budget_pacing_enabled": stored_pacing,
         },
     }
 

@@ -414,6 +414,14 @@ class RankMonitorService:
                 and hasattr(self._strict_verifier, "daily_credit_budget")
                 else None
             ),
+            "auto_strict_daily_budget_pacing_enabled": bool(
+                self._strict_verifier is not None
+                and getattr(
+                    self._strict_verifier,
+                    "daily_budget_pacing_enabled",
+                    False,
+                )
+            ),
             "daily_budget_status": daily_budget_status,
             "strict_upstream_attempt_count": strict_upstream_attempt_count,
             "strict_requested_count": len(verification_events),
