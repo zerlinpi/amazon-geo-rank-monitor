@@ -15,6 +15,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger("amazon_geo_rank_monitor.alerts")
 
+BUDGET_THRESHOLD_TYPES = frozenset({"strict_daily_budget_utilization"})
 VERIFICATION_TYPES = frozenset(
     {
         "strict_verification_failed",
@@ -40,7 +41,7 @@ RULE_TYPES = frozenset(
         "competitor_sov_loss",
         "competitor_overtakes_tracked",
     }
-) | VERIFICATION_TYPES
+) | VERIFICATION_TYPES | BUDGET_THRESHOLD_TYPES
 COMPETITIVE_TYPES = frozenset(
     {
         "competitor_enters_top_n",
@@ -52,6 +53,7 @@ COMPETITIVE_TYPES = frozenset(
 )
 THRESHOLD_TYPES = frozenset(
     {
+        *BUDGET_THRESHOLD_TYPES,
         "rank_drop",
         "rank_improve",
         "enters_top_n",
@@ -315,6 +317,13 @@ class AlertService:
             else None
         )
 
+        if rule_type in BUDGET_THRESHOLD_TYPES:
+            return self._evaluate_budget_threshold(
+                rule_type=rule_type,
+                current=current,
+                threshold=threshold,
+            )
+
         if rule_type in VERIFICATION_TYPES:
             return self._evaluate_verification(
                 rule_type=rule_type,
@@ -385,6 +394,44 @@ class AlertService:
                     )
                 )
         return candidates
+
+    def _evaluate_budget_threshold(
+        self,
+        *,
+        rule_type: str,
+        current: dict,
+        threshold: Decimal | None,
+    ) -> list[dict]:
+        if rule_type != "strict_daily_budget_utilization" or threshold is None:
+            return []
+        metadata = current.get("verification_metadata") or {}
+        status = metadata.get("auto_strict_daily_budget_status") or {}
+        limit = status.get("limit")
+        if limit is None:
+            return []
+        utilization = Decimal(str(status.get("utilization_pct", 0)))
+        if utilization < threshold:
+            return []
+        return [
+            self._candidate(
+                asin="VERIFICATION",
+                event_type=rule_type,
+                previous_value=None,
+                current_value=utilization,
+                details={
+                    "scope": "verification_budget",
+                    "threshold_pct": str(threshold),
+                    "limit": limit,
+                    "settled_credits": status.get("settled_credits", 0),
+                    "reserved_credits": status.get("reserved_credits", 0),
+                    "committed_credits": status.get("committed_credits", 0),
+                    "remaining_credits": status.get("remaining_credits"),
+                    "utilization_pct": float(utilization),
+                    "window_start": status.get("window_start"),
+                    "reset_at": status.get("reset_at"),
+                },
+            )
+        ]
 
     def _evaluate_verification(
         self,
@@ -853,6 +900,19 @@ class AlertService:
             else "n/a"
         )
         geo = event["geo_profile_id"] or "aggregate"
+        if event.get("details", {}).get("scope") == "verification_budget":
+            details = event["details"]
+            return (
+                f"Rule: {rule['name']}\n"
+                f"Event: {event['event_type']}\n"
+                f"Scope: strict daily budget\n"
+                f"Utilization: {details.get('utilization_pct', 0)}%\n"
+                f"Committed: {details.get('committed_credits', 0)}"
+                f"/{details.get('limit')} credits\n"
+                f"Remaining: {details.get('remaining_credits')} credits\n"
+                f"Reset: {details.get('reset_at')}\n"
+                f"Run: {event['run_id']}\n"
+            )
         if event.get("details", {}).get("scope") == "verification":
             reason = (
                 event["details"].get("skipped_reason")
@@ -903,7 +963,20 @@ class AlertService:
         else:
             normalized_threshold = None
         normalized_asin = asin.strip().upper() if asin else None
-        if rule_type in VERIFICATION_TYPES:
+        if rule_type in BUDGET_THRESHOLD_TYPES:
+            if normalized_asin or geo_profile_id:
+                raise ValueError(
+                    "strict daily budget utilization rules do not use ASIN or Geo scope"
+                )
+            if (
+                normalized_threshold is None
+                or normalized_threshold < 1
+                or normalized_threshold > 100
+            ):
+                raise ValueError(
+                    "strict daily budget utilization threshold must be 1-100"
+                )
+        elif rule_type in VERIFICATION_TYPES:
             if normalized_asin:
                 raise ValueError(
                     "verification alert rules do not use ASIN scope"
@@ -923,6 +996,8 @@ class AlertService:
         normalized_geo = geo_profile_id.strip() if geo_profile_id else None
         if normalized_geo and normalized_geo not in monitor["geo_profile_ids"]:
             raise ValueError("alert geo profile is not part of the monitor")
+        if rule_type in BUDGET_THRESHOLD_TYPES:
+            normalized_geo = None
         if rule_type not in GEO_SCOPE_TYPES and normalized_geo:
             raise ValueError(
                 "geo_profile_id is only valid for geo or verification alert rules"
