@@ -451,6 +451,9 @@ class AlertService:
                         "strict_probe_budget": metadata.get(
                             "auto_strict_max_upstream_probes_per_run"
                         ),
+                        "strict_daily_credit_budget": metadata.get(
+                            "auto_strict_daily_credit_budget"
+                        ),
                     },
                 )
             )
