@@ -193,6 +193,9 @@ onMounted(load)
                   Budget {{ selected.verification_metadata.auto_strict_max_upstream_probes_per_run ?? '∞' }}
                 </el-tag>
                 <el-tag type="info" effect="plain">
+                  Daily credits {{ selected.verification_metadata.auto_strict_daily_credit_budget ?? '∞' }}
+                </el-tag>
+                <el-tag type="info" effect="plain">
                   Attempts {{ selected.verification_metadata.strict_upstream_attempt_count || 0 }}
                 </el-tag>
                 <el-tag :type="strictStatus(selected).type">
