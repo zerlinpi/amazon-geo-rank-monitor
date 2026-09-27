@@ -6,7 +6,10 @@ from uuid import uuid4
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import sessionmaker
 
-from amazon_geo_rank_monitor.domain.errors import InsufficientCreditsError
+from amazon_geo_rank_monitor.domain.errors import (
+    CreditBudgetExceededError,
+    InsufficientCreditsError,
+)
 
 from .models import (
     CreditAccountRow,
@@ -88,9 +91,20 @@ class BillingRepository:
         idempotency_key: str,
         reference_type: str,
         reference_id: str,
+        reference_budget_limit: int | None = None,
+        reference_budget_window_start: datetime | None = None,
     ) -> dict:
         if credits <= 0:
             raise ValueError("credits must be positive")
+        if reference_budget_limit is not None and reference_budget_limit < 0:
+            raise ValueError("reference_budget_limit must be non-negative")
+        if (
+            reference_budget_limit is not None
+            and reference_budget_window_start is None
+        ):
+            raise ValueError(
+                "reference_budget_window_start is required with a budget limit"
+            )
         with self._sessions.begin() as session:
             existing = session.scalar(
                 select(CreditReservationRow).where(
@@ -111,6 +125,31 @@ class BillingRepository:
                 return self._serialize_reservation(existing)
 
             account = self._account_for_update(session, owner_id)
+            if reference_budget_limit is not None:
+                reservations = session.scalars(
+                    select(CreditReservationRow).where(
+                        CreditReservationRow.owner_id == owner_id,
+                        CreditReservationRow.reference_type == reference_type,
+                        CreditReservationRow.created_at
+                        >= reference_budget_window_start,
+                        CreditReservationRow.status.in_(("reserved", "settled")),
+                    )
+                ).all()
+                committed_credits = sum(
+                    (
+                        row.amount
+                        if row.status == "reserved"
+                        else row.settled_amount
+                    )
+                    for row in reservations
+                )
+                if committed_credits + credits > reference_budget_limit:
+                    raise CreditBudgetExceededError(
+                        "credit guardrail exceeded: "
+                        f"limit {reference_budget_limit}, "
+                        f"committed {committed_credits}, requested {credits}"
+                    )
+
             available = account.balance - account.reserved
             if available < credits:
                 raise InsufficientCreditsError(
