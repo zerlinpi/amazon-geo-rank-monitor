@@ -52,6 +52,7 @@ const ruleTypes = [
   { value: 'strict_verification_failed', label: 'Strict verification fails' },
   { value: 'strict_insufficient_credits', label: 'Strict skipped · insufficient credits' },
   { value: 'strict_daily_budget_exhausted', label: 'Strict skipped · daily credit cap exhausted' },
+  { value: 'strict_daily_budget_utilization', label: 'Daily Strict budget reaches N%' },
   { value: 'strict_probe_budget_exhausted', label: 'Strict skipped · probe budget exhausted' },
   { value: 'strict_provider_unavailable', label: 'Strict skipped · provider unavailable' },
   { value: 'strict_runtime_disabled', label: 'Strict blocked · runtime kill switch' },
@@ -68,6 +69,7 @@ const thresholdRequired = computed(() =>
     'competitor_exits_top_n',
     'competitor_sov_gain',
     'competitor_sov_loss',
+    'strict_daily_budget_utilization',
   ].includes(form.rule_type),
 )
 const competitiveRule = computed(() =>
@@ -76,9 +78,12 @@ const competitiveRule = computed(() =>
 const verificationRule = computed(() =>
   form.rule_type.startsWith('strict_'),
 )
+const budgetUtilizationRule = computed(() =>
+  form.rule_type === 'strict_daily_budget_utilization',
+)
 const geoRule = computed(() =>
   ['geo_not_found', 'geo_rank_above'].includes(form.rule_type)
-  || verificationRule.value,
+  || (verificationRule.value && !budgetUtilizationRule.value),
 )
 const selectedMonitor = computed(() =>
   monitors.value.find(item => item.id === form.monitor_target_id),
@@ -438,9 +443,18 @@ onMounted(async () => {
           </el-form-item>
           <el-form-item
             v-if="thresholdRequired"
-            :label="form.rule_type.includes('sov_') ? 'SOV change (percentage points)' : 'Threshold / N'"
+            :label="budgetUtilizationRule
+              ? 'Daily utilization threshold (%)'
+              : form.rule_type.includes('sov_')
+                ? 'SOV change (percentage points)'
+                : 'Threshold / N'"
           >
-            <el-input-number v-model="form.threshold" :min="1" :max="500" class="w-full" />
+            <el-input-number
+              v-model="form.threshold"
+              :min="1"
+              :max="budgetUtilizationRule ? 100 : 500"
+              class="w-full"
+            />
           </el-form-item>
         </div>
 
@@ -479,7 +493,15 @@ onMounted(async () => {
         </div>
 
         <el-alert
-          v-if="verificationRule"
+          v-if="budgetUtilizationRule"
+          class="mb-4"
+          type="warning"
+          :closable="false"
+          title="Daily budget utilization alert"
+          description="The alert evaluates the completion-time UTC budget snapshot for this Monitor run. It does not wait for the cap to be fully exhausted."
+        />
+        <el-alert
+          v-else-if="verificationRule"
           class="mb-4"
           type="info"
           :closable="false"
