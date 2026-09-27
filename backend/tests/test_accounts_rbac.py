@@ -9,6 +9,7 @@ from amazon_geo_rank_monitor.auth.api_keys import ApiKeyService
 from amazon_geo_rank_monitor.domain.models import SerpResult
 from amazon_geo_rank_monitor.repositories.account_repository import AccountRepository
 from amazon_geo_rank_monitor.repositories.audit_repository import AuditRepository
+from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
@@ -49,6 +50,7 @@ def build_client(*, auth_rate_limit: int = 20):
             managed=FakeProvider(),
             strict=FakeProvider(),
         ),
+        billing_repository=BillingRepository(engine),
         database_engine=engine,
         audit_repository=AuditRepository(engine),
         account_repository=account_repository,
@@ -176,6 +178,41 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
     assert str(stored["min_confidence"]) == "0.9000"
     assert stored["max_upstream_probes_per_run"] == 1
     assert stored["daily_credit_budget"] == 25
+
+    billing = services.billing_repository
+    billing.grant(
+        owner_id=owner_id,
+        credits=100,
+        idempotency_key="grant:live-budget-status",
+    )
+    settled = billing.reserve(
+        owner_id=owner_id,
+        credits=5,
+        idempotency_key="strict:live-status:settled",
+        reference_type="auto_strict_verification",
+        reference_id="run-settled",
+    )
+    billing.settle(settled["id"], credits_used=5)
+    billing.reserve(
+        owner_id=owner_id,
+        credits=5,
+        idempotency_key="strict:live-status:reserved",
+        reference_type="auto_strict_verification",
+        reference_id="run-reserved",
+    )
+
+    live = client.get("/api/v1/team/verification-policy")
+    assert live.status_code == 200
+    status = live.json()["daily_budget_status"]
+    assert status["billing_available"] is True
+    assert status["limit"] == 25
+    assert status["settled_credits"] == 5
+    assert status["reserved_credits"] == 5
+    assert status["committed_credits"] == 10
+    assert status["remaining_credits"] == 15
+    assert status["utilization_pct"] == 40.0
+    assert status["window_start"].endswith("+00:00")
+    assert status["reset_at"].endswith("+00:00")
 
 
 def test_login_returns_cookie_without_exposing_session_token() -> None:
