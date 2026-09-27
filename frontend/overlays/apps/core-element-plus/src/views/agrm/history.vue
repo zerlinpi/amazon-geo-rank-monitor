@@ -63,6 +63,7 @@ function strictStatus(row: RankRun) {
 function skipReasonLabel(reason?: string | null) {
   const labels: Record<string, string> = {
     insufficient_credits: 'Insufficient credits',
+    daily_credit_budget_exhausted: 'Daily strict credit cap exhausted',
     strict_provider_unavailable: 'Strict provider unavailable',
     probe_budget_exhausted: 'Strict probe budget exhausted',
     already_settled: 'Already settled on a previous attempt',
