@@ -94,6 +94,7 @@ function verificationTriggerLabel(value: string) {
 function verificationSkipLabel(value: string) {
   const labels: Record<string, string> = {
     insufficient_credits: 'Insufficient credits',
+    daily_credit_budget_exhausted: 'Daily strict credit cap exhausted',
     probe_budget_exhausted: 'Probe budget exhausted',
     strict_provider_unavailable: 'Strict provider unavailable',
     runtime_kill_switch_disabled: 'Runtime kill switch',
