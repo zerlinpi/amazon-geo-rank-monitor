@@ -381,7 +381,7 @@ def test_not_found_aggregate_alert() -> None:
     [
         ("strict_insufficient_credits", "insufficient_credits"),
         (
-            "strict_daily_credit_budget_exhausted",
+            "strict_daily_budget_exhausted",
             "daily_credit_budget_exhausted",
         ),
         ("strict_probe_budget_exhausted", "probe_budget_exhausted"),
