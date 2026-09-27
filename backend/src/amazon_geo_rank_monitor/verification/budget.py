@@ -74,12 +74,88 @@ def forecast_daily_budget(
     }
 
 
+
+def evaluate_daily_budget_pacing(
+    status: dict,
+    *,
+    now: datetime,
+    window_start: datetime,
+    reset_at: datetime,
+    enabled: bool,
+    next_probe_credits: int,
+) -> dict:
+    """Decide whether the next paid automatic Strict probe should be deferred."""
+
+    result = {
+        "enabled": bool(enabled),
+        "active": False,
+        "defer_next_probe": False,
+        "next_probe_credits": max(int(next_probe_credits), 0),
+        "allowance_credits": None,
+        "resume_at": None,
+        "reason": "disabled" if not enabled else "not_applicable",
+    }
+    if not enabled:
+        return result
+    if not status.get("billing_available", True):
+        result["reason"] = "billing_unavailable"
+        return result
+
+    limit = status.get("limit")
+    if limit is None or int(limit) <= 0:
+        result["reason"] = "finite_positive_budget_required"
+        return result
+
+    forecast = status.get("forecast") or {}
+    if (
+        not forecast.get("available")
+        or not forecast.get("estimated_exhaustion_at")
+    ):
+        result["reason"] = "forecast_not_exhausting"
+        return result
+
+    day_seconds = max((reset_at - window_start).total_seconds(), 1.0)
+    elapsed_seconds = min(
+        max((now - window_start).total_seconds(), 0.0),
+        day_seconds,
+    )
+    allowance = int(int(limit) * (elapsed_seconds / day_seconds))
+    committed = int(status.get("committed_credits") or 0)
+    probe_credits = result["next_probe_credits"]
+    required = committed + probe_credits
+
+    result["active"] = True
+    result["allowance_credits"] = allowance
+    result["reason"] = "within_paced_allowance"
+
+    # Let the authoritative hard-cap reservation path report exhaustion when
+    # even one more probe would exceed the configured daily limit.
+    if probe_credits <= 0 or required > int(limit):
+        return result
+
+    if required > allowance:
+        resume_fraction = required / int(limit)
+        resume_at = window_start + timedelta(
+            seconds=day_seconds * resume_fraction,
+        )
+        result.update(
+            {
+                "defer_next_probe": True,
+                "resume_at": min(resume_at, reset_at).isoformat(),
+                "reason": "paced_allowance_exceeded",
+            }
+        )
+    return result
+
+
 def build_daily_budget_status(
     *,
     billing_repository,
     owner_id: str,
     limit: int | None,
     now: datetime | None = None,
+    pacing_enabled: bool = False,
+    next_probe_credits: int = 0,
 ) -> dict:
     current = now or datetime.now(UTC)
     if current.tzinfo is None:
@@ -130,5 +206,13 @@ def build_daily_budget_status(
         now=current,
         window_start=window_start,
         reset_at=reset_at,
+    )
+    status["pacing"] = evaluate_daily_budget_pacing(
+        status,
+        now=current,
+        window_start=window_start,
+        reset_at=reset_at,
+        enabled=pacing_enabled,
+        next_probe_credits=next_probe_credits,
     )
     return status
