@@ -957,7 +957,8 @@ class AlertService:
         normalized_threshold = (
             Decimal(str(threshold)) if threshold is not None else None
         )
-        if rule_type in THRESHOLD_TYPES:
+        if rule_type in BUDGET_THRESHOLD_TYPES:
+        elif rule_type in THRESHOLD_TYPES:
             if normalized_threshold is None or normalized_threshold <= 0:
                 raise ValueError("positive threshold is required for this rule")
         else:
