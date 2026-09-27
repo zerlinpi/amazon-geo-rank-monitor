@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
@@ -116,12 +116,6 @@ class AutoStrictVerifier:
             second=0,
             microsecond=0,
         )
-        reset_at = window_start.replace(day=window_start.day) + (
-            datetime.resolution * 0
-        )
-        # Build the next UTC midnight without relying on local time semantics.
-        from datetime import timedelta
-
         reset_at = window_start + timedelta(days=1)
         return {
             "billing_available": True,
