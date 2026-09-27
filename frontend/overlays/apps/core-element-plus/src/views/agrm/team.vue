@@ -80,6 +80,10 @@ const dailyBudgetNearLimit = computed(() => {
   )
 })
 
+function formatUtc(value: string) {
+  return new Date(value).toISOString().replace('T', ' ').replace('.000Z', ' UTC')
+}
+
 function invitationLink(token: string) {
   return `${location.origin}${location.pathname}#/login?invite=${encodeURIComponent(token)}`
 }
@@ -668,7 +672,7 @@ onMounted(load)
               <div class="font-medium">Today's Strict Verification budget</div>
               <div class="text-xs text-muted-foreground mt-1">
                 UTC window · resets
-                {{ new Date(dailyBudgetStatus.reset_at).toLocaleString() }}
+                {{ formatUtc(dailyBudgetStatus.reset_at) }}
               </div>
             </div>
             <el-tag
