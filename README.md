@@ -587,6 +587,30 @@ Schema revision `20260927_0019` adds
 Detailed semantics:
 `docs/superpowers/specs/2026-09-27-phase-24-daily-strict-credit-guardrail.md`.
 
+### Live daily budget status
+
+The Workspace verification-policy response also reports the current UTC-day
+guardrail state from the same credit reservations used for enforcement:
+
+- settled Strict Verification credits;
+- in-flight reserved Strict Verification credits;
+- total committed credits;
+- remaining credits;
+- utilization percentage;
+- UTC reset time.
+
+This live status is intentionally different from the historical verification
+cost analytics: historical cost counts immutable settlements, while live status
+also includes in-flight reservations that currently consume the hard daily
+allowance.
+
+Fantastic Admin displays the status and 80%/100% warning states under both
+**Workspace → Team** and **Workspace → System Status**. System Status refreshes
+it every 10 seconds.
+
+See
+`docs/superpowers/specs/2026-09-27-phase-25-live-strict-budget-status.md`.
+
 ## Phase 9 migration
 
 Schema revision `20260924_0003` adds rank-job availability, worker ownership, lease expiry, and maximum-attempt fields.
