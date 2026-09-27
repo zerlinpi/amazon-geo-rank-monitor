@@ -611,6 +611,24 @@ it every 10 seconds.
 See
 `docs/superpowers/specs/2026-09-27-phase-25-live-strict-budget-status.md`.
 
+### Proactive daily budget alerts
+
+Monitor alert rules can now warn before the Workspace daily Strict Verification
+cap is exhausted.
+
+Choose **Daily Strict budget reaches N%** in **Workspace → Rank Alerts** and set
+a threshold from 1–100%. Each completed Monitor run snapshots the current
+UTC-day settled + reserved Strict Verification credits, and the existing
+Email/Slack/webhook pipeline emits an alert when utilization is at or above the
+configured threshold.
+
+The alert is budget-level rather than ASIN/Geo-level. Unlimited Workspaces do
+not trigger utilization alerts. Run History keeps the completion-time budget
+snapshot so operators can audit the exact state that produced the notification.
+
+Detailed semantics:
+`docs/superpowers/specs/2026-09-27-phase-26-strict-budget-utilization-alerts.md`.
+
 ## Phase 9 migration
 
 Schema revision `20260924_0003` adds rank-job availability, worker ownership, lease expiry, and maximum-attempt fields.
