@@ -54,6 +54,7 @@ const ruleTypes = [
   { value: 'strict_daily_budget_exhausted', label: 'Strict skipped · daily credit cap exhausted' },
   { value: 'strict_daily_budget_near_cap', label: 'Strict daily credit cap reaches N%' },
   { value: 'strict_daily_budget_forecast_exhaustion', label: 'Strict daily cap forecast to exhaust today' },
+  { value: 'strict_daily_budget_forecast_runway', label: 'Strict daily cap forecast within N minutes' },
   { value: 'strict_probe_budget_exhausted', label: 'Strict skipped · probe budget exhausted' },
   { value: 'strict_provider_unavailable', label: 'Strict skipped · provider unavailable' },
   { value: 'strict_runtime_disabled', label: 'Strict blocked · runtime kill switch' },
@@ -71,6 +72,7 @@ const thresholdRequired = computed(() =>
     'competitor_sov_gain',
     'competitor_sov_loss',
     'strict_daily_budget_near_cap',
+    'strict_daily_budget_forecast_runway',
   ].includes(form.rule_type),
 )
 const competitiveRule = computed(() =>
@@ -83,10 +85,17 @@ const workspaceBudgetRule = computed(() =>
   [
     'strict_daily_budget_near_cap',
     'strict_daily_budget_forecast_exhaustion',
+    'strict_daily_budget_forecast_runway',
   ].includes(form.rule_type),
 )
 const forecastBudgetRule = computed(() =>
-  form.rule_type === 'strict_daily_budget_forecast_exhaustion',
+  [
+    'strict_daily_budget_forecast_exhaustion',
+    'strict_daily_budget_forecast_runway',
+  ].includes(form.rule_type),
+)
+const runwayBudgetRule = computed(() =>
+  form.rule_type === 'strict_daily_budget_forecast_runway',
 )
 const geoRule = computed(() =>
   ['geo_not_found', 'geo_rank_above'].includes(form.rule_type)
@@ -450,12 +459,16 @@ onMounted(async () => {
           </el-form-item>
           <el-form-item
             v-if="thresholdRequired"
-            :label="workspaceBudgetRule ? 'Daily budget utilization (%)' : (form.rule_type.includes('sov_') ? 'SOV change (percentage points)' : 'Threshold / N')"
+            :label="runwayBudgetRule
+              ? 'Forecast runway (minutes)'
+              : workspaceBudgetRule
+                ? 'Daily budget utilization (%)'
+                : (form.rule_type.includes('sov_') ? 'SOV change (percentage points)' : 'Threshold / N')"
           >
             <el-input-number
               v-model="form.threshold"
               :min="1"
-              :max="workspaceBudgetRule ? 100 : 500"
+              :max="runwayBudgetRule ? 1440 : workspaceBudgetRule ? 100 : 500"
               class="w-full"
             />
           </el-form-item>
@@ -500,13 +513,17 @@ onMounted(async () => {
           class="mb-4"
           :type="forecastBudgetRule ? 'warning' : 'info'"
           :closable="false"
-          :title="forecastBudgetRule
-            ? 'Predictive daily budget alert'
+          :title="runwayBudgetRule
+            ? 'Urgent predictive daily budget alert'
+            : forecastBudgetRule
+              ? 'Predictive daily budget alert'
             : workspaceBudgetRule
               ? 'Daily budget alerts are workspace-wide'
               : 'Strict verification alerts are probe-level'"
-          :description="forecastBudgetRule
-            ? 'This rule fires when the completion-time burn-rate forecast estimates that the Workspace daily Strict Verification credit cap will be exhausted before the next UTC reset.'
+          :description="runwayBudgetRule
+            ? 'This rule fires only when the burn-rate forecast estimates that the Workspace daily Strict Verification cap will be exhausted within the configured number of minutes.'
+            : forecastBudgetRule
+              ? 'This rule fires when the completion-time burn-rate forecast estimates that the Workspace daily Strict Verification credit cap will be exhausted before the next UTC reset.'
             : workspaceBudgetRule
               ? 'The rule fires when the live UTC daily Strict Verification budget reaches the configured percentage. Cooldown suppresses repeated alerts.'
               : 'They fire once per matching Geo verification event, not once per tracked ASIN. You can leave Geo empty to watch every Geo in the Monitor.'"
