@@ -977,6 +977,10 @@ class AlertService:
         normalized_geo = geo_profile_id.strip() if geo_profile_id else None
         if normalized_geo and normalized_geo not in monitor["geo_profile_ids"]:
             raise ValueError("alert geo profile is not part of the monitor")
+        if rule_type == "strict_daily_budget_near_cap" and normalized_geo:
+            raise ValueError(
+                "strict daily budget alerts are workspace-wide"
+            )
         if rule_type not in GEO_SCOPE_TYPES and normalized_geo:
             raise ValueError(
                 "geo_profile_id is only valid for geo or verification alert rules"
