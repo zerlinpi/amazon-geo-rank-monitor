@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
@@ -18,6 +18,7 @@ from amazon_geo_rank_monitor.domain.models import (
 )
 from amazon_geo_rank_monitor.ranking.matcher import match_asins
 
+from .budget import build_daily_budget_status
 from .policy import AutoStrictVerificationPolicy
 
 logger = logging.getLogger("amazon_geo_rank_monitor.auto_strict")
@@ -103,32 +104,13 @@ class AutoStrictVerifier:
         return self._daily_credit_budget
 
     def daily_budget_status(self, *, owner_id: str | None) -> dict | None:
-        if (
-            self._billing is None
-            or owner_id is None
-            or not hasattr(self._billing, "reference_budget_status")
-        ):
+        if owner_id is None:
             return None
-        now = datetime.now(UTC)
-        window_start = now.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
+        return build_daily_budget_status(
+            billing_repository=self._billing,
+            owner_id=owner_id,
+            limit=self._daily_credit_budget,
         )
-        reset_at = window_start + timedelta(days=1)
-        return {
-            "billing_available": True,
-            "window_start": window_start.isoformat(),
-            "reset_at": reset_at.isoformat(),
-            **self._billing.reference_budget_status(
-                owner_id=owner_id,
-                reference_type="auto_strict_verification",
-                since=window_start,
-                until=reset_at,
-                limit=self._daily_credit_budget,
-            ),
-        }
 
     def for_monitor(
         self,
