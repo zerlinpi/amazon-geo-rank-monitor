@@ -644,6 +644,8 @@ export interface VerificationEvent {
   triggers: string[]
   skipped_reason?: string | null
   error?: string | null
+  pacing_resume_at?: string | null
+  pacing_allowance_credits?: number | null
 }
 
 export interface VerificationMetadata {
