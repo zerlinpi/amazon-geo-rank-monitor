@@ -402,6 +402,12 @@ class RankMonitorService:
                 else None
             ),
             "auto_strict_max_upstream_probes_per_run": strict_probe_budget,
+            "auto_strict_daily_credit_budget": (
+                self._strict_verifier.daily_credit_budget
+                if self._strict_verifier is not None
+                and hasattr(self._strict_verifier, "daily_credit_budget")
+                else None
+            ),
             "strict_upstream_attempt_count": strict_upstream_attempt_count,
             "strict_requested_count": len(verification_events),
             "strict_attempted_count": sum(
