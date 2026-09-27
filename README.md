@@ -578,7 +578,7 @@ skipped_reason = daily_credit_budget_exhausted
 ```
 
 Run History records the effective cap, Rank Alerts can notify on
-`strict_daily_credit_budget_exhausted`, and System Status includes the reason
+`strict_daily_budget_exhausted`, and System Status includes the reason
 in its verification analytics.
 
 Schema revision `20260927_0019` adds
