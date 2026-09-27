@@ -17,6 +17,7 @@ from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepos
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
 from amazon_geo_rank_monitor.repositories.models import Base, TenantRow
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
+from amazon_geo_rank_monitor.repositories.tenant_repository import TenantRepository
 from amazon_geo_rank_monitor.verification import (
     AutoStrictVerificationPolicy,
     AutoStrictVerifier,
@@ -67,7 +68,7 @@ def make_services(
         strict=strict_provider or provider,
     )
     services = AppServices(
-        tenant_repository=None,
+        tenant_repository=TenantRepository(engine),
         geo_repository=geo,
         monitor_repository=None,
         job_repository=None,
@@ -572,4 +573,59 @@ async def test_manual_force_recovers_managed_failure_with_strict_probe() -> None
         "balance": 5,
         "reserved": 0,
         "available": 5,
+    }
+
+
+@pytest.mark.asyncio
+async def test_live_workspace_daily_budget_blocks_paid_manual_force() -> None:
+    managed = SequenceRankProvider([5])
+    strict = SequenceRankProvider([7])
+    services, geo, billing = make_services(
+        managed,
+        strict_provider=strict,
+        auto_strict=True,
+        strict_probe_budget=1,
+    )
+    services.tenant_repository.update_workspace_verification_policy(
+        owner_id="tenant-1",
+        changes={"daily_credit_budget": 0},
+    )
+    ny = add_geo(geo, "ny", "10001")
+    billing.grant(
+        owner_id="tenant-1",
+        credits=10,
+        idempotency_key="grant:daily-budget-immediate",
+    )
+
+    result = await execute_rank_check(
+        services=services,
+        owner_id="tenant-1",
+        marketplace="amazon.com",
+        keyword="walking pad",
+        asins=["B0TARGET01"],
+        geo_profile_ids=[ny["id"]],
+        search_depth=100,
+        provider_mode="managed",
+        reference_id="daily-budget-immediate",
+        force_strict_verification=True,
+    )
+
+    assert result.status == "succeeded"
+    assert managed.calls == 1
+    assert strict.calls == 0
+    assert result.primary_upstream_probe_count == 1
+    assert result.strict_verification_upstream_probe_count == 0
+    assert result.snapshots[0].weighted_rank == Decimal("5.00")
+    assert result.verification_events[0]["skipped_reason"] == (
+        "daily_credit_budget_exhausted"
+    )
+    saved = services.rank_repository.get_run(
+        result.run_id,
+        owner_id="tenant-1",
+    )
+    assert saved["verification_metadata"]["auto_strict_daily_credit_budget"] == 0
+    assert billing.get_balance("tenant-1") == {
+        "balance": 9,
+        "reserved": 0,
+        "available": 9,
     }
