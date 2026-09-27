@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 
-from amazon_geo_rank_monitor.verification.budget import forecast_daily_budget
+from amazon_geo_rank_monitor.verification.budget import (
+    evaluate_daily_budget_pacing,
+    forecast_daily_budget,
+)
 
 
 def status(*, limit: int | None, committed: int, billing_available: bool = True):
@@ -92,3 +95,85 @@ def test_forecast_is_unavailable_when_billing_is_unavailable() -> None:
         reset_at=reset_at,
     )
     assert forecast["available"] is False
+
+
+
+def test_pacing_defers_next_probe_when_forecast_would_exhaust_cap() -> None:
+    window_start = datetime(2026, 9, 27, 0, 0, tzinfo=UTC)
+    now = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
+    reset_at = datetime(2026, 9, 28, 0, 0, tzinfo=UTC)
+    pacing = evaluate_daily_budget_pacing(
+        {
+            "billing_available": True,
+            "limit": 100,
+            "committed_credits": 60,
+            "forecast": {
+                "available": True,
+                "estimated_exhaustion_at": "2026-09-27T20:00:00+00:00",
+            },
+        },
+        now=now,
+        window_start=window_start,
+        reset_at=reset_at,
+        enabled=True,
+        next_probe_credits=5,
+    )
+
+    assert pacing["active"] is True
+    assert pacing["allowance_credits"] == 50
+    assert pacing["defer_next_probe"] is True
+    assert pacing["reason"] == "paced_allowance_exceeded"
+    assert pacing["resume_at"] == "2026-09-27T15:36:00+00:00"
+
+
+def test_pacing_allows_probe_that_fits_current_linear_allowance() -> None:
+    window_start = datetime(2026, 9, 27, 0, 0, tzinfo=UTC)
+    now = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
+    reset_at = datetime(2026, 9, 28, 0, 0, tzinfo=UTC)
+    pacing = evaluate_daily_budget_pacing(
+        {
+            "billing_available": True,
+            "limit": 100,
+            "committed_credits": 45,
+            "forecast": {
+                "available": True,
+                "estimated_exhaustion_at": "2026-09-27T23:00:00+00:00",
+            },
+        },
+        now=now,
+        window_start=window_start,
+        reset_at=reset_at,
+        enabled=True,
+        next_probe_credits=5,
+    )
+
+    assert pacing["active"] is True
+    assert pacing["allowance_credits"] == 50
+    assert pacing["defer_next_probe"] is False
+    assert pacing["reason"] == "within_paced_allowance"
+
+
+def test_pacing_is_inactive_without_projected_exhaustion() -> None:
+    window_start = datetime(2026, 9, 27, 0, 0, tzinfo=UTC)
+    now = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
+    reset_at = datetime(2026, 9, 28, 0, 0, tzinfo=UTC)
+    pacing = evaluate_daily_budget_pacing(
+        {
+            "billing_available": True,
+            "limit": 100,
+            "committed_credits": 40,
+            "forecast": {
+                "available": True,
+                "estimated_exhaustion_at": None,
+            },
+        },
+        now=now,
+        window_start=window_start,
+        reset_at=reset_at,
+        enabled=True,
+        next_probe_credits=5,
+    )
+
+    assert pacing["active"] is False
+    assert pacing["defer_next_probe"] is False
+    assert pacing["reason"] == "forecast_not_exhausting"
