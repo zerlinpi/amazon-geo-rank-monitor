@@ -149,6 +149,7 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
         "enabled": True,
         "min_confidence": 0.75,
         "max_upstream_probes_per_run": 3,
+        "daily_credit_budget": None,
     }
 
     updated = client.patch(
@@ -158,6 +159,7 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
             "enabled": False,
             "min_confidence": 0.9,
             "max_upstream_probes_per_run": 1,
+            "daily_credit_budget": 25,
         },
     )
     assert updated.status_code == 200
@@ -165,6 +167,7 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
         "enabled": False,
         "min_confidence": 0.9,
         "max_upstream_probes_per_run": 1,
+        "daily_credit_budget": 25,
     }
     stored = services.tenant_repository.get_workspace_verification_policy(
         owner_id=owner_id
@@ -172,6 +175,7 @@ def test_owner_can_manage_workspace_verification_defaults() -> None:
     assert stored["enabled"] is False
     assert str(stored["min_confidence"]) == "0.9000"
     assert stored["max_upstream_probes_per_run"] == 1
+    assert stored["daily_credit_budget"] == 25
 
 
 def test_login_returns_cookie_without_exposing_session_token() -> None:
