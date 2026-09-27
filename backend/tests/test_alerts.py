@@ -486,6 +486,122 @@ def test_verification_alert_rules_reject_asin_scope() -> None:
         )
 
 
+def budget_run(
+    run_id: str,
+    *,
+    utilization_pct: float,
+    limit: int | None = 100,
+) -> dict:
+    run = aggregate_run(run_id, 10)
+    run["verification_metadata"] = {
+        "auto_strict_daily_budget_status": {
+            "window_start": "2026-09-27T00:00:00+00:00",
+            "reset_at": "2026-09-28T00:00:00+00:00",
+            "limit": limit,
+            "settled_credits": 75,
+            "reserved_credits": 5,
+            "committed_credits": 80,
+            "remaining_credits": 20 if limit is not None else None,
+            "utilization_pct": utilization_pct,
+        }
+    }
+    return run
+
+
+def test_strict_daily_budget_utilization_alert_fires_at_threshold() -> None:
+    service, mailer = build_service(
+        runs={"current": budget_run("current", utilization_pct=80.0)},
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict budget near cap",
+        rule_type="strict_daily_budget_utilization",
+        threshold=Decimal("80"),
+        asin=None,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+
+    assert len(events) == 1
+    event = events[0]
+    assert event["event_type"] == "strict_daily_budget_utilization"
+    assert event["current_value"] == Decimal("80.00")
+    assert event["details"]["scope"] == "verification_budget"
+    assert event["details"]["committed_credits"] == 80
+    assert event["details"]["remaining_credits"] == 20
+    assert "Utilization: 80.0%" in mailer.messages[0].text
+    assert "Committed: 80/100 credits" in mailer.messages[0].text
+
+
+@pytest.mark.parametrize(
+    ("utilization_pct", "limit"),
+    [(79.99, 100), (95.0, None)],
+)
+def test_strict_daily_budget_utilization_alert_stays_quiet_below_threshold_or_unlimited(
+    utilization_pct: float,
+    limit: int | None,
+) -> None:
+    service, mailer = build_service(
+        runs={
+            "current": budget_run(
+                "current",
+                utilization_pct=utilization_pct,
+                limit=limit,
+            )
+        },
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict budget near cap",
+        rule_type="strict_daily_budget_utilization",
+        threshold=Decimal("80"),
+        asin=None,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    assert service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    ) == []
+    assert mailer.messages == []
+
+
+@pytest.mark.parametrize("threshold", [Decimal("0"), Decimal("101")])
+def test_strict_daily_budget_utilization_threshold_is_bounded(
+    threshold: Decimal,
+) -> None:
+    service, _ = build_service(runs={}, jobs=[])
+    with pytest.raises(
+        ValueError,
+        match="threshold must be 1-100",
+    ):
+        service.create_rule(
+            owner_id=OWNER_ID,
+            monitor_target_id=MONITOR_ID,
+            name="Invalid strict budget threshold",
+            rule_type="strict_daily_budget_utilization",
+            threshold=threshold,
+            asin=None,
+            geo_profile_id=None,
+            channels={"emails": ["alerts@example.com"]},
+            cooldown_minutes=0,
+        )
+
+
 def test_private_webhook_targets_are_rejected_and_urls_are_not_exposed() -> None:
     service, _ = build_service(
         runs={},
