@@ -53,6 +53,7 @@ const ruleTypes = [
   { value: 'strict_insufficient_credits', label: 'Strict skipped · insufficient credits' },
   { value: 'strict_daily_budget_exhausted', label: 'Strict skipped · daily credit cap exhausted' },
   { value: 'strict_daily_budget_near_cap', label: 'Strict daily credit cap reaches N%' },
+  { value: 'strict_daily_budget_forecast_exhaustion', label: 'Strict daily cap forecast to exhaust today' },
   { value: 'strict_probe_budget_exhausted', label: 'Strict skipped · probe budget exhausted' },
   { value: 'strict_provider_unavailable', label: 'Strict skipped · provider unavailable' },
   { value: 'strict_runtime_disabled', label: 'Strict blocked · runtime kill switch' },
@@ -79,7 +80,13 @@ const verificationRule = computed(() =>
   form.rule_type.startsWith('strict_'),
 )
 const workspaceBudgetRule = computed(() =>
-  form.rule_type === 'strict_daily_budget_near_cap',
+  [
+    'strict_daily_budget_near_cap',
+    'strict_daily_budget_forecast_exhaustion',
+  ].includes(form.rule_type),
+)
+const forecastBudgetRule = computed(() =>
+  form.rule_type === 'strict_daily_budget_forecast_exhaustion',
 )
 const geoRule = computed(() =>
   ['geo_not_found', 'geo_rank_above'].includes(form.rule_type)
@@ -491,12 +498,18 @@ onMounted(async () => {
         <el-alert
           v-if="verificationRule"
           class="mb-4"
-          type="info"
+          :type="forecastBudgetRule ? 'warning' : 'info'"
           :closable="false"
-          :title="workspaceBudgetRule ? 'Daily budget alerts are workspace-wide' : 'Strict verification alerts are probe-level'"
-          :description="workspaceBudgetRule
-            ? 'The rule fires when the live UTC daily Strict Verification budget reaches the configured percentage. Cooldown suppresses repeated alerts.'
-            : 'They fire once per matching Geo verification event, not once per tracked ASIN. You can leave Geo empty to watch every Geo in the Monitor.'"
+          :title="forecastBudgetRule
+            ? 'Predictive daily budget alert'
+            : workspaceBudgetRule
+              ? 'Daily budget alerts are workspace-wide'
+              : 'Strict verification alerts are probe-level'"
+          :description="forecastBudgetRule
+            ? 'This rule fires when the completion-time burn-rate forecast estimates that the Workspace daily Strict Verification credit cap will be exhausted before the next UTC reset.'
+            : workspaceBudgetRule
+              ? 'The rule fires when the live UTC daily Strict Verification budget reaches the configured percentage. Cooldown suppresses repeated alerts.'
+              : 'They fire once per matching Geo verification event, not once per tracked ASIN. You can leave Geo empty to watch every Geo in the Monitor.'"
         />
 
         <el-form-item label="Cooldown minutes">

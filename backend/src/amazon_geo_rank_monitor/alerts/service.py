@@ -21,6 +21,7 @@ VERIFICATION_TYPES = frozenset(
         "strict_insufficient_credits",
         "strict_daily_budget_exhausted",
         "strict_daily_budget_near_cap",
+        "strict_daily_budget_forecast_exhaustion",
         "strict_probe_budget_exhausted",
         "strict_provider_unavailable",
         "strict_runtime_disabled",
@@ -398,6 +399,50 @@ class AlertService:
         threshold: Decimal | None,
     ) -> list[dict]:
         metadata = current.get("verification_metadata") or {}
+        if rule_type == "strict_daily_budget_forecast_exhaustion":
+            status = metadata.get("daily_budget_status") or {}
+            forecast = status.get("forecast") or {}
+            estimated_exhaustion_at = forecast.get("estimated_exhaustion_at")
+            if (
+                geo_filter
+                or not status.get("billing_available")
+                or not forecast.get("available")
+                or not estimated_exhaustion_at
+            ):
+                return []
+            return [
+                self._candidate(
+                    asin="VERIFICATION",
+                    event_type=rule_type,
+                    previous_value=None,
+                    current_value=Decimal(
+                        str(forecast.get("projected_utilization_pct") or 0)
+                    ),
+                    details={
+                        "scope": "verification",
+                        "budget_limit": status.get("limit"),
+                        "budget_committed_credits": status.get(
+                            "committed_credits"
+                        ),
+                        "budget_remaining_credits": status.get(
+                            "remaining_credits"
+                        ),
+                        "budget_reset_at": status.get("reset_at"),
+                        "burn_rate_credits_per_hour": forecast.get(
+                            "burn_rate_credits_per_hour"
+                        ),
+                        "projected_committed_credits": forecast.get(
+                            "projected_committed_credits"
+                        ),
+                        "projected_utilization_pct": forecast.get(
+                            "projected_utilization_pct"
+                        ),
+                        "estimated_exhaustion_at": estimated_exhaustion_at,
+                        "runway_minutes": forecast.get("runway_minutes"),
+                    },
+                )
+            ]
+
         if rule_type == "strict_daily_budget_near_cap":
             status = metadata.get("daily_budget_status") or {}
             utilization = status.get("utilization_pct")
@@ -900,6 +945,17 @@ class AlertService:
                     f"(remaining {details.get('budget_remaining_credits')} "
                     f"of {details.get('budget_limit')} credits)"
                 )
+            elif (
+                event["event_type"]
+                == "strict_daily_budget_forecast_exhaustion"
+            ):
+                details = event["details"]
+                reason = (
+                    "current burn rate projects daily cap exhaustion at "
+                    f"{details.get('estimated_exhaustion_at')} "
+                    f"(projected {details.get('projected_utilization_pct')}%, "
+                    f"runway {details.get('runway_minutes')} minutes)"
+                )
             else:
                 reason = (
                     event["details"].get("skipped_reason")
@@ -977,7 +1033,14 @@ class AlertService:
         normalized_geo = geo_profile_id.strip() if geo_profile_id else None
         if normalized_geo and normalized_geo not in monitor["geo_profile_ids"]:
             raise ValueError("alert geo profile is not part of the monitor")
-        if rule_type == "strict_daily_budget_near_cap" and normalized_geo:
+        if (
+            rule_type
+            in {
+                "strict_daily_budget_near_cap",
+                "strict_daily_budget_forecast_exhaustion",
+            }
+            and normalized_geo
+        ):
             raise ValueError(
                 "strict daily budget alerts are workspace-wide"
             )
