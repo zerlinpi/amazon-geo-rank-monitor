@@ -375,6 +375,12 @@ class RankMonitorService:
             primary_upstream_probe_count + strict_upstream_probe_count
         )
         cache_hit_count = primary_cache_hit_count + strict_cache_hit_count
+        daily_budget_status = (
+            self._strict_verifier.daily_budget_status(owner_id=owner_id)
+            if self._strict_verifier is not None
+            and hasattr(self._strict_verifier, "daily_budget_status")
+            else None
+        )
         verification_metadata = {
             "manual_force_requested": bool(
                 self._provider_mode == "managed"
@@ -408,6 +414,7 @@ class RankMonitorService:
                 and hasattr(self._strict_verifier, "daily_credit_budget")
                 else None
             ),
+            "auto_strict_daily_budget_status": daily_budget_status,
             "strict_upstream_attempt_count": strict_upstream_attempt_count,
             "strict_requested_count": len(verification_events),
             "strict_attempted_count": sum(
