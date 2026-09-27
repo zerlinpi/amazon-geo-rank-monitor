@@ -53,6 +53,7 @@ const ruleTypes = [
   { value: 'strict_insufficient_credits', label: 'Strict skipped · insufficient credits' },
   { value: 'strict_daily_budget_exhausted', label: 'Strict skipped · daily credit cap exhausted' },
   { value: 'strict_daily_budget_near_cap', label: 'Strict daily credit cap reaches N%' },
+  { value: 'strict_daily_budget_forecast_exhaustion', label: 'Strict daily cap forecast to exhaust today' },
   { value: 'strict_probe_budget_exhausted', label: 'Strict skipped · probe budget exhausted' },
   { value: 'strict_provider_unavailable', label: 'Strict skipped · provider unavailable' },
   { value: 'strict_runtime_disabled', label: 'Strict blocked · runtime kill switch' },
@@ -79,7 +80,13 @@ const verificationRule = computed(() =>
   form.rule_type.startsWith('strict_'),
 )
 const workspaceBudgetRule = computed(() =>
-  form.rule_type === 'strict_daily_budget_near_cap',
+  [
+    'strict_daily_budget_near_cap',
+    'strict_daily_budget_forecast_exhaustion',
+  ].includes(form.rule_type),
+)
+const forecastBudgetRule = computed(() =>
+  form.rule_type === 'strict_daily_budget_forecast_exhaustion',
 )
 const geoRule = computed(() =>
   ['geo_not_found', 'geo_rank_above'].includes(form.rule_type)
