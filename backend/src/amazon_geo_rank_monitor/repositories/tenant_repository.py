@@ -70,6 +70,11 @@ class TenantRepository:
                     )
                 row.auto_strict_daily_credit_budget = value
 
+            if "daily_budget_pacing_enabled" in changes:
+                row.auto_strict_daily_budget_pacing_enabled = bool(
+                    changes["daily_budget_pacing_enabled"]
+                )
+
             session.flush()
             return self._serialize_verification_policy(row)
 
@@ -156,6 +161,9 @@ class TenantRepository:
                 row.auto_strict_max_probes_per_run
             ),
             "daily_credit_budget": row.auto_strict_daily_credit_budget,
+            "daily_budget_pacing_enabled": (
+                row.auto_strict_daily_budget_pacing_enabled
+            ),
         }
 
     @staticmethod
