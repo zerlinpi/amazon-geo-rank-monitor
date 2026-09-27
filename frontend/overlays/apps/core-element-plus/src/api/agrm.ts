@@ -109,6 +109,7 @@ export interface WorkspaceVerificationPolicy {
   enabled?: boolean | null
   min_confidence?: string | number | null
   max_upstream_probes_per_run?: number | null
+  daily_credit_budget?: number | null
   runtime: {
     enabled: boolean
     min_confidence: string | number
@@ -118,6 +119,7 @@ export interface WorkspaceVerificationPolicy {
     enabled: boolean
     min_confidence: string | number
     max_upstream_probes_per_run: number
+    daily_credit_budget?: number | null
   }
 }
 
@@ -125,6 +127,7 @@ export interface WorkspaceVerificationPolicyUpdate {
   enabled?: boolean | null
   min_confidence?: number | null
   max_upstream_probes_per_run?: number | null
+  daily_credit_budget?: number | null
 }
 
 export interface SsoDiscovery {
