@@ -498,12 +498,18 @@ onMounted(async () => {
         <el-alert
           v-if="verificationRule"
           class="mb-4"
-          type="info"
+          :type="forecastBudgetRule ? 'warning' : 'info'"
           :closable="false"
-          :title="workspaceBudgetRule ? 'Daily budget alerts are workspace-wide' : 'Strict verification alerts are probe-level'"
-          :description="workspaceBudgetRule
-            ? 'The rule fires when the live UTC daily Strict Verification budget reaches the configured percentage. Cooldown suppresses repeated alerts.'
-            : 'They fire once per matching Geo verification event, not once per tracked ASIN. You can leave Geo empty to watch every Geo in the Monitor.'"
+          :title="forecastBudgetRule
+            ? 'Predictive daily budget alert'
+            : workspaceBudgetRule
+              ? 'Daily budget alerts are workspace-wide'
+              : 'Strict verification alerts are probe-level'"
+          :description="forecastBudgetRule
+            ? 'This rule fires when the completion-time burn-rate forecast estimates that the Workspace daily Strict Verification credit cap will be exhausted before the next UTC reset.'
+            : workspaceBudgetRule
+              ? 'The rule fires when the live UTC daily Strict Verification budget reaches the configured percentage. Cooldown suppresses repeated alerts.'
+              : 'They fire once per matching Geo verification event, not once per tracked ASIN. You can leave Geo empty to watch every Geo in the Monitor.'"
         />
 
         <el-form-item label="Cooldown minutes">
