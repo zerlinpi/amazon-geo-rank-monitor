@@ -727,6 +727,35 @@ onMounted(load)
             :percentage="Math.min(dailyBudgetStatus.utilization_pct, 100)"
           />
 
+          <div
+            v-if="dailyBudgetStatus.forecast.available"
+            class="mt-4 rounded-lg bg-muted/30 p-3"
+          >
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div>
+                <div class="text-xs text-muted-foreground">Current burn rate</div>
+                <div class="font-semibold mt-1">
+                  {{ dailyBudgetStatus.forecast.burn_rate_credits_per_hour }} credits/hour
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">Projected UTC EOD</div>
+                <div class="font-semibold mt-1">
+                  {{ dailyBudgetStatus.forecast.projected_committed_credits }} credits
+                  · {{ dailyBudgetStatus.forecast.projected_utilization_pct }}%
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">Estimated cap exhaustion</div>
+                <div class="font-semibold mt-1">
+                  {{ dailyBudgetStatus.forecast.estimated_exhaustion_at
+                    ? formatUtc(dailyBudgetStatus.forecast.estimated_exhaustion_at)
+                    : 'Not projected today' }}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <el-alert
             v-if="!dailyBudgetStatus.billing_available"
             class="mt-4"
