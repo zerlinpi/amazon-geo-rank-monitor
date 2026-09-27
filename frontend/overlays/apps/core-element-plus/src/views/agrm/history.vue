@@ -195,6 +195,20 @@ onMounted(load)
                 <el-tag type="info" effect="plain">
                   Daily credits {{ selected.verification_metadata.auto_strict_daily_credit_budget ?? '∞' }}
                 </el-tag>
+                <el-tag
+                  v-if="selected.verification_metadata.auto_strict_daily_budget_status"
+                  :type="
+                    selected.verification_metadata.auto_strict_daily_budget_status.utilization_pct >= 100
+                      ? 'danger'
+                      : selected.verification_metadata.auto_strict_daily_budget_status.utilization_pct >= 80
+                        ? 'warning'
+                        : 'success'
+                  "
+                  effect="plain"
+                >
+                  Daily used
+                  {{ selected.verification_metadata.auto_strict_daily_budget_status.utilization_pct }}%
+                </el-tag>
                 <el-tag type="info" effect="plain">
                   Attempts {{ selected.verification_metadata.strict_upstream_attempt_count || 0 }}
                 </el-tag>
