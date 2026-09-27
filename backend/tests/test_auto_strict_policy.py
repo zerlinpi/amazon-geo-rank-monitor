@@ -261,6 +261,7 @@ async def test_forecast_pacing_defers_paid_automatic_probe(monkeypatch) -> None:
         "amazon_geo_rank_monitor.verification.service.build_daily_budget_status",
         lambda **kwargs: {
             "pacing": {
+                "active": True,
                 "defer_next_probe": True,
                 "resume_at": "2026-09-27T15:36:00+00:00",
                 "allowance_credits": 50,
