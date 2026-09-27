@@ -640,6 +640,129 @@ def test_strict_daily_budget_forecast_alert_is_workspace_wide() -> None:
         )
 
 
+def test_strict_daily_budget_forecast_runway_alert_fires_within_threshold() -> None:
+    service, mailer = build_service(
+        runs={
+            "current": verification_run(
+                "current",
+                daily_budget_status={
+                    "billing_available": True,
+                    "limit": 100,
+                    "committed_credits": 85,
+                    "remaining_credits": 15,
+                    "utilization_pct": 85.0,
+                    "reset_at": "2026-09-28T00:00:00+00:00",
+                    "forecast": {
+                        "available": True,
+                        "sample_seconds": 43200,
+                        "burn_rate_credits_per_hour": 7.08,
+                        "projected_committed_credits": 170.0,
+                        "projected_utilization_pct": 170.0,
+                        "estimated_exhaustion_at": (
+                            "2026-09-27T13:30:00+00:00"
+                        ),
+                        "runway_minutes": 90,
+                    },
+                },
+            )
+        },
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict budget urgent",
+        rule_type="strict_daily_budget_forecast_runway",
+        threshold=120,
+        asin=None,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=30,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+
+    assert len(events) == 1
+    event = events[0]
+    assert event["event_type"] == "strict_daily_budget_forecast_runway"
+    assert event["current_value"] == Decimal("90")
+    assert event["details"]["runway_threshold_minutes"] == "120"
+    assert event["details"]["runway_minutes"] == 90
+    assert "runway is 90 minutes" in mailer.messages[0].text
+    assert "alert threshold 120 minutes" in mailer.messages[0].text
+
+
+def test_strict_daily_budget_forecast_runway_alert_stays_quiet_outside_threshold() -> None:
+    service, mailer = build_service(
+        runs={
+            "current": verification_run(
+                "current",
+                daily_budget_status={
+                    "billing_available": True,
+                    "limit": 100,
+                    "committed_credits": 60,
+                    "remaining_credits": 40,
+                    "utilization_pct": 60.0,
+                    "reset_at": "2026-09-28T00:00:00+00:00",
+                    "forecast": {
+                        "available": True,
+                        "sample_seconds": 43200,
+                        "burn_rate_credits_per_hour": 5.0,
+                        "projected_committed_credits": 120.0,
+                        "projected_utilization_pct": 120.0,
+                        "estimated_exhaustion_at": (
+                            "2026-09-27T20:00:00+00:00"
+                        ),
+                        "runway_minutes": 480,
+                    },
+                },
+            )
+        },
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict budget urgent",
+        rule_type="strict_daily_budget_forecast_runway",
+        threshold=120,
+        asin=None,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=30,
+    )
+
+    assert service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    ) == []
+    assert mailer.messages == []
+
+
+@pytest.mark.parametrize("threshold", [Decimal("0"), Decimal("1441")])
+def test_strict_daily_budget_forecast_runway_threshold_is_bounded(
+    threshold: Decimal,
+) -> None:
+    service, _ = build_service(runs={}, jobs=[])
+    with pytest.raises(ValueError):
+        service.create_rule(
+            owner_id=OWNER_ID,
+            monitor_target_id=MONITOR_ID,
+            name="Invalid runway",
+            rule_type="strict_daily_budget_forecast_runway",
+            threshold=threshold,
+            asin=None,
+            geo_profile_id=None,
+            channels={"emails": ["alerts@example.com"]},
+            cooldown_minutes=30,
+        )
+
+
 def test_strict_verification_failure_alert_includes_provider_error() -> None:
     service, mailer = build_service(
         runs={
