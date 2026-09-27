@@ -177,3 +177,30 @@ def test_pacing_is_inactive_without_projected_exhaustion() -> None:
     assert pacing["active"] is False
     assert pacing["defer_next_probe"] is False
     assert pacing["reason"] == "forecast_not_exhausting"
+
+
+
+def test_pacing_yields_to_hard_cap_when_next_probe_would_exceed_limit() -> None:
+    window_start = datetime(2026, 9, 27, 0, 0, tzinfo=UTC)
+    now = datetime(2026, 9, 27, 23, 0, tzinfo=UTC)
+    reset_at = datetime(2026, 9, 28, 0, 0, tzinfo=UTC)
+    pacing = evaluate_daily_budget_pacing(
+        {
+            "billing_available": True,
+            "limit": 100,
+            "committed_credits": 98,
+            "forecast": {
+                "available": True,
+                "estimated_exhaustion_at": "2026-09-27T23:30:00+00:00",
+            },
+        },
+        now=now,
+        window_start=window_start,
+        reset_at=reset_at,
+        enabled=True,
+        next_probe_credits=5,
+    )
+
+    assert pacing["active"] is True
+    assert pacing["defer_next_probe"] is False
+    assert pacing["reason"] == "hard_cap_authoritative"
