@@ -101,6 +101,7 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "auto_strict_enabled",
         "auto_strict_min_confidence",
         "auto_strict_max_probes_per_run",
+        "auto_strict_daily_credit_budget",
     } <= tenant_columns
     token_columns = {
         column["name"] for column in inspector.get_columns("account_tokens")
