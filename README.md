@@ -245,6 +245,8 @@ The local process boundary is the tenant security boundary for stdio. Streamable
 - `POST /api/v1/system/dead-letters/{job_id}/requeue`
 - `GET /api/v1/system/metrics`
 - `GET /api/v1/system/audit`
+- `GET /api/v1/system/verification-summary`
+- `GET /api/v1/system/verification-analytics?hours=168`
 
 All tenant-owned lookups are filtered server-side. A resource owned by another tenant is returned as not found.
 
@@ -507,6 +509,43 @@ The endpoint uses Prometheus text exposition and currently emits:
 - `agrm_service_processed_jobs_total{worker_id,worker_type,status}`
 
 Schedulers now emit the same persistent heartbeat records as rank workers. Set a unique `SCHEDULER_ID` for each scheduler replica.
+
+## Strict verification effectiveness and cost analytics
+
+Workspace operators with `system:read` can inspect windowed Strict Verification
+performance:
+
+```http
+GET /api/v1/system/verification-analytics?hours=168
+```
+
+The endpoint supports 1–2160 hours and combines two existing immutable sources:
+`rank_runs.verification_metadata` for verification outcomes and the credit
+ledger for exact billing attribution.
+
+It reports:
+
+- requested, attempted, succeeded and skipped strict verification;
+- automatic versus manually forced requests;
+- recovered managed Geo probe failures;
+- strict cache hits;
+- normalized anomaly-trigger and skip-reason counts;
+- exact credits settled under `auto_strict_verification`;
+- estimated credits avoided through strict cache reuse;
+- credits per successful verification;
+- daily UTC activity.
+
+Only `settlement` ledger rows count as spend. Credit reservations, releases,
+and failed strict probes that release their reservation are not counted as
+consumption.
+
+Fantastic Admin exposes this in **Workspace → System Status** with selectable
+24-hour, 7-day, 30-day and 90-day windows. The dashboard shows verification
+effectiveness, recovered Geo failures, trigger/skip breakdowns, strict credit
+spend and cache savings.
+
+The detailed semantics are documented in
+`docs/superpowers/specs/2026-09-27-phase-23-verification-analytics.md`.
 
 ## Phase 9 migration
 
