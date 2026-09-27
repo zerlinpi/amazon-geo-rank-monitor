@@ -250,6 +250,60 @@ class BillingRepository:
             return None
         return self.release(reservation_id)
 
+    def reference_budget_status(
+        self,
+        *,
+        owner_id: str,
+        reference_type: str,
+        since: datetime,
+        until: datetime,
+        limit: int | None,
+    ) -> dict:
+        with self._sessions() as session:
+            rows = session.execute(
+                select(
+                    CreditReservationRow.status,
+                    CreditReservationRow.amount,
+                    CreditReservationRow.settled_amount,
+                ).where(
+                    CreditReservationRow.owner_id == owner_id,
+                    CreditReservationRow.reference_type == reference_type,
+                    CreditReservationRow.created_at >= since,
+                    CreditReservationRow.created_at <= until,
+                    CreditReservationRow.status.in_(("reserved", "settled")),
+                )
+            ).all()
+
+        reserved_credits = sum(
+            int(amount)
+            for status, amount, _settled_amount in rows
+            if status == "reserved"
+        )
+        settled_credits = sum(
+            int(settled_amount)
+            for status, _amount, settled_amount in rows
+            if status == "settled"
+        )
+        committed_credits = reserved_credits + settled_credits
+        remaining_credits = (
+            max(limit - committed_credits, 0)
+            if limit is not None
+            else None
+        )
+        utilization_pct = (
+            min(round((committed_credits / limit) * 100, 2), 100.0)
+            if limit is not None and limit > 0
+            else (100.0 if limit == 0 and committed_credits > 0 else 0.0)
+        )
+        return {
+            "limit": limit,
+            "settled_credits": settled_credits,
+            "reserved_credits": reserved_credits,
+            "committed_credits": committed_credits,
+            "remaining_credits": remaining_credits,
+            "utilization_pct": utilization_pct,
+        }
+
     def reference_credit_usage(
         self,
         *,
