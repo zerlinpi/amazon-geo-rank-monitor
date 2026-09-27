@@ -114,6 +114,15 @@ export interface WorkspaceVerificationBudgetStatus {
   committed_credits: number
   remaining_credits?: number | null
   utilization_pct: number
+  forecast: {
+    available: boolean
+    sample_seconds: number
+    burn_rate_credits_per_hour?: number | null
+    projected_committed_credits?: number | null
+    projected_utilization_pct?: number | null
+    estimated_exhaustion_at?: string | null
+    runway_minutes?: number | null
+  }
 }
 
 export interface WorkspaceVerificationPolicy {
