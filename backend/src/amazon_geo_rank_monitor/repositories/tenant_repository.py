@@ -62,6 +62,14 @@ class TenantRepository:
                     )
                 row.auto_strict_max_probes_per_run = value
 
+            if "daily_credit_budget" in changes:
+                value = changes["daily_credit_budget"]
+                if value is not None and (value < 0 or value > 1_000_000):
+                    raise ValueError(
+                        "daily_credit_budget must be between 0 and 1000000"
+                    )
+                row.auto_strict_daily_credit_budget = value
+
             session.flush()
             return self._serialize_verification_policy(row)
 
@@ -147,6 +155,7 @@ class TenantRepository:
             "max_upstream_probes_per_run": (
                 row.auto_strict_max_probes_per_run
             ),
+            "daily_credit_budget": row.auto_strict_daily_credit_budget,
         }
 
     @staticmethod
