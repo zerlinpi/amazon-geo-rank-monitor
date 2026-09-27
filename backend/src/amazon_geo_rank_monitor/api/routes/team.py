@@ -45,6 +45,7 @@ def _workspace_verification_policy(services, *, owner_id: str) -> dict:
     stored_enabled = stored.get("enabled")
     stored_confidence = stored.get("min_confidence")
     stored_budget = stored.get("max_upstream_probes_per_run")
+    stored_daily_budget = stored.get("daily_credit_budget")
     return {
         **stored,
         "runtime": runtime,
@@ -63,6 +64,7 @@ def _workspace_verification_policy(services, *, owner_id: str) -> dict:
                 if stored_budget is not None
                 else runtime.get("max_upstream_probes_per_run", 3)
             ),
+            "daily_credit_budget": stored_daily_budget,
         },
     }
 

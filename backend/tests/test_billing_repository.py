@@ -3,7 +3,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import create_engine
 
-from amazon_geo_rank_monitor.domain.errors import InsufficientCreditsError
+from amazon_geo_rank_monitor.domain.errors import (
+    CreditBudgetExceededError,
+    InsufficientCreditsError,
+)
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.models import Base, TenantRow
 
@@ -207,3 +210,69 @@ def test_reference_credit_usage_counts_only_settled_matching_reference() -> None
     assert usage["credits_spent"] == 5
     assert len(usage["daily"]) == 1
     assert usage["daily"][0]["credits_spent"] == 5
+
+
+def test_reference_budget_counts_reserved_and_settled_but_not_released() -> None:
+    repo = repository()
+    repo.grant(owner_id="tenant-1", credits=30, idempotency_key="grant:budget")
+    window_start = datetime.now(UTC).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    first = repo.reserve(
+        owner_id="tenant-1",
+        credits=5,
+        idempotency_key="strict:budget:1",
+        reference_type="auto_strict_verification",
+        reference_id="run-1",
+        reference_budget_limit=5,
+        reference_budget_window_start=window_start,
+    )
+    with pytest.raises(CreditBudgetExceededError):
+        repo.reserve(
+            owner_id="tenant-1",
+            credits=5,
+            idempotency_key="strict:budget:2",
+            reference_type="auto_strict_verification",
+            reference_id="run-2",
+            reference_budget_limit=5,
+            reference_budget_window_start=window_start,
+        )
+
+    repo.release(first["id"])
+    second = repo.reserve(
+        owner_id="tenant-1",
+        credits=5,
+        idempotency_key="strict:budget:2",
+        reference_type="auto_strict_verification",
+        reference_id="run-2",
+        reference_budget_limit=5,
+        reference_budget_window_start=window_start,
+    )
+    repo.settle(second["id"], credits_used=5)
+
+    with pytest.raises(CreditBudgetExceededError):
+        repo.reserve(
+            owner_id="tenant-1",
+            credits=5,
+            idempotency_key="strict:budget:3",
+            reference_type="auto_strict_verification",
+            reference_id="run-3",
+            reference_budget_limit=5,
+            reference_budget_window_start=window_start,
+        )
+
+    next_day = window_start + timedelta(days=1)
+    third = repo.reserve(
+        owner_id="tenant-1",
+        credits=5,
+        idempotency_key="strict:budget:next-day",
+        reference_type="auto_strict_verification",
+        reference_id="run-next",
+        reference_budget_limit=5,
+        reference_budget_window_start=next_day,
+    )
+    assert third["status"] == "reserved"

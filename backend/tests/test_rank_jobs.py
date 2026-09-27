@@ -4,15 +4,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
+from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.domain.models import (
     GeoProfile,
     RankCheckRequest,
     SerpProduct,
     SerpResult,
 )
+from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
+from amazon_geo_rank_monitor.repositories.tenant_repository import TenantRepository
 from amazon_geo_rank_monitor.verification import (
     AutoStrictVerificationPolicy,
     AutoStrictVerifier,
@@ -195,3 +198,74 @@ async def test_worker_honors_manual_force_when_automatic_policy_is_off() -> None
     assert saved["verification_metadata"]["events"][0]["triggers"] == [
         "manual_force"
     ]
+
+
+async def test_worker_uses_live_workspace_daily_budget_for_queued_force() -> None:
+    db = engine()
+    tenants = TenantRepository(db)
+    tenant = tenants.create_tenant("Tenant")
+    tenants.update_workspace_verification_policy(
+        owner_id=tenant["id"],
+        changes={"daily_credit_budget": 0},
+    )
+    jobs = JobRepository(db)
+    rank_repo = RankRepository(db)
+    billing = BillingRepository(db)
+    billing.grant(
+        owner_id=tenant["id"],
+        credits=10,
+        idempotency_key="grant:worker-daily-budget",
+    )
+    managed = RankedProvider(rank=4)
+    strict = RankedProvider(rank=7)
+    payload = request_payload()
+    payload["_verification_policy"] = {
+        "enabled": False,
+        "min_confidence": "0.75",
+        "max_upstream_probes_per_run": 1,
+        "force_strict_verification": True,
+    }
+    created = jobs.enqueue(
+        owner_id=tenant["id"],
+        provider_mode="managed",
+        request_payload=payload,
+    )
+    rate_card = RateCard(managed_serp=1, browser_verified_serp=5)
+    verifier = AutoStrictVerifier(
+        policy=AutoStrictVerificationPolicy(enabled=True),
+        strict_provider=strict,
+        billing_repository=billing,
+        rate_card=rate_card,
+        max_upstream_probes_per_run=3,
+    )
+    worker = RankWorker(
+        job_repository=jobs,
+        rank_repository=rank_repo,
+        provider_registry=ProviderRegistry(
+            managed=managed,
+            strict=strict,
+        ),
+        tenant_repository=tenants,
+        billing_repository=billing,
+        rate_card=rate_card,
+        auto_strict_verifier=verifier,
+    )
+
+    completed = await worker.run_once()
+
+    assert completed["id"] == created["id"]
+    assert completed["status"] == "succeeded"
+    assert managed.calls == 1
+    assert strict.calls == 0
+    saved = rank_repo.get_run(completed["run_id"], owner_id=tenant["id"])
+    assert saved["snapshots"][0]["weighted_rank"] == Decimal("4.00")
+    assert (
+        saved["verification_metadata"]["events"][0]["skipped_reason"]
+        == "daily_credit_budget_exhausted"
+    )
+    assert saved["verification_metadata"]["auto_strict_daily_credit_budget"] == 0
+    assert billing.get_balance(tenant["id"]) == {
+        "balance": 9,
+        "reserved": 0,
+        "available": 9,
+    }

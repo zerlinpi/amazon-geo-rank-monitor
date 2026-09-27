@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.domain.errors import (
+    CreditBudgetExceededError,
     InsufficientCreditsError,
     RankMonitorError,
 )
@@ -59,6 +60,7 @@ class AutoStrictVerifier:
         rate_card: RateCard | None = None,
         max_upstream_probes_per_run: int | None = None,
         automatic_enabled: bool | None = None,
+        daily_credit_budget: int | None = None,
     ) -> None:
         self._policy = policy
         self._provider = strict_provider
@@ -76,6 +78,9 @@ class AutoStrictVerifier:
             if automatic_enabled is None
             else automatic_enabled
         )
+        if daily_credit_budget is not None and daily_credit_budget < 0:
+            raise ValueError("daily_credit_budget must be non-negative")
+        self._daily_credit_budget = daily_credit_budget
 
     @property
     def enabled(self) -> bool:
@@ -93,6 +98,10 @@ class AutoStrictVerifier:
     def max_upstream_probes_per_run(self) -> int | None:
         return self._max_upstream_probes_per_run
 
+    @property
+    def daily_credit_budget(self) -> int | None:
+        return self._daily_credit_budget
+
     def for_monitor(
         self,
         *,
@@ -100,6 +109,7 @@ class AutoStrictVerifier:
         min_confidence: Decimal | str | float | None,
         max_upstream_probes_per_run: int | None = None,
         force_strict: bool = False,
+        daily_credit_budget: int | None = None,
     ) -> AutoStrictVerifier:
         automatic_enabled = self._policy.enabled and enabled is not False
         effective_enabled = automatic_enabled or (
@@ -126,6 +136,7 @@ class AutoStrictVerifier:
                 else max_upstream_probes_per_run
             ),
             automatic_enabled=automatic_enabled,
+            daily_credit_budget=daily_credit_budget,
         )
 
     def low_confidence_trigger(
@@ -237,13 +248,28 @@ class AutoStrictVerifier:
                     f"auto_strict:{reference_id}:{geo_profile.id}"
                 )
                 try:
+                    now = datetime.now(UTC)
                     reservation = self._billing.reserve(
                         owner_id=owner_id,
                         credits=self._rate_card.quote("strict", 1),
                         idempotency_key=idempotency_key,
                         reference_type="auto_strict_verification",
                         reference_id=reference_id,
+                        reference_budget_limit=self._daily_credit_budget,
+                        reference_budget_window_start=(
+                            now.replace(
+                                hour=0,
+                                minute=0,
+                                second=0,
+                                microsecond=0,
+                            )
+                            if self._daily_credit_budget is not None
+                            else None
+                        ),
                     )
+                except CreditBudgetExceededError:
+                    outcome.skipped_reason = "daily_credit_budget_exhausted"
+                    return outcome
                 except InsufficientCreditsError:
                     outcome.skipped_reason = "insufficient_credits"
                     return outcome

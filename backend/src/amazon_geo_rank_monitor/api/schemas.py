@@ -158,6 +158,11 @@ class WorkspaceVerificationPolicyUpdate(BaseModel):
         ge=0,
         le=100,
     )
+    daily_credit_budget: int | None = Field(
+        default=None,
+        ge=0,
+        le=1_000_000,
+    )
 
 
 class SsoStartRequest(BaseModel):

@@ -32,3 +32,7 @@ class BillingError(RankMonitorError):
 
 class InsufficientCreditsError(BillingError):
     """Raised when available prepaid credits cannot cover a reservation."""
+
+
+class CreditBudgetExceededError(BillingError):
+    """Raised when a configured credit guardrail would be exceeded."""

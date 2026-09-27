@@ -36,6 +36,10 @@ class TenantRow(Base):
         Integer,
         nullable=True,
     )
+    auto_strict_daily_credit_budget: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

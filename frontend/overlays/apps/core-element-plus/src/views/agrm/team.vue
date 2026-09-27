@@ -31,6 +31,8 @@ const verificationForm = reactive({
   mode: 'inherit' as 'inherit' | 'on' | 'off',
   minConfidence: 75,
   maxProbes: 3,
+  dailyBudgetEnabled: false,
+  dailyCreditBudget: 100,
 })
 const ssoConfig = ref<WorkspaceSsoConfig | null>(null)
 const savingSso = ref(false)
@@ -90,6 +92,13 @@ async function load() {
     verificationForm.maxProbes = (
       loadedVerificationPolicy.max_upstream_probes_per_run
       ?? loadedVerificationPolicy.runtime.max_upstream_probes_per_run
+    )
+    verificationForm.dailyBudgetEnabled = (
+      loadedVerificationPolicy.daily_credit_budget != null
+    )
+    verificationForm.dailyCreditBudget = (
+      loadedVerificationPolicy.daily_credit_budget
+      ?? verificationForm.dailyCreditBudget
     )
     if (currentRole.value === 'owner') {
       const [loadedSso, loadedScim, loadedScimGroups] = await Promise.all([
@@ -170,6 +179,9 @@ async function saveVerificationPolicy() {
       max_upstream_probes_per_run: verificationForm.mode === 'inherit'
         ? null
         : verificationForm.maxProbes,
+      daily_credit_budget: verificationForm.dailyBudgetEnabled
+        ? verificationForm.dailyCreditBudget
+        : null,
     })
     ElMessage.success('Workspace Auto Strict defaults updated')
     await load()
@@ -597,6 +609,41 @@ onMounted(load)
           </el-form-item>
         </div>
 
+        <el-divider content-position="left">Workspace spend guardrail</el-divider>
+        <div class="flex flex-wrap items-end gap-4 mb-4">
+          <el-form-item label="Daily strict credit cap" class="mb-0">
+            <div class="flex items-center gap-3">
+              <el-switch
+                v-model="verificationForm.dailyBudgetEnabled"
+                :disabled="!canManage"
+                active-text="Enabled"
+                inactive-text="Unlimited"
+              />
+              <el-input-number
+                v-if="verificationForm.dailyBudgetEnabled"
+                v-model="verificationForm.dailyCreditBudget"
+                :min="0"
+                :max="1000000"
+                :step="5"
+                :disabled="!canManage"
+              />
+              <span
+                v-if="verificationForm.dailyBudgetEnabled"
+                class="text-sm text-muted-foreground"
+              >
+                credits / UTC day
+              </span>
+            </div>
+          </el-form-item>
+        </div>
+        <el-alert
+          class="mb-4"
+          type="info"
+          :closable="false"
+          title="The daily cap is a live Workspace guardrail."
+          description="It counts settled and currently reserved Auto Strict credits for the UTC day. Lowering the cap applies immediately to already queued jobs; cached strict results remain allowed because they consume no new credits."
+        />
+
         <el-alert
           v-if="verificationPolicy"
           :type="verificationPolicy.runtime.enabled ? 'info' : 'warning'"
@@ -610,6 +657,10 @@ onMounted(load)
             · max
             {{ verificationPolicy.effective.max_upstream_probes_per_run }}
             strict upstream probes/run
+            · daily cap
+            {{ verificationPolicy.effective.daily_credit_budget == null
+              ? 'unlimited'
+              : verificationPolicy.effective.daily_credit_budget + ' credits' }}
           </template>
           <div class="mt-1 text-xs">
             The runtime switch is the global safety kill switch. Monitor-level overrides

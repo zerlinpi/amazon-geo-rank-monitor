@@ -19,6 +19,7 @@ VERIFICATION_TYPES = frozenset(
     {
         "strict_verification_failed",
         "strict_insufficient_credits",
+        "strict_daily_budget_exhausted",
         "strict_probe_budget_exhausted",
         "strict_provider_unavailable",
         "strict_runtime_disabled",
@@ -396,6 +397,9 @@ class AlertService:
         events = metadata.get("events") or []
         skip_reason_by_type = {
             "strict_insufficient_credits": "insufficient_credits",
+            "strict_daily_budget_exhausted": (
+                "daily_credit_budget_exhausted"
+            ),
             "strict_probe_budget_exhausted": "probe_budget_exhausted",
             "strict_provider_unavailable": "strict_provider_unavailable",
             "strict_runtime_disabled": "runtime_kill_switch_disabled",
@@ -446,6 +450,9 @@ class AlertService:
                         ),
                         "strict_probe_budget": metadata.get(
                             "auto_strict_max_upstream_probes_per_run"
+                        ),
+                        "strict_daily_credit_budget": metadata.get(
+                            "auto_strict_daily_credit_budget"
                         ),
                     },
                 )
