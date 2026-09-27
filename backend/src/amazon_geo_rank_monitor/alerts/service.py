@@ -22,6 +22,7 @@ VERIFICATION_TYPES = frozenset(
         "strict_daily_budget_exhausted",
         "strict_daily_budget_near_cap",
         "strict_daily_budget_forecast_exhaustion",
+        "strict_daily_budget_forecast_runway",
         "strict_probe_budget_exhausted",
         "strict_provider_unavailable",
         "strict_runtime_disabled",
@@ -64,6 +65,7 @@ THRESHOLD_TYPES = frozenset(
         "competitor_sov_gain",
         "competitor_sov_loss",
         "strict_daily_budget_near_cap",
+        "strict_daily_budget_forecast_runway",
     }
 )
 GEO_TYPES = frozenset({"geo_not_found", "geo_rank_above"})
@@ -399,6 +401,53 @@ class AlertService:
         threshold: Decimal | None,
     ) -> list[dict]:
         metadata = current.get("verification_metadata") or {}
+        if rule_type == "strict_daily_budget_forecast_runway":
+            status = metadata.get("daily_budget_status") or {}
+            forecast = status.get("forecast") or {}
+            runway_minutes = forecast.get("runway_minutes")
+            estimated_exhaustion_at = forecast.get("estimated_exhaustion_at")
+            if (
+                geo_filter
+                or not status.get("billing_available")
+                or not forecast.get("available")
+                or estimated_exhaustion_at is None
+                or runway_minutes is None
+                or threshold is None
+                or Decimal(str(runway_minutes)) > threshold
+            ):
+                return []
+            return [
+                self._candidate(
+                    asin="VERIFICATION",
+                    event_type=rule_type,
+                    previous_value=None,
+                    current_value=Decimal(str(runway_minutes)),
+                    details={
+                        "scope": "verification",
+                        "runway_threshold_minutes": str(threshold),
+                        "budget_limit": status.get("limit"),
+                        "budget_committed_credits": status.get(
+                            "committed_credits"
+                        ),
+                        "budget_remaining_credits": status.get(
+                            "remaining_credits"
+                        ),
+                        "budget_reset_at": status.get("reset_at"),
+                        "burn_rate_credits_per_hour": forecast.get(
+                            "burn_rate_credits_per_hour"
+                        ),
+                        "projected_committed_credits": forecast.get(
+                            "projected_committed_credits"
+                        ),
+                        "projected_utilization_pct": forecast.get(
+                            "projected_utilization_pct"
+                        ),
+                        "estimated_exhaustion_at": estimated_exhaustion_at,
+                        "runway_minutes": runway_minutes,
+                    },
+                )
+            ]
+
         if rule_type == "strict_daily_budget_forecast_exhaustion":
             status = metadata.get("daily_budget_status") or {}
             forecast = status.get("forecast") or {}
@@ -947,6 +996,19 @@ class AlertService:
                 )
             elif (
                 event["event_type"]
+                == "strict_daily_budget_forecast_runway"
+            ):
+                details = event["details"]
+                reason = (
+                    "daily cap forecast runway is "
+                    f"{details.get('runway_minutes')} minutes "
+                    f"(alert threshold "
+                    f"{details.get('runway_threshold_minutes')} minutes, "
+                    f"estimated exhaustion "
+                    f"{details.get('estimated_exhaustion_at')})"
+                )
+            elif (
+                event["event_type"]
                 == "strict_daily_budget_forecast_exhaustion"
             ):
                 details = event["details"]
@@ -1010,6 +1072,13 @@ class AlertService:
                 raise ValueError(
                     "strict daily budget threshold must be at most 100"
                 )
+            if (
+                rule_type == "strict_daily_budget_forecast_runway"
+                and normalized_threshold > 1440
+            ):
+                raise ValueError(
+                    "strict budget forecast runway must be at most 1440 minutes"
+                )
         else:
             normalized_threshold = None
         normalized_asin = asin.strip().upper() if asin else None
@@ -1038,6 +1107,7 @@ class AlertService:
             in {
                 "strict_daily_budget_near_cap",
                 "strict_daily_budget_forecast_exhaustion",
+                "strict_daily_budget_forecast_runway",
             }
             and normalized_geo
         ):
