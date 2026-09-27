@@ -515,6 +515,131 @@ def test_strict_daily_budget_near_cap_requires_configured_limit() -> None:
     ) == []
 
 
+def test_strict_daily_budget_forecast_exhaustion_alert_fires() -> None:
+    service, mailer = build_service(
+        runs={
+            "current": verification_run(
+                "current",
+                daily_budget_status={
+                    "billing_available": True,
+                    "limit": 100,
+                    "settled_credits": 55,
+                    "reserved_credits": 5,
+                    "committed_credits": 60,
+                    "remaining_credits": 40,
+                    "utilization_pct": 60.0,
+                    "reset_at": "2026-09-28T00:00:00+00:00",
+                    "forecast": {
+                        "available": True,
+                        "sample_seconds": 43200,
+                        "burn_rate_credits_per_hour": 5.0,
+                        "projected_committed_credits": 120.0,
+                        "projected_utilization_pct": 120.0,
+                        "estimated_exhaustion_at": (
+                            "2026-09-27T20:00:00+00:00"
+                        ),
+                        "runway_minutes": 480,
+                    },
+                },
+            )
+        },
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict budget forecast exhaustion",
+        rule_type="strict_daily_budget_forecast_exhaustion",
+        threshold=None,
+        asin=None,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=60,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+
+    assert len(events) == 1
+    event = events[0]
+    assert event["event_type"] == "strict_daily_budget_forecast_exhaustion"
+    assert event["current_value"] == Decimal("120.0")
+    assert event["details"]["burn_rate_credits_per_hour"] == 5.0
+    assert event["details"]["projected_committed_credits"] == 120.0
+    assert event["details"]["estimated_exhaustion_at"] == (
+        "2026-09-27T20:00:00+00:00"
+    )
+    assert event["details"]["runway_minutes"] == 480
+    assert len(mailer.messages) == 1
+    assert "projects daily cap exhaustion" in mailer.messages[0].text
+    assert "runway 480 minutes" in mailer.messages[0].text
+
+
+def test_strict_daily_budget_forecast_alert_stays_quiet_without_exhaustion() -> None:
+    service, mailer = build_service(
+        runs={
+            "current": verification_run(
+                "current",
+                daily_budget_status={
+                    "billing_available": True,
+                    "limit": 100,
+                    "committed_credits": 40,
+                    "remaining_credits": 60,
+                    "utilization_pct": 40.0,
+                    "reset_at": "2026-09-28T00:00:00+00:00",
+                    "forecast": {
+                        "available": True,
+                        "sample_seconds": 43200,
+                        "burn_rate_credits_per_hour": 3.33,
+                        "projected_committed_credits": 80.0,
+                        "projected_utilization_pct": 80.0,
+                        "estimated_exhaustion_at": None,
+                        "runway_minutes": None,
+                    },
+                },
+            )
+        },
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict budget forecast exhaustion",
+        rule_type="strict_daily_budget_forecast_exhaustion",
+        threshold=None,
+        asin=None,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=60,
+    )
+
+    assert service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    ) == []
+    assert mailer.messages == []
+
+
+def test_strict_daily_budget_forecast_alert_is_workspace_wide() -> None:
+    service, _ = build_service(runs={}, jobs=[])
+    with pytest.raises(ValueError, match="workspace-wide"):
+        service.create_rule(
+            owner_id=OWNER_ID,
+            monitor_target_id=MONITOR_ID,
+            name="Invalid forecast Geo scope",
+            rule_type="strict_daily_budget_forecast_exhaustion",
+            threshold=None,
+            asin=None,
+            geo_profile_id=GEO_ID,
+            channels={"emails": ["alerts@example.com"]},
+            cooldown_minutes=60,
+        )
+
+
 def test_strict_verification_failure_alert_includes_provider_error() -> None:
     service, mailer = build_service(
         runs={
