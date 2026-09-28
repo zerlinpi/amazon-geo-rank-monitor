@@ -266,8 +266,11 @@ GET /api/v1/runs/page?limit=50&keyword=trailer&asin=B0FL2KKV77&status=succeeded
 The endpoint requires `rank:read` and returns `{ "items": [...], "next_cursor": ... }`.
 Pass the returned `next_cursor` as `cursor` with the same filters to get older
 records; a null cursor ends the result set. `limit` defaults to 50 and accepts
-1–100. Keyword matching is case-insensitive literal substring matching, including
-literal `%` and `_`. ASIN matching normalizes case and searches persisted
+1–100. Keyword matching uses literal substrings, including literal `%` and `_`.
+Case folding follows the database: PostgreSQL uses its configured collation;
+SQLite's built-in case folding covers ASCII only, so accented or non-Latin
+letters may require matching case in local SQLite development.
+ASIN matching normalizes case and searches persisted
 observations and snapshots, including failed observations. Runs that have not yet
 stored either cannot match an ASIN filter.
 
