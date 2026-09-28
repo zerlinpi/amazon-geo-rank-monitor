@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -482,6 +483,9 @@ class MonitorTargetGeoRow(Base):
 
 class RankRunRow(Base):
     __tablename__ = "rank_runs"
+    __table_args__ = (
+        Index("ix_rank_runs_owner_started_id", "owner_id", "started_at", "id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)

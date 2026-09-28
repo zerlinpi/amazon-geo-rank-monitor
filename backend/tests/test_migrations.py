@@ -2,6 +2,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
 from alembic import command
+from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
 
 
 def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
@@ -143,3 +144,33 @@ def test_alembic_baseline_creates_schema(tmp_path, monkeypatch) -> None:
         "cooldown_minutes",
         "deleted_at",
     } <= alert_rule_columns
+
+
+def test_history_index_upgrade_and_downgrade_preserve_existing_runs(tmp_path, monkeypatch):
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'history-migration.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    config = Config("alembic.ini")
+    command.upgrade(config, "20260927_0020")
+    engine = create_engine(database_url)
+    # The historical baseline imports current models; simulate a deployed old schema.
+    with engine.begin() as connection:
+        connection.exec_driver_sql("DROP INDEX IF EXISTS ix_rank_runs_owner_started_id")
+    ranks = RankRepository(engine)
+    run_id = ranks.create_run(
+        owner_id="tenant-a", marketplace="amazon.com", keyword="trailer hitch",
+        requested_probe_count=1,
+    )
+
+    command.upgrade(config, "head")
+    indexes = {item["name"]: item for item in inspect(engine).get_indexes("rank_runs")}
+    assert indexes["ix_rank_runs_owner_started_id"]["column_names"] == [
+        "owner_id", "started_at", "id",
+    ]
+    assert ranks.get_run(run_id, owner_id="tenant-a")["keyword"] == "trailer hitch"
+    command.downgrade(config, "20260927_0020")
+    assert "ix_rank_runs_owner_started_id" not in {
+        item["name"] for item in inspect(engine).get_indexes("rank_runs")
+    }
+    assert ranks.get_run(run_id, owner_id="tenant-a")["keyword"] == "trailer hitch"
+    command.upgrade(config, "head")
+    assert ranks.get_run(run_id, owner_id="tenant-a")["keyword"] == "trailer hitch"

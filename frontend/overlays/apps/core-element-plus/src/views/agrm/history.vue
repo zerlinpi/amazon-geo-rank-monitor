@@ -1,30 +1,97 @@
 <script setup lang="ts">
-import { agrmApi, type RankRun } from '@/api/agrm'
+import { agrmApi, type RankRun, type RankRunSummary, type RunHistoryFilters } from '@/api/agrm'
 
 defineOptions({ name: 'RunHistory' })
 
 const loading = ref(false)
-const rows = ref<RankRun[]>([])
+const rows = ref<RankRunSummary[]>([])
 const selected = ref<RankRun | null>(null)
 const dialog = ref(false)
+const error = ref('')
+const detailLoading = ref(false)
+const detailError = ref('')
+const detailId = ref('')
+let detailRequest = 0
+const filters = reactive<RunHistoryFilters>({ keyword: '', asin: '', status: undefined })
+const appliedFilters = ref<RunHistoryFilters>({})
+const cursors = ref<(string | null)[]>([null])
+const pageIndex = ref(0)
+const nextCursor = ref<string | null>(null)
 
-async function load() {
+async function loadPage(page: number, cursor: string | null, criteria: RunHistoryFilters, reset = false) {
+  if (loading.value) {
+    return
+  }
   loading.value = true
+  error.value = ''
+  if (reset) {
+    rows.value = []
+    cursors.value = [null]
+    pageIndex.value = 0
+    nextCursor.value = null
+  }
   try {
-    rows.value = await agrmApi.getRuns(100)
+    const result = await agrmApi.getRunPage({ ...criteria, limit: 50, cursor })
+    rows.value = result.items
+    nextCursor.value = result.next_cursor
+    cursors.value[page] = cursor
+    pageIndex.value = page
+    appliedFilters.value = { ...criteria }
+  }
+  catch {
+    error.value = 'Unable to load run history. Please try again.'
   }
   finally {
     loading.value = false
   }
 }
 
-function view(row: any) {
-  const run = row as RankRun
-  selected.value = run
-  dialog.value = true
+function search() {
+  return loadPage(0, null, {
+    keyword: filters.keyword?.trim() || undefined,
+    asin: filters.asin?.trim().toUpperCase() || undefined,
+    status: filters.status || undefined,
+  }, true)
 }
 
-function strictStatus(row: RankRun) {
+function previousPage() {
+  if (pageIndex.value > 0) {
+    return loadPage(pageIndex.value - 1, cursors.value[pageIndex.value - 1] ?? null, appliedFilters.value)
+  }
+}
+
+function nextPage() {
+  if (nextCursor.value) {
+    return loadPage(pageIndex.value + 1, nextCursor.value, appliedFilters.value)
+  }
+}
+
+async function view(row: Pick<RankRun, 'id'>) {
+  const request = ++detailRequest
+  detailId.value = row.id
+  selected.value = null
+  detailError.value = ''
+  detailLoading.value = true
+  dialog.value = true
+  try {
+    const run = await agrmApi.getRun(row.id)
+    if (request === detailRequest && dialog.value) {
+      selected.value = run
+    }
+  }
+  catch {
+    if (request === detailRequest && dialog.value) {
+      detailError.value = 'Unable to load this run. Please try again.'
+    }
+  }
+  finally {
+    if (request === detailRequest) {
+      detailLoading.value = false
+    }
+  }
+}
+
+function strictStatus(row: Pick<RankRun, 'verification_metadata'>) {
   const meta = row.verification_metadata
   const requested = meta?.strict_requested_count || 0
   if (meta?.manual_force_requested) {
@@ -95,7 +162,7 @@ function triggerLabel(trigger: string) {
   return labels[trigger] || trigger
 }
 
-onMounted(load)
+onMounted(search)
 </script>
 
 <template>
@@ -106,8 +173,36 @@ onMounted(load)
       <p class="text-sm text-muted-foreground mt-1">Weighted scores remain traceable to every regional observation.</p>
     </div>
 
+    <el-card shadow="never">
+      <form class="grid gap-3 md:grid-cols-4" @submit.prevent="search">
+        <label class="text-sm">
+          <span class="block mb-1">Keyword contains</span>
+          <el-input v-model="filters.keyword" clearable maxlength="512" placeholder="e.g. trailer hitch" :disabled="loading" />
+        </label>
+        <label class="text-sm">
+          <span class="block mb-1">ASIN</span>
+          <el-input v-model="filters.asin" clearable maxlength="32" placeholder="Exact ASIN" :disabled="loading" />
+        </label>
+        <label class="text-sm">
+          <span class="block mb-1">Status</span>
+          <el-select v-model="filters.status" clearable placeholder="All statuses" :disabled="loading" class="w-full">
+            <el-option label="Running" value="running" />
+            <el-option label="Succeeded" value="succeeded" />
+            <el-option label="Partially succeeded" value="partially_succeeded" />
+            <el-option label="Failed" value="failed" />
+          </el-select>
+        </label>
+        <div class="flex items-end">
+          <el-button type="primary" native-type="submit" :loading="loading">Search / refresh</el-button>
+        </div>
+      </form>
+    </el-card>
+
+    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+
     <el-card shadow="never" v-loading="loading">
       <el-table :data="rows" @row-dblclick="view">
+        <template #empty>No runs match these filters.</template>
         <el-table-column prop="keyword" label="Keyword" min-width="180" />
         <el-table-column prop="marketplace" label="Marketplace" width="130" />
         <el-table-column label="Status" width="150">
@@ -118,7 +213,7 @@ onMounted(load)
           </template>
         </el-table-column>
         <el-table-column label="Snapshots" width="100">
-          <template #default="{ row }">{{ row.snapshots.length }}</template>
+          <template #default="{ row }">{{ row.snapshot_count }}</template>
         </el-table-column>
         <el-table-column label="Requested" width="100">
           <template #default="{ row }">{{ row.requested_probe_count }}</template>
@@ -136,8 +231,8 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="Auto verify" width="140">
           <template #default="{ row }">
-            <el-tag :type="strictStatus(row as RankRun).type" size="small">
-              {{ strictStatus(row as RankRun).label }}
+            <el-tag :type="strictStatus(row as RankRunSummary).type" size="small">
+              {{ strictStatus(row as RankRunSummary).label }}
             </el-tag>
           </template>
         </el-table-column>
@@ -145,12 +240,26 @@ onMounted(load)
           <template #default="{ row }">{{ new Date(row.started_at).toLocaleString() }}</template>
         </el-table-column>
         <el-table-column label="Action" width="90">
-          <template #default="{ row }"><el-button text @click="view(row)">View</el-button></template>
+          <template #default="{ row }"><el-button text @click="view(row as RankRunSummary)">View</el-button></template>
         </el-table-column>
       </el-table>
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <span class="text-sm text-muted-foreground" aria-live="polite">
+          Page {{ pageIndex + 1 }} · {{ rows.length }} runs · newest first
+        </span>
+        <div class="flex gap-2">
+          <el-button :disabled="loading || pageIndex === 0" @click="previousPage">Newer</el-button>
+          <el-button :disabled="loading || !nextCursor" @click="nextPage">Older</el-button>
+        </div>
+      </div>
     </el-card>
 
     <el-dialog v-model="dialog" title="Rank run details" width="min(1000px, 96vw)">
+      <el-skeleton v-if="detailLoading" :rows="6" animated />
+      <div v-else-if="detailError" class="space-y-3">
+        <el-alert :title="detailError" type="error" :closable="false" show-icon />
+        <el-button @click="view({ id: detailId })">Retry</el-button>
+      </div>
       <template v-if="selected">
         <div class="grid gap-3 mb-5 sm:grid-cols-3">
           <div class="p-3 border rounded-lg">
@@ -280,7 +389,7 @@ onMounted(load)
               Resets {{ new Date(selected.verification_metadata.daily_budget_status.reset_at).toLocaleString() }}
             </div>
             <div
-              v-if="selected.verification_metadata.daily_budget_status.pacing.enabled"
+              v-if="selected.verification_metadata.daily_budget_status.pacing?.enabled"
               class="mt-3 border-t pt-3 text-xs text-muted-foreground"
             >
               Forecast-aware pacing:
@@ -293,7 +402,7 @@ onMounted(load)
               </span>
             </div>
             <div
-              v-if="selected.verification_metadata.daily_budget_status.forecast.available"
+              v-if="selected.verification_metadata.daily_budget_status.forecast?.available"
               class="grid gap-2 mt-3 border-t pt-3 sm:grid-cols-3"
             >
               <div>

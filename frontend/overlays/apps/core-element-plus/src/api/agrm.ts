@@ -729,6 +729,21 @@ export interface RankRun {
   snapshots: RankSnapshot[]
 }
 
+export interface RunHistoryFilters {
+  keyword?: string
+  asin?: string
+  status?: 'running' | 'succeeded' | 'partially_succeeded' | 'failed'
+}
+
+export interface RankRunSummary extends Omit<RankRun, 'observations' | 'snapshots' | 'error_summary'> {
+  snapshot_count: number
+}
+
+export interface RankRunPage {
+  items: RankRunSummary[]
+  next_cursor: string | null
+}
+
 export interface ApiKeyRow {
   id: string
   name: string
@@ -1033,6 +1048,8 @@ export const agrmApi = {
     force_strict_verification?: boolean
   }) => data<RankCheckResult>(client.post('/api/v1/rank/check', payload)),
   getRuns: (limit = 50) => data<RankRun[]>(client.get('/api/v1/runs', { params: { limit } })),
+  getRunPage: (params: RunHistoryFilters & { limit?: number, cursor?: string | null }) =>
+    data<RankRunPage>(client.get('/api/v1/runs/page', { params })),
   getRun: (id: string) => data<RankRun>(client.get('/api/v1/runs/' + id)),
   getApiKeys: () => data<ApiKeyRow[]>(client.get('/api/v1/api-keys')),
   createApiKey: (name: string, scopes: string[] = ['*']) => data<{

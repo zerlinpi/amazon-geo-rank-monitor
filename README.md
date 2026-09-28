@@ -237,6 +237,7 @@ The local process boundary is the tenant security boundary for stdio. Streamable
 - `POST /api/v1/monitors/{id}/run`
 - `GET /api/v1/jobs/{id}`
 - `POST /api/v1/rank/check`
+- `GET /api/v1/runs/page`
 - `GET /api/v1/runs/{id}`
 - `GET/POST/DELETE /api/v1/api-keys`
 - `GET /api/v1/system/workers`
@@ -249,6 +250,46 @@ The local process boundary is the tenant security boundary for stdio. Streamable
 - `GET /api/v1/system/verification-analytics?hours=168`
 
 All tenant-owned lookups are filtered server-side. A resource owned by another tenant is returned as not found.
+
+### Searchable, paginated Run History
+
+The Run History console loads 50 summaries at a time and supports **Newer** /
+**Older** navigation, keyword search, exact ASIN search and run-status filtering.
+Click **View** to fetch the full regional observations, snapshots and strict
+verification evidence. Clearing the filters and choosing **Search / refresh**
+returns to the newest runs.
+
+```http
+GET /api/v1/runs/page?limit=50&keyword=trailer&asin=B0FL2KKV77&status=succeeded
+```
+
+The endpoint requires `rank:read` and returns `{ "items": [...], "next_cursor": ... }`.
+Pass the returned `next_cursor` as `cursor` with the same filters to get older
+records; a null cursor ends the result set. `limit` defaults to 50 and accepts
+1–100. Keyword matching is case-insensitive literal substring matching, including
+literal `%` and `_`. ASIN matching normalizes case and searches persisted
+observations and snapshots, including failed observations. Runs that have not yet
+stored either cannot match an ASIN filter.
+
+Ordering is `started_at DESC, id DESC`, so equal timestamps are deterministic and
+newly inserted newer runs do not shift subsequent pages. Each cursor is validated
+against the caller's workspace; missing and foreign cursors return the same 422
+response. Status and cursor validation failures also return 422.
+
+Summary items include `snapshot_count` and strict-verification counters, but omit
+observations, snapshots, per-probe events and full budget evidence. The detail
+endpoint `GET /api/v1/runs/{id}` retains that evidence. Existing `GET /api/v1/runs`
+and monitor-history responses keep their original array format for API and MCP
+compatibility. The summary query uses at most two database reads on the first
+page, or three with cursor validation, independent of page size.
+
+Schema revision `20260928_0021` adds a workspace/time/ID index for history browsing.
+Upgrade existing installations before deployment:
+
+```bash
+cd backend
+alembic -c alembic.ini upgrade head
+```
 
 ### MCP tools
 
