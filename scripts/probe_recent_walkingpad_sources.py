@@ -21,3 +21,18 @@ for url in urls:
             data=json.loads(m.group(1))
             print("next keys",list(data.keys()),flush=True)
         except Exception as e: print("json error",e,flush=True)
+
+
+print("\n=== REDDIT PROBE ===", flush=True)
+for url in [
+ "https://www.reddit.com/search.json?q=walking%20pad&sort=new&t=year&limit=100&raw_json=1",
+ "https://old.reddit.com/r/walking/search.json?q=walking%20pad&restrict_sr=1&sort=new&t=year&limit=100&raw_json=1"
+]:
+    try:
+        rr=requests.get(url,headers={"User-Agent":"walking-pad-voc-research/1.0"},timeout=30)
+        print("reddit",url,"status",rr.status_code,"len",len(rr.text),flush=True)
+        if rr.status_code==200:
+            jj=rr.json()
+            ch=jj.get("data",{}).get("children",[])
+            print("children",len(ch),"first",[(x.get("data",{}).get("id"),x.get("data",{}).get("num_comments"),x.get("data",{}).get("created_utc")) for x in ch[:5]],flush=True)
+    except Exception as e: print("reddit error",e,flush=True)
