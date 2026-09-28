@@ -1398,6 +1398,7 @@ Supported rule types:
 - `geo_rank_above`: a geographic observation has an effective rank worse than the configured threshold.
 - `strict_verification_failed`: a strict upstream verification attempt fails.
 - `strict_insufficient_credits`: strict verification is requested but skipped because prepaid credits are insufficient.
+- `strict_daily_budget_pacing_deferred`: an automatic paid strict probe is intentionally deferred by forecast-aware pacing; the alert event preserves the estimated resume time and current pacing allowance.
 - `strict_probe_budget_exhausted`: a requested strict probe is skipped because the per-run upstream budget is exhausted.
 - `strict_provider_unavailable`: the strict browser provider is unavailable when verification is requested.
 - `strict_runtime_disabled`: a manually forced strict verification is blocked by the runtime global kill switch.

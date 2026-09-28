@@ -386,6 +386,7 @@ def test_not_found_aggregate_alert() -> None:
             "strict_daily_budget_exhausted",
             "daily_credit_budget_exhausted",
         ),
+        ("strict_daily_budget_pacing_deferred", "daily_budget_pacing_deferred"),
         ("strict_probe_budget_exhausted", "probe_budget_exhausted"),
         ("strict_provider_unavailable", "strict_provider_unavailable"),
         ("strict_runtime_disabled", "runtime_kill_switch_disabled"),
@@ -432,6 +433,48 @@ def test_verification_skip_rules_emit_probe_level_alerts(
     assert len(mailer.messages) == 1
     assert "Scope: strict verification" in mailer.messages[0].text
     assert f"Reason: {skipped_reason}" in mailer.messages[0].text
+
+
+def test_strict_daily_budget_pacing_deferred_alert_includes_resume_evidence() -> None:
+    current = verification_run(
+        "current",
+        skipped_reason="daily_budget_pacing_deferred",
+    )
+    current["verification_metadata"]["manual_force_requested"] = False
+    current["verification_metadata"]["events"][0]["triggers"] = ["low_confidence"]
+    current["verification_metadata"]["events"][0]["pacing_resume_at"] = (
+        "2026-09-28T09:30:00+00:00"
+    )
+    current["verification_metadata"]["events"][0]["pacing_allowance_credits"] = 15
+    service, mailer = build_service(
+        runs={"current": current},
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict pacing deferred",
+        rule_type="strict_daily_budget_pacing_deferred",
+        threshold=None,
+        asin=None,
+        geo_profile_id=GEO_ID,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+
+    assert len(events) == 1
+    event = events[0]
+    assert event["event_type"] == "strict_daily_budget_pacing_deferred"
+    assert event["details"]["pacing_resume_at"] == "2026-09-28T09:30:00+00:00"
+    assert event["details"]["pacing_allowance_credits"] == 15
+    assert len(mailer.messages) == 1
+    assert "daily_budget_pacing_deferred" in mailer.messages[0].text
 
 
 def test_strict_daily_budget_near_cap_alert_uses_live_status() -> None:

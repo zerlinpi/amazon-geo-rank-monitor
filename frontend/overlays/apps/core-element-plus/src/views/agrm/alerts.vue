@@ -52,6 +52,7 @@ const ruleTypes = [
   { value: 'strict_verification_failed', label: 'Strict verification fails' },
   { value: 'strict_insufficient_credits', label: 'Strict skipped · insufficient credits' },
   { value: 'strict_daily_budget_exhausted', label: 'Strict skipped · daily credit cap exhausted' },
+  { value: 'strict_daily_budget_pacing_deferred', label: 'Strict deferred · forecast-aware pacing' },
   { value: 'strict_daily_budget_near_cap', label: 'Strict daily credit cap reaches N%' },
   { value: 'strict_daily_budget_forecast_exhaustion', label: 'Strict daily cap forecast to exhaust today' },
   { value: 'strict_daily_budget_forecast_runway', label: 'Strict daily cap forecast within N minutes' },
