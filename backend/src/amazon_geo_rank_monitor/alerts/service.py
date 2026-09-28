@@ -20,6 +20,7 @@ VERIFICATION_TYPES = frozenset(
         "strict_verification_failed",
         "strict_insufficient_credits",
         "strict_daily_budget_exhausted",
+        "strict_daily_budget_pacing_deferred",
         "strict_daily_budget_near_cap",
         "strict_daily_budget_forecast_exhaustion",
         "strict_daily_budget_forecast_runway",
@@ -535,6 +536,9 @@ class AlertService:
             "strict_daily_budget_exhausted": (
                 "daily_credit_budget_exhausted"
             ),
+            "strict_daily_budget_pacing_deferred": (
+                "daily_budget_pacing_deferred"
+            ),
             "strict_probe_budget_exhausted": "probe_budget_exhausted",
             "strict_provider_unavailable": "strict_provider_unavailable",
             "strict_runtime_disabled": "runtime_kill_switch_disabled",
@@ -588,6 +592,10 @@ class AlertService:
                         ),
                         "strict_daily_credit_budget": metadata.get(
                             "auto_strict_daily_credit_budget"
+                        ),
+                        "pacing_resume_at": event.get("pacing_resume_at"),
+                        "pacing_allowance_credits": event.get(
+                            "pacing_allowance_credits"
                         ),
                     },
                 )
