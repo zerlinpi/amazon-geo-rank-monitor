@@ -19,3 +19,5 @@ jobs:
           python-version: '3.11'
       - run: pip install requests beautifulsoup4
       - run: python scripts/probe_recent_walkingpad_sources.py
+
+# rerun reddit probe
