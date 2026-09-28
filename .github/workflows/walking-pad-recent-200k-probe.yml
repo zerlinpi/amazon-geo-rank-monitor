@@ -18,6 +18,20 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests beautifulsoup4
+      - name: Check configured data providers
+        env:
+          OXYLABS_USERNAME: ${{ secrets.OXYLABS_USERNAME }}
+          OXYLABS_PASSWORD: ${{ secrets.OXYLABS_PASSWORD }}
+          RESIDENTIAL_PROXY_USERNAME: ${{ secrets.RESIDENTIAL_PROXY_USERNAME }}
+          RESIDENTIAL_PROXY_PASSWORD: ${{ secrets.RESIDENTIAL_PROXY_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import os
+          for k in ["OXYLABS_USERNAME","OXYLABS_PASSWORD","RESIDENTIAL_PROXY_USERNAME","RESIDENTIAL_PROXY_PASSWORD"]:
+              print(k, "configured" if bool(os.getenv(k)) else "missing")
+          PY
       - run: python scripts/probe_recent_walkingpad_sources.py
 
 # rerun reddit probe
+
+# provider-secret-probe
