@@ -17,7 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install huggingface_hub requests
-      - run: python scripts/probe_hf_recent_sources.py
+      - run: pip install huggingface_hub requests datasets pyarrow
+      - run: python scripts/probe_arctic_hit_rate.py
 
 # rerun-arctic-tree
+
+# arctic-hit-rate
