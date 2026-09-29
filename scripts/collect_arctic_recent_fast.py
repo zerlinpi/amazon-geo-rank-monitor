@@ -10,7 +10,7 @@ TARGET=int(os.getenv("TARGET_REVIEWS","200000"))
 OUT=Path(os.getenv("OUTDIR","arctic_fast_output")); OUT.mkdir(exist_ok=True)
 
 SUBS=[
-"walkingpad","treadmills","walking","StandingDesk","WorkFromHome","wfh","homeoffice","Workspaces","homegym",
+"WalkingPads","walkingpad","treadmills","walking","StandingDesk","WorkFromHome","wfh","homeoffice","Workspaces","homegym",
 "fitness","loseit","xxfitness","productivity","running","Exercise","desksetup","remotework","workingmoms",
 "beginnerfitness","orangetheory","PelotonCycle","AppleWatchFitness","GetMotivated"
 ]
