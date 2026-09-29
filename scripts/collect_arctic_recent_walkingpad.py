@@ -91,6 +91,10 @@ def normalize_rows(data):
 
 def paginate(path,base_params,a,b,max_pages=500):
     params=dict(base_params)
+    if "posts" in path:
+        params.setdefault("fields","id,subreddit,created_utc,author,score,num_comments,title,selftext,permalink,url")
+    else:
+        params.setdefault("fields","id,subreddit,created_utc,author,score,body,link_id,parent_id,permalink")
     params.update({"after":a.isoformat().replace("+00:00","Z"),"before":b.isoformat().replace("+00:00","Z"),"sort":"asc","limit":"auto"})
     cursor=a
     seen_last=None
@@ -224,7 +228,7 @@ if len(comments)<TARGET:
     tree_posts=[p for p in posts.values() if str(p.get("subreddit") or "").lower() in broad_set]
     for idx,p in enumerate(tree_posts,1):
         pid=str(p.get("id"))
-        data=normalize_rows(api("/api/comments/tree",{"link_id":"t3_"+pid,"limit":"9999"}))
+        data=normalize_rows(api("/api/comments/tree",{"link_id":"t3_"+pid,"limit":"9999","fields":"id,subreddit,created_utc,author,score,body,link_id,parent_id,permalink"}))
         for c in data:
             created=int(c.get("created_utc") or c.get("created") or 0)
             if not (START.timestamp() <= created < END.timestamp()): continue
