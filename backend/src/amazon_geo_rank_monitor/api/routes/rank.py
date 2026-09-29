@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import Literal
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
 from amazon_geo_rank_monitor.api.schemas import RankCheckBody
@@ -58,6 +61,29 @@ def list_runs(
         owner_id=owner_id,
         limit=min(max(limit, 1), 500),
     )
+
+
+@router.get("/runs/page")
+def list_run_page(
+    request: Request,
+    owner_id: str = Depends(require_scope("rank:read")),
+    limit: int = Query(50, ge=1, le=100),
+    cursor: UUID | None = None,
+    keyword: str | None = Query(None, max_length=512),
+    asin: str | None = Query(None, max_length=32),
+    status: Literal["running", "succeeded", "partially_succeeded", "failed"] | None = None,
+):
+    try:
+        return get_services(request).rank_repository.list_run_page(
+            owner_id=owner_id,
+            limit=limit,
+            cursor=str(cursor) if cursor else None,
+            keyword=keyword,
+            asin=asin,
+            status=status,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/runs/{run_id}")

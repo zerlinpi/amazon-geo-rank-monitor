@@ -4,11 +4,13 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import create_engine
+from test_run_history_pagination import seed_run
 
 from amazon_geo_rank_monitor.domain.errors import CreditBudgetExceededError
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.models import Base
+from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
 from amazon_geo_rank_monitor.repositories.tenant_repository import TenantRepository
 
 POSTGRES_TEST_URL = os.getenv("POSTGRES_TEST_URL")
@@ -17,6 +19,24 @@ pytestmark = pytest.mark.skipif(
     not POSTGRES_TEST_URL,
     reason="POSTGRES_TEST_URL is not configured",
 )
+
+
+def test_postgres_run_history_cursor_and_literal_keyword_filter() -> None:
+    engine = create_engine(POSTGRES_TEST_URL)
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    ranks = RankRepository(engine)
+    oldest = seed_run(ranks, "tenant-a", 1, keyword="100%_fit hitch")
+    newest = seed_run(ranks, "tenant-a", 2, keyword="100%_fit hitch")
+    seed_run(ranks, "tenant-a", 3, keyword="100XXfit hitch")
+    seed_run(ranks, "tenant-b", 4, keyword="100%_fit hitch")
+    page = ranks.list_run_page(owner_id="tenant-a", limit=1, keyword="%_FIT")
+    assert [item["id"] for item in page["items"]] == [newest]
+    page = ranks.list_run_page(
+        owner_id="tenant-a", limit=1, keyword="%_FIT", cursor=page["next_cursor"],
+    )
+    assert [item["id"] for item in page["items"]] == [oldest]
+    assert page["next_cursor"] is None
 
 
 def test_postgres_skip_locked_claims_distinct_jobs() -> None:

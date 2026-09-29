@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, and_, func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from amazon_geo_rank_monitor.domain.models import RankObservation, RankSnapshot
@@ -412,3 +412,95 @@ class RankRepository:
                 .limit(limit)
             ).all()
         return [self.get_run(run_id, owner_id=owner_id) for run_id in run_ids]
+
+    def list_run_page(
+        self,
+        *,
+        owner_id: str,
+        limit: int = 50,
+        cursor: str | None = None,
+        keyword: str | None = None,
+        asin: str | None = None,
+        status: str | None = None,
+    ) -> dict:
+        """Fetch bounded summaries, newest first, without loading per-run details."""
+        limit = min(max(limit, 1), 100)
+        statement = select(RankRunRow).where(RankRunRow.owner_id == owner_id)
+        if keyword and keyword.strip():
+            statement = statement.where(
+                RankRunRow.keyword.icontains(keyword.strip(), autoescape=True)
+            )
+        if status:
+            statement = statement.where(RankRunRow.status == status)
+        if asin and asin.strip():
+            normalized_asin = asin.strip().upper()
+            statement = statement.where(or_(
+                select(RankSnapshotRow.id).where(
+                    RankSnapshotRow.rank_run_id == RankRunRow.id,
+                    RankSnapshotRow.asin == normalized_asin,
+                ).exists(),
+                select(RankObservationRow.id).where(
+                    RankObservationRow.rank_run_id == RankRunRow.id,
+                    RankObservationRow.asin == normalized_asin,
+                ).exists(),
+            ))
+
+        with self._sessions() as session:
+            if cursor:
+                anchor = session.execute(
+                    select(RankRunRow.started_at, RankRunRow.id).where(
+                        RankRunRow.id == cursor,
+                        RankRunRow.owner_id == owner_id,
+                    )
+                ).one_or_none()
+                if anchor is None:
+                    raise ValueError("invalid run history cursor")
+                statement = statement.where(or_(
+                    RankRunRow.started_at < anchor.started_at,
+                    and_(
+                        RankRunRow.started_at == anchor.started_at,
+                        RankRunRow.id < anchor.id,
+                    ),
+                ))
+
+            runs = session.scalars(statement.order_by(
+                RankRunRow.started_at.desc(), RankRunRow.id.desc(),
+            ).limit(limit + 1)).all()
+            has_more = len(runs) > limit
+            runs = runs[:limit]
+            if not runs:
+                return {"items": [], "next_cursor": None}
+            snapshot_counts = dict(session.execute(
+                select(RankSnapshotRow.rank_run_id, func.count(RankSnapshotRow.id))
+                .where(RankSnapshotRow.rank_run_id.in_([run.id for run in runs]))
+                .group_by(RankSnapshotRow.rank_run_id)
+            ).all())
+            # Full verification events and budget evidence belong to the detail view.
+            summary_keys = (
+                "auto_strict_enabled", "manual_force_requested",
+                "strict_requested_count", "strict_attempted_count",
+                "strict_succeeded_count", "strict_skipped_count",
+            )
+            return {
+                "items": [
+                    {
+                        "id": run.id,
+                        "marketplace": run.marketplace,
+                        "keyword": run.keyword,
+                        "status": run.status,
+                        "requested_probe_count": run.requested_probe_count,
+                        "settled_probe_count": run.settled_probe_count,
+                        "cache_hit_count": run.cache_hit_count,
+                        "snapshot_count": snapshot_counts.get(run.id, 0),
+                        "started_at": run.started_at,
+                        "completed_at": run.completed_at,
+                        "verification_metadata": {
+                            key: value
+                            for key, value in (run.verification_metadata or {}).items()
+                            if key in summary_keys
+                        },
+                    }
+                    for run in runs
+                ],
+                "next_cursor": runs[-1].id if has_more else None,
+            }
