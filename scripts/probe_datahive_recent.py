@@ -22,7 +22,12 @@ products=pd.read_csv(pp)
 print("PRODUCT COLS",products.columns.tolist(),flush=True)
 print("PRODUCT ROWS",len(products),flush=True)
 pat=re.compile(r"walking\s*pad|walkingpad|under[-\s]?desk\s+treadmill|desk\s+treadmill|walking\s+treadmill|compact\s+treadmill|portable\s+treadmill|urevo|deerrun|sperax|egofit|goyouth|goplus|merach|kingsmith|toputure|wellfit|maksone|vitalwalk",re.I)
-blob=products.astype(str).agg(" ".join,axis=1)
+blob=(
+    products.get("title", "").fillna("").astype(str) + " " +
+    products.get("breadcrumbs", "").fillna("").astype(str) + " " +
+    products.get("description", "").fillna("").astype(str) + " " +
+    products.get("characteristics", "").fillna("").astype(str)
+)
 matches=products[blob.str.contains(pat,na=False)]
 print("MATCHED PRODUCTS",len(matches),flush=True)
 print(matches.head(50).to_json(orient="records",force_ascii=False),flush=True)
