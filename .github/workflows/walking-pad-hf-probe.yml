@@ -1,4 +1,4 @@
-name: Walking Pad Arctic Recent API Probe
+name: Walking Pad Arctic Tree Probe
 
 on:
   push:
@@ -18,4 +18,4 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - run: python scripts/probe_arctic_api_recent.py
+      - run: python scripts/probe_arctic_tree.py
