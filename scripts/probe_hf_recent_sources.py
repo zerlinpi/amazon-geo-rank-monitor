@@ -29,3 +29,18 @@ for repo in ["datahiveai/Amazon-Reviews-Dataset","am0507mu/Amazon-Reviews-Datase
             print(" ",p)
     except Exception as e:
         print("ERR",repo,e)
+
+
+print("\nARCTIC API TREE", flush=True)
+import requests
+for repo in ["Dk587/arctic","open-index/arctic"]:
+    for path in ["data/comments/2026/02","data/comments/2025/12","comments/2026/02"]:
+        u=f"https://huggingface.co/api/datasets/{repo}/tree/main/{path}?recursive=false&expand=false"
+        try:
+            rr=requests.get(u,timeout=30)
+            print(repo,path,"status",rr.status_code,"len",len(rr.text),flush=True)
+            if rr.status_code==200:
+                arr=rr.json()
+                print(" items",len(arr), "sample",[x.get("path") for x in arr[:5]], flush=True)
+        except Exception as e:
+            print("ERR",repo,path,e,flush=True)
