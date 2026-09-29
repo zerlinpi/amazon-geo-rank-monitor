@@ -1,4 +1,4 @@
-name: Walking Pad Arctic Volume Probe
+name: Walking Pad Recent Reddit Bulk 200K
 
 on:
   push:
@@ -7,9 +7,9 @@ on:
       - '.github/workflows/walking-pad-trustpilot-probe.yml'
 
 jobs:
-  probe:
+  collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,4 +18,19 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-      - run: python scripts/probe_arctic_timeseries.py
+      - name: Collect recent Reddit bulk composite
+        env:
+          TARGET_REVIEWS: "200000"
+          OUTDIR: "arctic_bulk_output"
+        run: python scripts/collect_arctic_bulk_benchmark.py
+      - name: Show stats
+        if: always()
+        run: |
+          cat arctic_bulk_output/stats.json || true
+          wc -l arctic_bulk_output/reddit_recent_composite_200k.csv || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: walking-pad-recent-reddit-bulk
+          path: arctic_bulk_output/
+          retention-days: 7
