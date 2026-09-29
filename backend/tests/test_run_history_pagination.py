@@ -176,3 +176,77 @@ def test_summary_query_count_does_not_grow_per_run(history):
         assert len(queries) <= 3
     finally:
         event.remove(engine, "before_cursor_execute", record_query)
+
+
+def test_time_range_normalizes_offsets_and_preserves_pagination(history):
+    client, ranks, owner, auth, other, _, _ = history
+    ids = [seed_run(ranks, owner, number) for number in range(1, 5)]
+    seed_run(ranks, other, 99)
+    with ranks._sessions.begin() as session:
+        for hour, run_id in enumerate(ids):
+            session.get(RankRunRow, run_id).started_at = datetime(
+                2026, 9, 28, hour, tzinfo=UTC,
+            )
+    params = {
+        "started_from": "2026-09-28T09:00:00+08:00",
+        "started_until": "2026-09-27T22:00:00-04:00",
+        "limit": 1,
+        "keyword": "trailer",
+        "status": "succeeded",
+    }
+    first = client.get("/api/v1/runs/page", headers=auth, params=params)
+    assert first.status_code == 200
+    assert [item["id"] for item in first.json()["items"]] == [ids[2]]
+    second = client.get("/api/v1/runs/page", headers=auth, params={
+        **params, "cursor": first.json()["next_cursor"],
+    })
+    assert second.status_code == 200
+    assert [item["id"] for item in second.json()["items"]] == [ids[1]]
+    assert second.json()["next_cursor"] is None
+
+
+@pytest.mark.parametrize(("bounds", "expected"), [
+    ({"started_from": "2026-09-28T01:00:00Z"}, [3, 2]),
+    ({"started_until": "2026-09-28T01:00:00Z"}, [2, 1]),
+    ({"started_from": "2026-09-28T01:00:00Z",
+      "started_until": "2026-09-28T01:00:00Z"}, [2]),
+    ({"started_from": "2026-09-29T00:00:00Z"}, []),
+])
+def test_time_range_supports_open_and_inclusive_bounds(history, bounds, expected):
+    client, ranks, owner, auth, _, _, _ = history
+    for number in range(1, 4):
+        run_id = seed_run(ranks, owner, number)
+        with ranks._sessions.begin() as session:
+            session.get(RankRunRow, run_id).started_at = datetime(
+                2026, 9, 28, number - 1, tzinfo=UTC,
+            )
+    response = client.get("/api/v1/runs/page", headers=auth, params=bounds)
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [
+        str(UUID(int=number)) for number in expected
+    ]
+
+
+@pytest.mark.parametrize("bounds", [
+    {"started_from": "2026-09-28T03:00:00Z", "started_until": "2026-09-28T02:00:00Z"},
+    {"started_from": "not-a-date"},
+    {"started_until": "2026-09-28T02:00:00"},
+    {"started_from": "2026-09-28"},
+    {"started_from": "20260928"},
+    {"started_until": "1790553600000"},
+    {"started_from": "0001-01-01T00:00:00+14:00"},
+    {"started_until": "9999-12-31T23:59:59-14:00"},
+])
+def test_time_range_rejects_ambiguous_or_invalid_bounds(history, bounds):
+    client, _, _, auth, _, _, _ = history
+    assert client.get("/api/v1/runs/page", headers=auth, params=bounds).status_code == 422
+
+
+def test_run_summaries_serialize_explicit_utc_timestamps(history):
+    client, ranks, owner, auth, _, _, _ = history
+    run_id = seed_run(ranks, owner, 1)
+    with ranks._sessions.begin() as session:
+        session.get(RankRunRow, run_id).completed_at = datetime(2026, 9, 28, 1, tzinfo=UTC)
+    item = client.get("/api/v1/runs/page", headers=auth).json()["items"][0]
+    assert datetime.fromisoformat(item["started_at"]) == datetime(2026, 9, 28, tzinfo=UTC)
+    assert datetime.fromisoformat(item["completed_at"]) == datetime(2026, 9, 28, 1, tzinfo=UTC)

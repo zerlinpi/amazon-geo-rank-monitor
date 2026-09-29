@@ -1,6 +1,6 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -9,7 +9,7 @@ from test_run_history_pagination import seed_run
 from amazon_geo_rank_monitor.domain.errors import CreditBudgetExceededError
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
-from amazon_geo_rank_monitor.repositories.models import Base
+from amazon_geo_rank_monitor.repositories.models import Base, RankRunRow
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
 from amazon_geo_rank_monitor.repositories.tenant_repository import TenantRepository
 
@@ -37,6 +37,27 @@ def test_postgres_run_history_cursor_and_literal_keyword_filter() -> None:
     )
     assert [item["id"] for item in page["items"]] == [oldest]
     assert page["next_cursor"] is None
+
+
+def test_postgres_history_time_bounds_are_normalized_to_utc() -> None:
+    engine = create_engine(POSTGRES_TEST_URL)
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    ranks = RankRepository(engine)
+    ids = [seed_run(ranks, "tenant-a", i) for i in range(1, 5)]
+    with ranks._sessions.begin() as session:
+        for hour, run_id in enumerate(ids):
+            session.get(RankRunRow, run_id).started_at = datetime(
+                2026, 9, 28, hour, tzinfo=UTC,
+            )
+    page = ranks.list_run_page(
+        owner_id="tenant-a",
+        started_from=datetime(2026, 9, 28, 9, tzinfo=timezone(timedelta(hours=8))),
+        started_until=datetime(2026, 9, 27, 22, tzinfo=timezone(timedelta(hours=-4))),
+    )
+    assert [item["id"] for item in page["items"]] == [ids[2], ids[1]]
+    assert page["next_cursor"] is None
+    assert all(item["started_at"].utcoffset() == timedelta(0) for item in page["items"])
 
 
 def test_postgres_skip_locked_claims_distinct_jobs() -> None:
