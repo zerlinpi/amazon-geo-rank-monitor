@@ -1,4 +1,4 @@
-name: Walking Pad Recent VOC Parse
+name: Walking Pad Arctic Volume Probe
 
 on:
   push:
@@ -7,9 +7,9 @@ on:
       - '.github/workflows/walking-pad-trustpilot-probe.yml'
 
 jobs:
-  parse:
+  probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -17,14 +17,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install python-dateutil
-      - run: python scripts/parse_recent_trustpilot.py
-      - name: Show stats
-        run: cat recent_voc_output/stats.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: walking-pad-recent-trustpilot
-          path: recent_voc_output/
-          retention-days: 7
-
-# rerun-with-homefitnesscode
+      - run: pip install requests
+      - run: python scripts/probe_arctic_timeseries.py
