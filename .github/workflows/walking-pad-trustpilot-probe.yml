@@ -1,4 +1,4 @@
-name: Walking Pad Trustpilot Direct Probe
+name: Walking Pad Recent VOC Parse
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - '.github/workflows/walking-pad-trustpilot-probe.yml'
 
 jobs:
-  probe:
+  parse:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -17,7 +17,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install requests beautifulsoup4
-      - run: python scripts/probe_trustpilot_direct.py
-
-# rerun-next-route
+      - run: pip install python-dateutil
+      - run: python scripts/parse_recent_trustpilot.py
+      - name: Show stats
+        run: cat recent_voc_output/stats.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: walking-pad-recent-trustpilot
+          path: recent_voc_output/
+          retention-days: 7
