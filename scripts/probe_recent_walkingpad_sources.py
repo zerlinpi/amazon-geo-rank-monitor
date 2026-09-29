@@ -36,3 +36,31 @@ for url in [
             ch=jj.get("data",{}).get("children",[])
             print("children",len(ch),"first",[(x.get("data",{}).get("id"),x.get("data",{}).get("num_comments"),x.get("data",{}).get("created_utc")) for x in ch[:5]],flush=True)
     except Exception as e: print("reddit error",e,flush=True)
+
+
+print("\n=== TRUSTPILOT DIRECT PROBE ===", flush=True)
+for url in [
+ "https://www.trustpilot.com/review/deerruntreadmill.com?page=1",
+ "https://www.trustpilot.com/review/deerruntreadmill.com?page=2",
+ "https://www.trustpilot.com/review/walkingpad.com?page=1"
+]:
+    try:
+        rr=requests.get(url,headers={"User-Agent":"Mozilla/5.0"},timeout=30)
+        print("tp",url,"status",rr.status_code,"len",len(rr.text),flush=True)
+        print("review ids",len(set(re.findall(r'/reviews/[a-zA-Z0-9]+',rr.text))),flush=True)
+        print("date tokens",len(re.findall(r'202[456]',rr.text)),flush=True)
+    except Exception as e: print("tp error",e,flush=True)
+
+print("\n=== YOUTUBE DIRECT PROBE ===", flush=True)
+try:
+    import subprocess,sys,os
+    subprocess.run([sys.executable,"-m","pip","install","-q","yt-dlp"],check=False)
+    cmd=["yt-dlp","--skip-download","--dump-json","ytsearch5:walking pad review 2026"]
+    p=subprocess.run(cmd,capture_output=True,text=True,timeout=120)
+    print("yt search rc",p.returncode,"lines",len(p.stdout.splitlines()),flush=True)
+    print(p.stderr[-1000:],flush=True)
+    if p.stdout.strip():
+        import json as _json
+        first=_json.loads(p.stdout.splitlines()[0])
+        print("first id",first.get("id"),"title",first.get("title"),"date",first.get("upload_date"),"comments",first.get("comment_count"),flush=True)
+except Exception as e: print("yt error",e,flush=True)
