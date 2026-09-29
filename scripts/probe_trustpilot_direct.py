@@ -31,3 +31,13 @@ for u in urls:
         if "review" in t.lower() and len(t)>1000:
             candidates.append((len(t),t[:300]))
     print("script review candidates",sorted(candidates,reverse=True)[:5],flush=True)
+
+print("\nNEXT DATA TEST",flush=True)
+tests=[
+ "https://www.trustpilot.com/_next/data/businessunitprofile-consumersite-2.7981.0/review/deerruntreadmill.com.json?page=2&businessUnit=deerruntreadmill.com",
+ "https://www.trustpilot.com/_next/data/businessunitprofile-consumersite-2.7981.0/review/deerruntreadmill.com.json?page=2",
+]
+for u in tests:
+    rr=requests.get(u,headers=H,timeout=30)
+    print("next",rr.status_code,"len",len(rr.text),"url",rr.url,flush=True)
+    print(rr.text[:1000],flush=True)
