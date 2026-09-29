@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { agrmApi, type RankRun, type RankRunSummary, type RunHistoryFilters } from '@/api/agrm'
+import { historyTimeFilters, recentHistoryRange } from '@/utils/history-time'
 
 defineOptions({ name: 'RunHistory' })
 
@@ -17,6 +18,13 @@ const appliedFilters = ref<RunHistoryFilters>({})
 const cursors = ref<(string | null)[]>([null])
 const pageIndex = ref(0)
 const nextCursor = ref<string | null>(null)
+const timeRange = ref<Date[] | null>(null)
+const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+const timeShortcuts = [
+  { text: 'Last 24 hours', value: () => recentHistoryRange(24) },
+  { text: 'Last 7 days', value: () => recentHistoryRange(168) },
+  { text: 'Last 30 days', value: () => recentHistoryRange(720) },
+]
 
 async function loadPage(page: number, cursor: string | null, criteria: RunHistoryFilters, reset = false) {
   if (loading.value) {
@@ -47,7 +55,16 @@ async function loadPage(page: number, cursor: string | null, criteria: RunHistor
 }
 
 function search() {
+  let timeFilters: Pick<RunHistoryFilters, 'started_from' | 'started_until'>
+  try {
+    timeFilters = historyTimeFilters(timeRange.value)
+  }
+  catch {
+    error.value = 'Choose a valid start and end time, with the start no later than the end.'
+    return
+  }
   return loadPage(0, null, {
+    ...timeFilters,
     keyword: filters.keyword?.trim() || undefined,
     asin: filters.asin?.trim().toUpperCase() || undefined,
     status: filters.status || undefined,
@@ -174,7 +191,7 @@ onMounted(search)
     </div>
 
     <el-card shadow="never">
-      <form class="grid gap-3 md:grid-cols-4" @submit.prevent="search">
+      <form class="grid gap-3 md:grid-cols-3" @submit.prevent="search">
         <label class="text-sm">
           <span class="block mb-1">Keyword contains</span>
           <el-input v-model="filters.keyword" clearable maxlength="512" placeholder="e.g. trailer hitch" :disabled="loading" />
@@ -191,6 +208,23 @@ onMounted(search)
             <el-option label="Partially succeeded" value="partially_succeeded" />
             <el-option label="Failed" value="failed" />
           </el-select>
+        </label>
+        <label class="min-w-0 text-sm md:col-span-2">
+          <span class="block mb-1">Run start time</span>
+          <el-date-picker
+            v-model="timeRange"
+            type="datetimerange"
+            start-placeholder="Start time"
+            end-placeholder="End time"
+            range-separator="to"
+            :shortcuts="timeShortcuts"
+            :disabled="loading"
+            clearable
+            class="!w-full"
+          />
+          <span class="block mt-1 text-xs text-muted-foreground">
+            {{ localTimeZone }} · Includes both endpoints. Clear for all dates.
+          </span>
         </label>
         <div class="flex items-end">
           <el-button type="primary" native-type="submit" :loading="loading">Search / refresh</el-button>
@@ -236,7 +270,7 @@ onMounted(search)
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="Started" min-width="170">
+        <el-table-column :label="'Started (' + localTimeZone + ')'" min-width="200">
           <template #default="{ row }">{{ new Date(row.started_at).toLocaleString() }}</template>
         </el-table-column>
         <el-table-column label="Action" width="90">

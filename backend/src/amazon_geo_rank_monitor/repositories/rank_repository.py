@@ -422,10 +422,24 @@ class RankRepository:
         keyword: str | None = None,
         asin: str | None = None,
         status: str | None = None,
+        started_from: datetime | None = None,
+        started_until: datetime | None = None,
     ) -> dict:
         """Fetch bounded summaries, newest first, without loading per-run details."""
         limit = min(max(limit, 1), 100)
         statement = select(RankRunRow).where(RankRunRow.owner_id == owner_id)
+        if started_from is not None:
+            started_from = self._utc(started_from)
+            statement = statement.where(RankRunRow.started_at >= started_from)
+        if started_until is not None:
+            started_until = self._utc(started_until)
+            statement = statement.where(RankRunRow.started_at <= started_until)
+        if (
+            started_from is not None
+            and started_until is not None
+            and started_from > started_until
+        ):
+            raise ValueError("started_from must be before or equal to started_until")
         if keyword and keyword.strip():
             statement = statement.where(
                 RankRunRow.keyword.icontains(keyword.strip(), autoescape=True)
@@ -492,8 +506,10 @@ class RankRepository:
                         "settled_probe_count": run.settled_probe_count,
                         "cache_hit_count": run.cache_hit_count,
                         "snapshot_count": snapshot_counts.get(run.id, 0),
-                        "started_at": run.started_at,
-                        "completed_at": run.completed_at,
+                        "started_at": self._utc(run.started_at),
+                        "completed_at": (
+                            self._utc(run.completed_at) if run.completed_at else None
+                        ),
                         "verification_metadata": {
                             key: value
                             for key, value in (run.verification_metadata or {}).items()
@@ -504,3 +520,13 @@ class RankRepository:
                 ],
                 "next_cursor": runs[-1].id if has_more else None,
             }
+
+    @staticmethod
+    def _utc(value: datetime) -> datetime:
+        # SQLite drops timezone info from UTC values stored by the application.
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        try:
+            return value.astimezone(UTC)
+        except OverflowError as exc:
+            raise ValueError("timestamp is outside the supported UTC range") from exc

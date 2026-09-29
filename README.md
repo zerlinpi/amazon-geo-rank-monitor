@@ -255,6 +255,9 @@ All tenant-owned lookups are filtered server-side. A resource owned by another t
 
 The Run History console loads 50 summaries at a time and supports **Newer** /
 **Older** navigation, keyword search, exact ASIN search and run-status filtering.
+Use **Run start time** to narrow the range, or choose the last 24 hours, 7 days or
+30 days. The picker and Started column display the browser's local timezone;
+the request sends UTC timestamps and keeps the selected range while paging.
 Click **View** to fetch the full regional observations, snapshots and strict
 verification evidence. Clearing the filters and choosing **Search / refresh**
 returns to the newest runs.
@@ -278,6 +281,21 @@ Ordering is `started_at DESC, id DESC`, so equal timestamps are deterministic an
 newly inserted newer runs do not shift subsequent pages. Each cursor is validated
 against the caller's workspace; missing and foreign cursors return the same 422
 response. Status and cursor validation failures also return 422.
+
+Optional `started_from` and `started_until` bounds filter the **run start time**,
+including both endpoints. Supply ISO-8601 timestamps with an explicit UTC offset
+or `Z`. Either bound may be omitted; omitting both preserves the full-history
+behavior. Naive timestamps, invalid values and a start later than the end return
+422. For example:
+
+```http
+GET /api/v1/runs/page?started_from=2026-09-01T00:00:00Z&started_until=2026-09-28T12:00:00Z
+```
+
+Bounds are normalized to UTC before querying SQLite or PostgreSQL. Summary
+timestamps also carry an explicit UTC offset, including when SQLite removed the
+timezone from a stored UTC value, so browsers do not interpret UTC as local time.
+Time filters reuse the history index and require no additional migration.
 
 Summary items include `snapshot_count` and strict-verification counters, but omit
 observations, snapshots, per-probe events and full budget evidence. The detail

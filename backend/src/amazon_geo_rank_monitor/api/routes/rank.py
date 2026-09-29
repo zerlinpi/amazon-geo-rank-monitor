@@ -1,7 +1,9 @@
-from typing import Literal
+from datetime import datetime
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import AwareDatetime, BeforeValidator
 
 from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
 from amazon_geo_rank_monitor.api.schemas import RankCheckBody
@@ -11,6 +13,9 @@ from amazon_geo_rank_monitor.application.rank_application import (
 )
 
 router = APIRouter(prefix="/api/v1", tags=["rank"])
+
+# Parse ISO text before Pydantic can coerce numeric strings to Unix timestamps.
+IsoAwareDatetime = Annotated[AwareDatetime, BeforeValidator(datetime.fromisoformat)]
 
 
 @router.post("/rank/check")
@@ -72,6 +77,8 @@ def list_run_page(
     keyword: str | None = Query(None, max_length=512),
     asin: str | None = Query(None, max_length=32),
     status: Literal["running", "succeeded", "partially_succeeded", "failed"] | None = None,
+    started_from: IsoAwareDatetime | None = None,
+    started_until: IsoAwareDatetime | None = None,
 ):
     try:
         return get_services(request).rank_repository.list_run_page(
@@ -81,6 +88,8 @@ def list_run_page(
             keyword=keyword,
             asin=asin,
             status=status,
+            started_from=started_from,
+            started_until=started_until,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

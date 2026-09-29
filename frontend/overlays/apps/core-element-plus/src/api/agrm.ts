@@ -733,6 +733,8 @@ export interface RunHistoryFilters {
   keyword?: string
   asin?: string
   status?: 'running' | 'succeeded' | 'partially_succeeded' | 'failed'
+  started_from?: string
+  started_until?: string
 }
 
 export interface RankRunSummary extends Omit<RankRun, 'observations' | 'snapshots' | 'error_summary'> {
