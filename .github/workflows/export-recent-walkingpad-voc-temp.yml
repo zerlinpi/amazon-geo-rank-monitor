@@ -1,0 +1,22 @@
+name: Export Recent WalkingPad VOC Sample
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-recent-walkingpad-voc-temp.yml'
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/walking-pad-voc-200k-2024-2026
+      - name: Prepare files
+        run: |
+          mkdir -p export
+          cp data/walking_pad_recent_2024_2026/chunks/deerrun_001_010.csv export/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: walking-pad-recent-voc-sample
+          path: export/
+          retention-days: 7
