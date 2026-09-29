@@ -11,7 +11,7 @@ PAT = re.compile(
 N=1_000_000
 print("loading stream", flush=True)
 ds = load_dataset(
-    "open-index/arctic",
+    "open-index/arctic", "comments",
     data_files="data/comments/2026/02/*.parquet",
     split="train",
     streaming=True,
