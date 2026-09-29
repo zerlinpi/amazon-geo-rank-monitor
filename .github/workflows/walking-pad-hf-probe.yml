@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install huggingface_hub requests datasets pyarrow
-      - run: python scripts/probe_arctic_hit_rate.py
+      - run: python scripts/search_hf_recent_review_datasets.py
 
 # rerun-arctic-tree
 
@@ -29,3 +29,5 @@ jobs:
 # rerun-direct-parquet
 
 # rerun-stats-coverage
+
+# search-recent-review-datasets
