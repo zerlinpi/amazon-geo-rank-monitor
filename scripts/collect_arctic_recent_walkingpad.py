@@ -12,7 +12,7 @@ TARGET=int(os.getenv("TARGET_REVIEWS","200000"))
 OUT=Path(os.getenv("OUTDIR","arctic_recent_output")); OUT.mkdir(exist_ok=True)
 
 FULL_SUBS=[
-    "walkingpad","treadmills","walking","StandingDesk","WorkFromHome",
+    "WalkingPads","walkingpad","treadmills","walking","StandingDesk","WorkFromHome",
     "wfh","homeoffice","Workspaces","homegym"
 ]
 BROAD_SUBS=[
