@@ -1174,8 +1174,9 @@ class AccountService:
             return
         try:
             self._email_sender.send(to=to, subject=subject, text=text)
-        except Exception:
-            logger.exception("account_email_delivery_failed to=%s subject=%s", to, subject)
+        except Exception as exc:
+            # SMTP exceptions can echo a message containing one-time auth links.
+            logger.warning("account_email_delivery_failed error_type=%s", type(exc).__name__)
 
     def _load_invitation(self, plaintext: str) -> dict:
         if not plaintext.startswith("agri_"):

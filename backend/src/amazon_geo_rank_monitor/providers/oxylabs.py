@@ -58,7 +58,9 @@ class OxylabsRankProvider:
                 **kwargs,
             )
         except Exception as exc:
-            raise ProviderUnavailableError(f"Oxylabs Amazon search failed: {exc}") from exc
+            raise ProviderUnavailableError(
+                f"Oxylabs Amazon search failed ({type(exc).__name__})"
+            ) from exc
 
         try:
             contents = [item.content for item in response.results]

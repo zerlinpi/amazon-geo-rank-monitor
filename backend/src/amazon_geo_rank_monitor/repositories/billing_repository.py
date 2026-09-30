@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import Engine, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import sessionmaker
 
 from amazon_geo_rank_monitor.domain.errors import (
@@ -450,16 +452,15 @@ class BillingRepository:
         payload_hash: str,
     ) -> bool:
         with self._sessions.begin() as session:
-            if session.get(WebhookEventRow, provider_event_id) is not None:
-                return False
-            session.add(
-                WebhookEventRow(
-                    provider_event_id=provider_event_id,
-                    event_type=event_type,
+            insert = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
+            recorded = session.scalar(
+                insert(WebhookEventRow).values(
+                    provider_event_id=provider_event_id, event_type=event_type,
                     payload_hash=payload_hash,
-                )
+                ).on_conflict_do_nothing(index_elements=["provider_event_id"])
+                .returning(WebhookEventRow.provider_event_id)
             )
-            return True
+            return recorded is not None
 
     def apply_paid_checkout(
         self,
@@ -485,6 +486,9 @@ class BillingRepository:
             )
             if payment is None:
                 raise KeyError(f"payment not found: {payment_id}")
+            # A concurrent delivery may have committed while we waited for this lock.
+            if session.get(WebhookEventRow, provider_event_id) is not None:
+                return self._serialize_payment(payment)
             if payment.provider_session_id not in {None, session_id}:
                 raise ValueError("checkout session does not match payment")
             payment.provider_session_id = session_id

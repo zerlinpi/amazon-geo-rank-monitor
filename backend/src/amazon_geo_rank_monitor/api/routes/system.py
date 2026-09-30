@@ -25,11 +25,10 @@ def list_workers(
     request: Request,
     owner_id: str = Depends(require_scope("system:read")),
 ):
-    del owner_id
     repository = get_services(request).worker_status_repository
     if repository is None:
         raise HTTPException(status_code=503, detail="worker status is unavailable")
-    return repository.list()
+    return [{**item, "last_job_id": None, "last_error": None} for item in repository.list()]
 
 
 @router.get("/queue")
@@ -37,8 +36,7 @@ def queue_summary(
     request: Request,
     owner_id: str = Depends(require_scope("system:read")),
 ):
-    del owner_id
-    return get_services(request).job_repository.queue_summary()
+    return get_services(request).job_repository.queue_summary(owner_id=owner_id)
 
 
 @router.get("/dead-letters")
@@ -47,8 +45,7 @@ def list_dead_letters(
     owner_id: str = Depends(require_scope("system:read")),
     limit: int = 50,
 ):
-    del owner_id
-    return get_services(request).job_repository.list_dead_letters(limit=limit)
+    return get_services(request).job_repository.list_dead_letters(limit=limit, owner_id=owner_id)
 
 
 @router.post("/dead-letters/{job_id}/requeue")
@@ -57,9 +54,8 @@ def requeue_dead_letter(
     request: Request,
     owner_id: str = Depends(require_scope("system:write")),
 ):
-    del owner_id
     try:
-        return get_services(request).job_repository.requeue_dead_letter(job_id)
+        return get_services(request).job_repository.requeue_dead_letter(job_id, owner_id=owner_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="job not found") from exc
     except ValueError as exc:
@@ -204,9 +200,8 @@ def prometheus_metrics(
     request: Request,
     owner_id: str = Depends(require_scope("system:read")),
 ):
-    del owner_id
     services = get_services(request)
-    summary = services.job_repository.queue_summary()
+    summary = services.job_repository.queue_summary(owner_id=owner_id)
     workers = (
         services.worker_status_repository.list()
         if services.worker_status_repository is not None
@@ -214,7 +209,7 @@ def prometheus_metrics(
     )
     now = datetime.now(UTC)
     verification = (
-        services.rank_repository.verification_summary()
+        services.rank_repository.verification_summary(owner_id=owner_id)
         if services.rank_repository is not None
         and hasattr(services.rank_repository, "verification_summary")
         else {}

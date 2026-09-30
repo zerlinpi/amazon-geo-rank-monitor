@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
-from sqlalchemy import Engine, delete
+from sqlalchemy import Engine, delete, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import sessionmaker
 
 from amazon_geo_rank_monitor.repositories.models import SerpProbeCacheRow
 
 
-def _utc(value: datetime) -> datetime:
-    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-
-
 class ProbeCacheRepository:
     def __init__(self, engine: Engine) -> None:
         self._sessions = sessionmaker(bind=engine, expire_on_commit=False)
+        self._insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
 
     def get_fresh(
         self,
@@ -24,13 +23,15 @@ class ProbeCacheRepository:
         now: datetime,
     ) -> dict | None:
         with self._sessions.begin() as session:
-            row = session.get(SerpProbeCacheRow, (owner_id, cache_key))
-            if row is None or _utc(row.expires_at) <= now:
-                return None
-            row.hit_count += 1
-            row.last_used_at = now
-            session.flush()
-            return self._serialize(row)
+            row = session.scalar(
+                update(SerpProbeCacheRow)
+                .where(SerpProbeCacheRow.owner_id == owner_id,
+                       SerpProbeCacheRow.cache_key == cache_key,
+                       SerpProbeCacheRow.expires_at > now)
+                .values(hit_count=SerpProbeCacheRow.hit_count + 1, last_used_at=now)
+                .returning(SerpProbeCacheRow)
+            )
+            return self._serialize(row) if row is not None else None
 
     def put(
         self,
@@ -50,44 +51,25 @@ class ProbeCacheRepository:
         fetched_at: datetime,
         expires_at: datetime,
     ) -> dict:
+        values = dict(
+            owner_id=owner_id, cache_key=cache_key, provider_mode=provider_mode,
+            provider_name=provider_name, verification_level=verification_level,
+            marketplace=marketplace, keyword=keyword, geo_profile_id=geo_profile_id,
+            device=device, search_depth=search_depth, identity_payload=identity_payload,
+            result_payload=result_payload, fetched_at=fetched_at, expires_at=expires_at,
+            last_used_at=fetched_at, hit_count=0,
+        )
+        statement = self._insert(SerpProbeCacheRow).values(**values)
+        statement = statement.on_conflict_do_update(
+            index_elements=["owner_id", "cache_key"],
+            set_={key: value for key, value in values.items()
+                  if key not in {"owner_id", "cache_key"}},
+            where=SerpProbeCacheRow.fetched_at <= statement.excluded.fetched_at,
+        ).returning(SerpProbeCacheRow)
         with self._sessions.begin() as session:
-            row = session.get(SerpProbeCacheRow, (owner_id, cache_key))
-            if row is None:
-                row = SerpProbeCacheRow(
-                    owner_id=owner_id,
-                    cache_key=cache_key,
-                    provider_mode=provider_mode,
-                    provider_name=provider_name,
-                    verification_level=verification_level,
-                    marketplace=marketplace,
-                    keyword=keyword,
-                    geo_profile_id=geo_profile_id,
-                    device=device,
-                    search_depth=search_depth,
-                    identity_payload=identity_payload,
-                    result_payload=result_payload,
-                    fetched_at=fetched_at,
-                    expires_at=expires_at,
-                    last_used_at=fetched_at,
-                    hit_count=0,
-                )
-                session.add(row)
-            else:
-                row.provider_mode = provider_mode
-                row.provider_name = provider_name
-                row.verification_level = verification_level
-                row.marketplace = marketplace
-                row.keyword = keyword
-                row.geo_profile_id = geo_profile_id
-                row.device = device
-                row.search_depth = search_depth
-                row.identity_payload = identity_payload
-                row.result_payload = result_payload
-                row.fetched_at = fetched_at
-                row.expires_at = expires_at
-                row.last_used_at = fetched_at
-                row.hit_count = 0
-            session.flush()
+            row = session.scalar(statement)
+            if row is None:  # A newer result won while this upstream request was in flight.
+                row = session.get(SerpProbeCacheRow, (owner_id, cache_key))
             return self._serialize(row)
 
     def delete_entry(self, *, owner_id: str, cache_key: str) -> None:

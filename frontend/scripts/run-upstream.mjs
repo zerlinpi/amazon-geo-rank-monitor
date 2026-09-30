@@ -23,6 +23,10 @@ if (mode === 'dev') {
 }
 else {
   runPnpm(['install', '--frozen-lockfile'], { cwd: vendor, stdio: 'inherit' })
+  if (mode === 'typecheck') {
+    runPnpm(['--filter', '@fantastic-admin/core-element-plus', 'exec', 'vue-tsc', '-b'], { cwd: vendor, stdio: 'inherit' })
+    process.exit(0)
+  }
   runPnpm(['--filter', '@fantastic-admin/core-element-plus', 'build'], {
     cwd: vendor,
     stdio: 'inherit',

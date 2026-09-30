@@ -31,6 +31,7 @@ class AppSettings(BaseSettings):
     scim_token_pepper: str | None = None
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    forwarded_allow_ips: str = "127.0.0.1"
     api_rate_limit_per_minute: int = 120
     auth_rate_limit_per_minute: int = 20
     redis_url: str | None = None

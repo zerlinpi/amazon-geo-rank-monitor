@@ -53,7 +53,7 @@ class ReportScheduler:
                 outcomes.append(
                     {
                         "schedule_id": schedule["id"],
-                        "error": str(exc),
+                        "error": f"scheduler operation failed ({type(exc).__name__})",
                     }
                 )
         return outcomes

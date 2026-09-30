@@ -68,8 +68,14 @@ return {count, ttl}
         if client is None:
             from redis import Redis
 
-            client = Redis.from_url(redis_url, decode_responses=True)
+            client = Redis.from_url(
+                redis_url, decode_responses=True,
+                socket_connect_timeout=2, socket_timeout=2,
+            )
         self._client = client
+
+    def ready(self) -> bool:
+        return bool(self._client.ping())
 
     @property
     def limit(self) -> int:
@@ -94,6 +100,12 @@ class ResilientRateLimiter:
     def __init__(self, *, primary, fallback: FixedWindowRateLimiter) -> None:
         self._primary = primary
         self._fallback = fallback
+
+    def ready(self) -> bool:
+        try:
+            return self._primary.ready()
+        except Exception:
+            return False
 
     @property
     def limit(self) -> int:

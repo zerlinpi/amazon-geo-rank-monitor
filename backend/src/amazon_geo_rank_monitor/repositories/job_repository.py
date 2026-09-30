@@ -260,11 +260,12 @@ class JobRepository:
             "recovered_attempts": recovered_attempts,
         }
 
-    def list_dead_letters(self, *, limit: int = 50) -> list[dict]:
+    def list_dead_letters(self, *, limit: int = 50, owner_id: str | None = None) -> list[dict]:
         with self._sessions() as session:
             rows = session.scalars(
                 select(RankJobRow)
                 .where(RankJobRow.status == "dead_letter")
+                .where(True if owner_id is None else RankJobRow.owner_id == owner_id)
                 .order_by(RankJobRow.completed_at.desc(), RankJobRow.id.desc())
                 .limit(min(max(limit, 1), 500))
             ).all()
@@ -275,11 +276,12 @@ class JobRepository:
         job_id: str,
         *,
         now: datetime | None = None,
+        owner_id: str | None = None,
     ) -> dict:
         current = self._utc(now or datetime.now(UTC))
         with self._sessions.begin() as session:
             row = session.get(RankJobRow, job_id)
-            if row is None:
+            if row is None or (owner_id is not None and row.owner_id != owner_id):
                 raise KeyError(f"rank job not found: {job_id}")
             if row.status != "dead_letter":
                 raise ValueError("only dead-letter jobs can be requeued")
@@ -361,19 +363,22 @@ class JobRepository:
             ).all()
             return [self._serialize(row) for row in rows]
 
-    def queue_summary(self) -> dict:
+    def queue_summary(self, *, owner_id: str | None = None) -> dict:
         with self._sessions() as session:
             counts = {
                 status: count
                 for status, count in session.execute(
-                    select(RankJobRow.status, func.count(RankJobRow.id)).group_by(
+                    select(RankJobRow.status, func.count(RankJobRow.id))
+                    .where(True if owner_id is None else RankJobRow.owner_id == owner_id)
+                    .group_by(
                         RankJobRow.status
                     )
                 ).all()
             }
             oldest_pending_at = session.scalar(
                 select(func.min(RankJobRow.available_at)).where(
-                    RankJobRow.status == "pending"
+                    RankJobRow.status == "pending",
+                    True if owner_id is None else RankJobRow.owner_id == owner_id,
                 )
             )
         return {

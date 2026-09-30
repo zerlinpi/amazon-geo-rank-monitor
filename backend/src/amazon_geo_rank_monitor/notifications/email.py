@@ -33,17 +33,9 @@ class ConsoleEmailSender:
         attachments: list[EmailAttachment] | None = None,
     ) -> None:
         logger.info(
-            "development_email to=%s subject=%s body=%s",
-            to,
-            subject,
-            text.replace("\n", " | "),
+            "email_not_sent smtp_not_configured attachment_count=%s",
+            len(attachments or []),
         )
-        if attachments:
-            logger.info(
-                "development_email_attachments to=%s files=%s",
-                to,
-                ",".join(item.filename for item in attachments),
-            )
 
 
 class MemoryEmailSender:

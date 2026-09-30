@@ -70,7 +70,7 @@ async def execute_rank_check(
                 request=request,
             )
         except Exception:
-            logger.exception(
+            logger.warning(
                 "probe_cache_prefetch_failed owner_id=%s provider_mode=%s",
                 owner_id,
                 provider_mode,

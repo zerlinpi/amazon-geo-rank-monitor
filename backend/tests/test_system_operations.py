@@ -283,15 +283,15 @@ def test_system_queue_metrics_and_dead_letter_requeue_are_scoped() -> None:
     assert "agrm_service_heartbeat_age_seconds" in metrics.text
     assert "agrm_service_processed_jobs_total" in metrics.text
     assert (
-        'agrm_auto_strict_verification_total{outcome="requested"} 8'
+        'agrm_auto_strict_verification_total{outcome="requested"} 3'
         in metrics.text
     )
     assert (
-        'agrm_auto_strict_verification_total{outcome="succeeded"} 6'
+        'agrm_auto_strict_verification_total{outcome="succeeded"} 2'
         in metrics.text
     )
     assert (
-        'agrm_auto_strict_verification_total{outcome="skipped"} 2'
+        'agrm_auto_strict_verification_total{outcome="skipped"} 1'
         in metrics.text
     )
 
@@ -308,3 +308,33 @@ def test_system_queue_metrics_and_dead_letter_requeue_are_scoped() -> None:
     assert requeued.status_code == 200
     assert requeued.json()["status"] == "pending"
     assert requeued.json()["attempt_count"] == 0
+
+
+def test_system_operations_cannot_read_or_requeue_another_tenants_job():
+    client, tenants, keys, jobs, workers, ranks, _ = build_system_client()
+    victim = tenants.create_tenant("Victim")
+    attacker = tenants.create_tenant("Other workspace owner")
+    key = keys.create(owner_id=attacker["id"], name="owner")
+    auth = {"X-API-Key": key.plaintext}
+    job = jobs.enqueue(owner_id=victim["id"], provider_mode="managed",
+                       request_payload={"keyword": "private-product"}, max_attempts=1)
+    jobs.claim_one(worker_id="shared-worker")
+    jobs.retry_or_dead_letter(job["id"], error="private-error", base_delay_seconds=0,
+                              max_delay_seconds=0)
+    workers.heartbeat(worker_id="shared-worker", status="idle", last_job_id=job["id"],
+                       last_error="private-error")
+    run = ranks.create_run(owner_id=victim["id"], marketplace="amazon.com", keyword="private",
+                            requested_probe_count=1)
+    ranks.complete_run(run, status="succeeded", settled_probe_count=1,
+                       verification_metadata={"strict_requested_count": 9})
+    assert client.get("/api/v1/system/dead-letters", headers=auth).json() == []
+    assert client.get("/api/v1/system/queue", headers=auth).json()["counts"] == {}
+    denied = client.post(f"/api/v1/system/dead-letters/{job['id']}/requeue", headers=auth)
+    assert denied.status_code == 404
+    assert jobs.get(job["id"], owner_id=victim["id"])["status"] == "dead_letter"
+    state = client.get("/api/v1/system/workers", headers=auth).json()
+    assert state[0]["last_job_id"] is None
+    assert state[0]["last_error"] is None
+    metrics = client.get("/api/v1/system/metrics", headers=auth).text
+    assert 'agrm_auto_strict_verification_total{outcome="requested"} 0' in metrics
+    assert 'agrm_rank_jobs{status="dead_letter"} 1' not in metrics
