@@ -2,6 +2,29 @@
 
 Amazon geographic organic-rank monitoring service. It observes the same Amazon keyword from multiple geographic profiles, locates one or more ASINs in each SERP, and calculates a weighted organic rank.
 
+## Current Stable Baseline
+
+Phase 32 hardens the existing product: account/workspace access, geo profiles,
+monitors, managed/strict verification, queued execution, weighted snapshots,
+history, analytics, alerts and prepaid credits. It adds no new business subsystem.
+The baseline entering hardening is `2ef06d5` (2026-09-30); the latest database head
+remains `20260928_0021`. No published migration is rewritten.
+
+The required **validate** check covers backend, PostgreSQL migrations/concurrency,
+Redis, frontend tests/typecheck/build, browser E2E in UTC/New York/Singapore,
+dependency/secret scans and a complete Docker Compose smoke test. A failed,
+cancelled or skipped dependency makes this gate fail. Phase 32 is a release
+candidate until all these checks succeed on its exact commit; no release tag is
+created automatically.
+
+- [Deploy and configure](docs/DEPLOYMENT.md)
+- [Upgrade and roll back](docs/UPGRADE.md)
+- [Back up and restore](docs/BACKUP_RESTORE.md)
+- [Security policy](SECURITY.md)
+- [GitHub required checks](docs/GITHUB_RULESET.md)
+- [Hardening evidence and limitations](docs/hardening/PHASE32.md)
+- [Changelog](CHANGELOG.md)
+
 ## Scope
 
 This repository is intentionally focused on Amazon rank monitoring. Amazon Ads bidding, listing optimization, inventory, repricing, and review scraping are out of scope.
