@@ -10,6 +10,6 @@ ARG VITE_AGRM_CSRF_COOKIE_NAME=agrm_csrf
 ENV VITE_AGRM_CSRF_COOKIE_NAME=$VITE_AGRM_CSRF_COOKIE_NAME
 RUN npm run build
 FROM nginx:1.28-alpine
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 EXPOSE 8080

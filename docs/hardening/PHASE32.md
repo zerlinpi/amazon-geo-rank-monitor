@@ -27,11 +27,20 @@ remain separate and are not merged into main.
 | Redis | Dedicated CI: shared limiter plus no plaintext identity key |
 | Frontend | 6 date helper tests including DST ambiguity; explicit vue-tsc; production Vite build |
 | Browser | 5 scenarios × UTC/New York/Singapore: login/dashboard, history pagination/lazy detail, combined/empty filters, UTC ranges/shortcuts/clear, failure/loading/retry and worker result |
-| Containers | CI builds backend/frontend and checks DB/Redis/migrate/API/worker/scheduler/frontend readiness and heartbeats |
-| APIs | Existing tenant/RBAC/CSRF/MFA/OIDC/SCIM/history tests; generic 500 now safe JSON with request ID; frontend Axios contract uses explicit response.data |
+| Containers | CI builds backend/frontend and checks DB/Redis/migrate/API/worker/scheduler/frontend readiness, SCIM ingress, both forwarding trust boundaries and query-free callback logs |
+| APIs | Existing tenant/RBAC/CSRF/MFA/OIDC/SCIM/history tests; tenant-scoped operations and retries; generic 500 safe JSON with request ID; frontend Axios contract uses explicit response.data |
+| Long tasks | Real database regressions verify fresh worker health before lease renewal and fresh scheduler health during synchronous report delivery; refreshes preserve status and processed counts |
 | Performance | Cursor summary remains indexed and lightweight; no eager detail downloads; local UI actions do not trigger hidden paid probes |
 
 ## Security audit
+
+Review exposed and fixed an existing cross-workspace operations boundary: job lists,
+requeues and queue/verification metrics now enforce the current tenant; shared worker
+status omits private job IDs/errors. A regression proves a second tenant cannot read
+or requeue a victim job. SMTP delivery failures persist only the exception class.
+Explicit ingress trust prevents client IP spoofing and avoids a shared authentication
+limit for all frontend users. Default query-bearing access logs are disabled while
+application path-only request logs remain enabled.
 
 Python locked runtime audit: no known vulnerabilities after cryptography 50.0.1.
 Frontend full upstream workspace after the checked-in patch: 0 critical/high/moderate,
@@ -62,6 +71,17 @@ scan and exact-commit CI links are recorded in the PR.
   are outside offline validation and need controlled staging checks before release.
 - No release tag or Phase 33 scope is authorized by this readiness work.
 
+Local post-review verification: **265 passed, 12 service-dependent skips**, Ruff,
+compileall and Compose configuration checks passed. The skips are ten PostgreSQL
+and two Redis cases; dedicated CI must run them. The first real CI run
+[36657460980](https://github.com/zerlinpi/amazon-geo-rank-monitor/actions/runs/36657460980)
+passed backend, frontend, Redis, security and full container startup. It exposed
+missing tenant rows in PostgreSQL test setup (7 passed / 3 failed) and an inaccessible
+browser test selector (12 passed / 3 failed); both fixtures were corrected. Final
+post-review integration results and the exact checked commit are maintained in
+[PR #48](https://github.com/zerlinpi/amazon-geo-rank-monitor/pull/48). Earlier green
+jobs do not substitute for a complete green run on the final head.
+
 ## Remote branch ancestry
 
 Classification against `2ef06d5`. Squash-merged branches are preserved unless their
@@ -70,7 +90,7 @@ branches with unmerged content remain untouched.
 
 | Branch | Tip | Disposition |
 | --- | --- | --- |
-| `data/walking-pad-reviews-200k` | `0b51000a90` | Preserve: tip is not an ancestor |
+| `data/walking-pad-reviews-200k` | `a532dd30f1` | Preserve: tip is not an ancestor |
 | `feat/account-recovery-email-security` | `8f9d4a7f3e` | Ancestor; deletion BLOCKED by push credentials |
 | `feat/alert-incident-reliability` | `8e96d62cfe` | Ancestor; deletion BLOCKED by push credentials |
 | `feat/api-security-hardening` | `4c5bf08c6f` | Ancestor; deletion BLOCKED by push credentials |

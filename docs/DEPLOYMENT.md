@@ -31,7 +31,8 @@ Local SQLite remains useful for development; use PostgreSQL for multiple workers
 
 Compose reads the same `.env` for API, worker, scheduler and migration, preventing
 policy, billing and encryption drift. It overrides DB connection, schema creation,
-API listen address and port; migrations run explicitly with `AUTO_CREATE_SCHEMA=false`.
+API listen address/port and trusted frontend address; migrations run explicitly with
+`AUTO_CREATE_SCHEMA=false`.
 `POSTGRES_PASSWORD` is Compose-only. `VITE_AGRM_*` are build-time frontend values;
 the frontend image always uses `/` for API requests through its same-origin proxy.
 If changing the CSRF cookie name, rebuild with the matching frontend configuration.
@@ -53,13 +54,34 @@ docker compose exec -T scheduler python -m amazon_geo_rank_monitor.operations.he
 The migration service waits for PostgreSQL; API waits for migration and Redis;
 worker/scheduler wait for migration; frontend waits for API readiness. Compose
 publishes ports only to loopback. Put a TLS reverse proxy in front of frontend
-port 8080, forwarding `/api/` as well as static content. Do not expose DB or Redis
+port 8080, forwarding `/api/` and `/scim/v2/` as well as static content. Do not expose DB or Redis
 ports. Keep the API's 8000 endpoint private. Terminate HTTPS before accepting
 production sessions. Secure cookies will not work over plain HTTP development.
 
+The host TLS proxy must **replace** incoming `X-Forwarded-For` with its socket peer
+address (for nginx: `proxy_set_header X-Forwarded-For $remote_addr;`). Do not append
+untrusted client-supplied values. Frontend nginx trusts only `TRUSTED_EDGE_PROXY_CIDR`
+(default: the dedicated Docker bridge gateway); it replaces the header again before
+passing it to API. Uvicorn trusts only `AGRM_FRONTEND_IP` in Compose. Never set either
+trust boundary to `*` or `0.0.0.0/0`. Keep ingress loopback-only so a public client
+cannot reach a trusted host port directly. If your edge proxy is another container,
+give it a fixed address and set that exact address as `TRUSTED_EDGE_PROXY_CIDR`.
+If `172.30.91.0/24` overlaps an existing network, change `AGRM_NETWORK_SUBNET`,
+`AGRM_NETWORK_GATEWAY`, `AGRM_FRONTEND_IP` and the edge trust address together.
+Bare-process deployments use `FORWARDED_ALLOW_IPS` (default `127.0.0.1`) and must
+restrict it to their actual reverse proxy. The nginx/Uvicorn default access logs
+are disabled, including request-line error logging in the API proxy location;
+the application's path-only request log retains request ID and
+latency without SSO callback codes, state, cookies or query strings.
+
+CI checks separate client rate-limit buckets through the trusted ingress, rejects
+forged forwarding headers at both proxy boundaries, checks SCIM JSON responses and
+verifies that callback secrets are absent from container logs both during normal
+responses and after deliberately stopping the isolated API container.
+
 `/health` proves the API process is alive; `/ready` checks DB and configured Redis.
 Redis failure makes readiness fail even though request limiting falls back locally.
-Check `/api/v1/system/status` using an authorized account for queue/worker state.
+Check `/api/v1/system/queue` and `/api/v1/system/workers` using an authorized account.
 Set unique worker/scheduler IDs per replica; the default Compose service is one
 instance of each. Monitor stale heartbeats, queue age, retries/dead letters, provider
 failures, latency and credit reservations. Alert outside this application when it

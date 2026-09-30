@@ -7,6 +7,7 @@ from contextlib import suppress
 from amazon_geo_rank_monitor.billing.rate_card import RateCard
 from amazon_geo_rank_monitor.domain.models import RankCheckRequest
 from amazon_geo_rank_monitor.monitor.service import RankMonitorService
+from amazon_geo_rank_monitor.operations.health import keep_worker_alive
 
 logger = logging.getLogger("amazon_geo_rank_monitor.worker")
 
@@ -78,6 +79,10 @@ class RankWorker:
                 return
 
     async def run_once(self) -> dict | None:
+        with keep_worker_alive(self._worker_status, self._worker_id):
+            return await self._run_once()
+
+    async def _run_once(self) -> dict | None:
         recovery = self._jobs.recover_stale()
         if self._billing is not None:
             for attempt in recovery["recovered_attempts"]:

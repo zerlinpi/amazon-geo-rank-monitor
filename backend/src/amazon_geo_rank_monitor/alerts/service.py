@@ -901,7 +901,7 @@ class AlertService:
                     channel_type="email",
                     destination=address,
                     status="failed",
-                    error=str(exc),
+                    error=f"email delivery failed ({type(exc).__name__})",
                 )
 
         slack_url = channels.get("slack_webhook_url")

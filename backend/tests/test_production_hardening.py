@@ -137,6 +137,28 @@ def test_smtp_exception_does_not_leak_reset_token_into_logs(caplog):
     assert "SMTP rejected" not in caplog.text
 
 
+def test_alert_smtp_failure_does_not_store_exception_secrets():
+    service, mailer = build_service(
+        runs={"current": geo_run("current", found=False, effective_rank=101)},
+        jobs=completed_jobs("current"),
+    )
+
+    def fail(**message):
+        raise RuntimeError("SMTP rejected private-smtp-password")
+
+    mailer.send = fail
+    service.create_rule(
+        owner_id=OWNER_ID, monitor_target_id=MONITOR_ID, name="Mail failure",
+        rule_type="geo_not_found", threshold=None, asin=ASIN, geo_profile_id=GEO_ID,
+        channels={"emails": ["fixture@example.com"]}, cooldown_minutes=0,
+    )
+    service.evaluate_run(owner_id=OWNER_ID, monitor_target_id=MONITOR_ID, run_id="current")
+    delivery = service.list_events(owner_id=OWNER_ID)[0]["deliveries"][0]
+    assert delivery["status"] == "failed"
+    assert "private-smtp-password" not in str(delivery)
+    assert "RuntimeError" in delivery["error"]
+
+
 def test_slow_cache_write_cannot_replace_a_newer_result(tmp_path):
     from datetime import UTC, datetime, timedelta
 

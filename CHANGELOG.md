@@ -12,6 +12,12 @@
 - Make probe-cache writes and counters atomic; reject stale responses overwriting
   fresh cache entries. Make ignored and paid webhook retries concurrency safe.
 - Preserve competitor evidence for queued Worker runs.
+- Scope operations queue, dead-letter retries and verification metrics to the current
+  workspace; hide other tenants' job IDs and errors in shared worker status.
+- Preserve client-specific authentication limits through explicit proxy trust boundaries;
+  route SCIM through the same-origin ingress and suppress callback query access logs.
+- Refresh worker/scheduler liveness during long jobs and blocking report delivery
+  without changing job status or processed counters.
 - Add Redis readiness checks and bounded connection timeouts. Keep `/health` as liveness.
 - Remove secret-bearing email bodies and exception messages from logs/delivery records;
   return safe JSON errors with request IDs for unexpected API failures.

@@ -16,7 +16,7 @@ from alembic import command
 from amazon_geo_rank_monitor.repositories.alert_repository import AlertRepository
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
-from amazon_geo_rank_monitor.repositories.models import Base, SerpProbeCacheRow
+from amazon_geo_rank_monitor.repositories.models import Base, SerpProbeCacheRow, TenantRow
 from amazon_geo_rank_monitor.repositories.probe_cache_repository import ProbeCacheRepository
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
 from amazon_geo_rank_monitor.repositories.report_repository import ReportRepository
@@ -47,6 +47,8 @@ def database():
 @pytest.fixture
 def schema(database):
     Base.metadata.create_all(database)
+    with database.begin() as connection:
+        connection.execute(TenantRow.__table__.insert().values(id="owner", name="Fixture owner"))
     return database
 
 

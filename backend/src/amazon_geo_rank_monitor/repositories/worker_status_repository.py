@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import sessionmaker
 
 from .models import WorkerHeartbeatRow
@@ -11,6 +11,15 @@ from .models import WorkerHeartbeatRow
 class WorkerStatusRepository:
     def __init__(self, engine: Engine) -> None:
         self._sessions = sessionmaker(bind=engine, expire_on_commit=False)
+
+    def refresh_heartbeat(self, worker_id: str) -> None:
+        # Only touch liveness: do not overwrite a concurrent status/job update.
+        with self._sessions.begin() as session:
+            session.execute(
+                update(WorkerHeartbeatRow)
+                .where(WorkerHeartbeatRow.worker_id == worker_id)
+                .values(last_seen_at=datetime.now(UTC))
+            )
 
     def heartbeat(
         self,

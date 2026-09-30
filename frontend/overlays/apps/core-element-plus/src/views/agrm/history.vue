@@ -202,7 +202,7 @@ onMounted(search)
         </label>
         <label class="text-sm">
           <span class="block mb-1">Status</span>
-          <el-select v-model="filters.status" clearable placeholder="All statuses" :disabled="loading" class="w-full">
+          <el-select v-model="filters.status" aria-label="Run status" clearable placeholder="All statuses" :disabled="loading" class="w-full">
             <el-option label="Running" value="running" />
             <el-option label="Succeeded" value="succeeded" />
             <el-option label="Partially succeeded" value="partially_succeeded" />

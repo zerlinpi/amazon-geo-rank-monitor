@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import socket
 
 import uvicorn
@@ -12,6 +13,7 @@ from amazon_geo_rank_monitor.config import AppSettings
 from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 from amazon_geo_rank_monitor.mcp.server import build_local_mcp_server
 from amazon_geo_rank_monitor.mcp.tools import RankMcpTools
+from amazon_geo_rank_monitor.operations.health import keep_worker_alive
 from amazon_geo_rank_monitor.runtime import build_services
 from amazon_geo_rank_monitor.scheduling.reports import ReportScheduler
 from amazon_geo_rank_monitor.scheduling.service import MonitorScheduler
@@ -19,6 +21,8 @@ from amazon_geo_rank_monitor.workers.rank_worker import RankWorker
 
 
 def api_main() -> None:
+    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger("amazon_geo_rank_monitor.api").setLevel(logging.INFO)
     settings = AppSettings()
     app = create_app(
         build_services(settings),
@@ -29,6 +33,9 @@ def api_main() -> None:
         app,
         host=settings.api_host,
         port=settings.api_port,
+        proxy_headers=True,
+        forwarded_allow_ips=settings.forwarded_allow_ips,
+        access_log=False,
     )
 
 
@@ -100,8 +107,9 @@ async def _scheduler_loop(*, once: bool) -> None:
             worker_type="scheduler",
             status="running",
         )
-        monitor_outcomes = scheduler.run_once()
-        report_outcomes = report_scheduler.run_once()
+        with keep_worker_alive(services.worker_status_repository, scheduler_id):
+            monitor_outcomes = scheduler.run_once()
+            report_outcomes = report_scheduler.run_once()
         outcomes = [
             *({"type": "monitor", **item} for item in monitor_outcomes),
             *({"type": "report", **item} for item in report_outcomes),

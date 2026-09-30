@@ -13,6 +13,7 @@ x-backend: &backend
     REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     API_HOST: 0.0.0.0
     API_PORT: '8000'
+    FORWARDED_ALLOW_IPS: ${AGRM_FRONTEND_IP:-172.30.91.10}
   init: true
   restart: unless-stopped
 
@@ -91,6 +92,11 @@ services:
       start_period: 30s
       retries: 3
   frontend:
+    environment:
+      TRUSTED_EDGE_PROXY_CIDR: ${TRUSTED_EDGE_PROXY_CIDR:-${AGRM_NETWORK_GATEWAY:-172.30.91.1}}
+    networks:
+      default:
+        ipv4_address: ${AGRM_FRONTEND_IP:-172.30.91.10}
     build:
       context: .
       dockerfile: frontend/Dockerfile
@@ -108,3 +114,9 @@ services:
       retries: 6
 volumes:
   postgres-data:
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${AGRM_NETWORK_SUBNET:-172.30.91.0/24}
+          gateway: ${AGRM_NETWORK_GATEWAY:-172.30.91.1}

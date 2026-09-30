@@ -50,7 +50,7 @@ test('keyword ASIN status and empty state', async ({ page }) => {
   await history(page)
   await page.getByPlaceholder('e.g. trailer hitch').fill('TRAILER')
   await page.getByPlaceholder('Exact ASIN').fill('b0target01')
-  await page.getByPlaceholder('All statuses').click()
+  await page.getByRole('combobox', { name: 'Run status' }).click()
   await page.getByRole('option', { name: 'Failed', exact: true }).click()
   await page.getByRole('button', { name: 'Search / refresh' }).click()
   await expect(page.getByText('Page 1 · 1 runs · newest first')).toBeVisible()
