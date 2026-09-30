@@ -1,5 +1,5 @@
 diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
-index bfdd15c..aee8a60 100644
+index bfdd15c..37c6d19 100644
 --- a/pnpm-lock.yaml
 +++ b/pnpm-lock.yaml
 @@ -199,8 +199,8 @@ catalogs:
@@ -13,20 +13,21 @@ index bfdd15c..aee8a60 100644
      reka-ui:
        specifier: ^2.10.4
        version: 2.10.4
-@@ -359,6 +359,12 @@ catalogs:
+@@ -359,6 +359,13 @@ catalogs:
        specifier: ^2.3.40
        version: 2.3.40
- 
+
 +overrides:
 +  esbuild@<0.28.2: 0.28.2
-+  fast-uri@<3.1.7: 3.1.7
++  fast-uri@<3.1.8: 3.1.8
 +  minimist@<1.2.8: 1.2.8
 +  qs@<6.16.0: 6.16.0
++  brace-expansion@>=4.0.0 <5.0.12: 5.0.12
 +
  importers:
- 
+
    .:
-@@ -509,7 +515,7 @@ importers:
+@@ -509,7 +516,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -35,7 +36,7 @@ index bfdd15c..aee8a60 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -699,7 +705,7 @@ importers:
+@@ -699,7 +706,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -44,7 +45,7 @@ index bfdd15c..aee8a60 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -889,7 +895,7 @@ importers:
+@@ -889,7 +896,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -53,7 +54,7 @@ index bfdd15c..aee8a60 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1076,7 +1082,7 @@ importers:
+@@ -1076,7 +1083,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -62,7 +63,7 @@ index bfdd15c..aee8a60 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1269,7 +1275,7 @@ importers:
+@@ -1269,7 +1276,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -71,7 +72,7 @@ index bfdd15c..aee8a60 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1456,7 +1462,7 @@ importers:
+@@ -1456,7 +1463,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -80,7 +81,7 @@ index bfdd15c..aee8a60 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1646,7 +1652,7 @@ importers:
+@@ -1646,7 +1653,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -89,7 +90,7 @@ index bfdd15c..aee8a60 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1836,7 +1842,7 @@ importers:
+@@ -1836,7 +1843,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -98,7 +99,7 @@ index bfdd15c..aee8a60 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -2044,7 +2050,7 @@ importers:
+@@ -2044,7 +2051,7 @@ importers:
          version: 1.6.0
        qs:
          specifier: 'catalog:'
@@ -107,10 +108,10 @@ index bfdd15c..aee8a60 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -3116,462 +3122,156 @@ packages:
+@@ -3116,462 +3123,156 @@ packages:
      resolution: {integrity: sha512-Q9hjxWI5xBM+qW2enxfe8wDKdFWMfd0Z29k5ZJnuBqD/CasY5Zryj09aCA6owbGATWz+39p5uIdaHXpopOcG8g==}
      engines: {node: '>=10'}
- 
+
 -  '@esbuild/aix-ppc64@0.24.2':
 -    resolution: {integrity: sha512-thpVCb/rhxE/BnMLQ7GReQLLN8q9qbHmI55F4489/ByVg2aQaQ6kbcLb6FHkocZzQhxc4gx0sCk0tJkKBFzDhA==}
 -    engines: {node: '>=18'}
@@ -128,7 +129,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [ppc64]
      os: [aix]
- 
+
 -  '@esbuild/android-arm64@0.24.2':
 -    resolution: {integrity: sha512-cNLgeqCqV8WxfcTIOeL4OAtSmL8JjcN6m09XIgro1Wi7cF4t/THaWEa7eL5CMoMBdjoHOTh/vwTO/o2TRXIyzg==}
 -    engines: {node: '>=18'}
@@ -146,7 +147,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm64]
      os: [android]
- 
+
 -  '@esbuild/android-arm@0.24.2':
 -    resolution: {integrity: sha512-tmwl4hJkCfNHwFB3nBa8z1Uy3ypZpxqxfTQOcHX+xRByyYgunVbZ9MzUUfb0RxaHIMnbHagwAxuTL+tnNM+1/Q==}
 -    engines: {node: '>=18'}
@@ -164,7 +165,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm]
      os: [android]
- 
+
 -  '@esbuild/android-x64@0.24.2':
 -    resolution: {integrity: sha512-B6Q0YQDqMx9D7rvIcsXfmJfvUYLoP722bgfBlO5cGvNVb5V/+Y7nhBE3mHV9OpxBf4eAS2S68KZztiPaWq4XYw==}
 -    engines: {node: '>=18'}
@@ -182,7 +183,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [x64]
      os: [android]
- 
+
 -  '@esbuild/darwin-arm64@0.24.2':
 -    resolution: {integrity: sha512-kj3AnYWc+CekmZnS5IPu9D+HWtUI49hbnyqk0FLEJDbzCIQt7hg7ucF1SQAilhtYpIujfaHr6O0UHlzzSPdOeA==}
 -    engines: {node: '>=18'}
@@ -200,7 +201,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm64]
      os: [darwin]
- 
+
 -  '@esbuild/darwin-x64@0.24.2':
 -    resolution: {integrity: sha512-WeSrmwwHaPkNR5H3yYfowhZcbriGqooyu3zI/3GGpF8AyUdsrrP0X6KumITGA9WOyiJavnGZUwPGvxvwfWPHIA==}
 -    engines: {node: '>=18'}
@@ -218,7 +219,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [x64]
      os: [darwin]
- 
+
 -  '@esbuild/freebsd-arm64@0.24.2':
 -    resolution: {integrity: sha512-UN8HXjtJ0k/Mj6a9+5u6+2eZ2ERD7Edt1Q9IZiB5UZAIdPnVKDoG7mdTVGhHJIeEml60JteamR3qhsr1r8gXvg==}
 -    engines: {node: '>=18'}
@@ -236,7 +237,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm64]
      os: [freebsd]
- 
+
 -  '@esbuild/freebsd-x64@0.24.2':
 -    resolution: {integrity: sha512-TvW7wE/89PYW+IevEJXZ5sF6gJRDY/14hyIGFXdIucxCsbRmLUcjseQu1SyTko+2idmCw94TgyaEZi9HUSOe3Q==}
 -    engines: {node: '>=18'}
@@ -254,7 +255,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [x64]
      os: [freebsd]
- 
+
 -  '@esbuild/linux-arm64@0.24.2':
 -    resolution: {integrity: sha512-7HnAD6074BW43YvvUmE/35Id9/NB7BeX5EoNkK9obndmZBUk8xmJJeU7DwmUeN7tkysslb2eSl6CTrYz6oEMQg==}
 -    engines: {node: '>=18'}
@@ -272,7 +273,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm64]
      os: [linux]
- 
+
 -  '@esbuild/linux-arm@0.24.2':
 -    resolution: {integrity: sha512-n0WRM/gWIdU29J57hJyUdIsk0WarGd6To0s+Y+LwvlC55wt+GT/OgkwoXCXvIue1i1sSNWblHEig00GBWiJgfA==}
 -    engines: {node: '>=18'}
@@ -290,7 +291,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm]
      os: [linux]
- 
+
 -  '@esbuild/linux-ia32@0.24.2':
 -    resolution: {integrity: sha512-sfv0tGPQhcZOgTKO3oBE9xpHuUqguHvSo4jl+wjnKwFpapx+vUDcawbwPNuBIAYdRAvIDBfZVvXprIj3HA+Ugw==}
 -    engines: {node: '>=18'}
@@ -308,7 +309,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [ia32]
      os: [linux]
- 
+
 -  '@esbuild/linux-loong64@0.24.2':
 -    resolution: {integrity: sha512-CN9AZr8kEndGooS35ntToZLTQLHEjtVB5n7dl8ZcTZMonJ7CCfStrYhrzF97eAecqVbVJ7APOEe18RPI4KLhwQ==}
 -    engines: {node: '>=18'}
@@ -326,7 +327,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [loong64]
      os: [linux]
- 
+
 -  '@esbuild/linux-mips64el@0.24.2':
 -    resolution: {integrity: sha512-iMkk7qr/wl3exJATwkISxI7kTcmHKE+BlymIAbHO8xanq/TjHaaVThFF6ipWzPHryoFsesNQJPE/3wFJw4+huw==}
 -    engines: {node: '>=18'}
@@ -344,7 +345,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [mips64el]
      os: [linux]
- 
+
 -  '@esbuild/linux-ppc64@0.24.2':
 -    resolution: {integrity: sha512-shsVrgCZ57Vr2L8mm39kO5PPIb+843FStGt7sGGoqiiWYconSxwTiuswC1VJZLCjNiMLAMh34jg4VSEQb+iEbw==}
 -    engines: {node: '>=18'}
@@ -362,7 +363,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [ppc64]
      os: [linux]
- 
+
 -  '@esbuild/linux-riscv64@0.24.2':
 -    resolution: {integrity: sha512-4eSFWnU9Hhd68fW16GD0TINewo1L6dRrB+oLNNbYyMUAeOD2yCK5KXGK1GH4qD/kT+bTEXjsyTCiJGHPZ3eM9Q==}
 -    engines: {node: '>=18'}
@@ -380,7 +381,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [riscv64]
      os: [linux]
- 
+
 -  '@esbuild/linux-s390x@0.24.2':
 -    resolution: {integrity: sha512-S0Bh0A53b0YHL2XEXC20bHLuGMOhFDO6GN4b3YjRLK//Ep3ql3erpNcPlEFed93hsQAjAQDNsvcK+hV90FubSw==}
 -    engines: {node: '>=18'}
@@ -398,7 +399,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [s390x]
      os: [linux]
- 
+
 -  '@esbuild/linux-x64@0.24.2':
 -    resolution: {integrity: sha512-8Qi4nQcCTbLnK9WoMjdC9NiTG6/E38RNICU6sUNqK0QFxCYgoARqVqxdFmWkdonVsvGqWhmm7MO0jyTqLqwj0Q==}
 -    engines: {node: '>=18'}
@@ -416,7 +417,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [x64]
      os: [linux]
- 
+
 -  '@esbuild/netbsd-arm64@0.24.2':
 -    resolution: {integrity: sha512-wuLK/VztRRpMt9zyHSazyCVdCXlpHkKm34WUyinD2lzK07FAHTq0KQvZZlXikNWkDGoT6x3TD51jKQ7gMVpopw==}
 -    engines: {node: '>=18'}
@@ -434,7 +435,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm64]
      os: [netbsd]
- 
+
 -  '@esbuild/netbsd-x64@0.24.2':
 -    resolution: {integrity: sha512-VefFaQUc4FMmJuAxmIHgUmfNiLXY438XrL4GDNV1Y1H/RW3qow68xTwjZKfj/+Plp9NANmzbH5R40Meudu8mmw==}
 -    engines: {node: '>=18'}
@@ -452,7 +453,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [x64]
      os: [netbsd]
- 
+
 -  '@esbuild/openbsd-arm64@0.24.2':
 -    resolution: {integrity: sha512-YQbi46SBct6iKnszhSvdluqDmxCJA+Pu280Av9WICNwQmMxV7nLRHZfjQzwbPs3jeWnuAhE9Jy0NrnJ12Oz+0A==}
 -    engines: {node: '>=18'}
@@ -470,7 +471,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm64]
      os: [openbsd]
- 
+
 -  '@esbuild/openbsd-x64@0.24.2':
 -    resolution: {integrity: sha512-+iDS6zpNM6EnJyWv0bMGLWSWeXGN/HTaF/LXHXHwejGsVi+ooqDfMCCTerNFxEkM3wYVcExkeGXNqshc9iMaOA==}
 -    engines: {node: '>=18'}
@@ -488,7 +489,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [x64]
      os: [openbsd]
- 
+
 -  '@esbuild/openharmony-arm64@0.27.7':
 -    resolution: {integrity: sha512-+KrvYb/C8zA9CU/g0sR6w2RBw7IGc5J2BPnc3dYc5VJxHCSF1yNMxTV5LQ7GuKteQXZtspjFbiuW5/dOj7H4Yw==}
 -    engines: {node: '>=18'}
@@ -500,7 +501,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm64]
      os: [openharmony]
- 
+
 -  '@esbuild/sunos-x64@0.24.2':
 -    resolution: {integrity: sha512-hTdsW27jcktEvpwNHJU4ZwWFGkz2zRJUz8pvddmXPtXDzVKTTINmlmga3ZzwcuMpUvLw7JkLy9QLKyGpD2Yxig==}
 -    engines: {node: '>=18'}
@@ -518,7 +519,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [x64]
      os: [sunos]
- 
+
 -  '@esbuild/win32-arm64@0.24.2':
 -    resolution: {integrity: sha512-LihEQ2BBKVFLOC9ZItT9iFprsE9tqjDjnbulhHoFxYQtQfai7qfluVODIYxt1PgdoyQkz23+01rzwNwYfutxUQ==}
 -    engines: {node: '>=18'}
@@ -536,7 +537,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [arm64]
      os: [win32]
- 
+
 -  '@esbuild/win32-ia32@0.24.2':
 -    resolution: {integrity: sha512-q+iGUwfs8tncmFC9pcnD5IvRHAzmbwQ3GPS5/ceCyHdjXubwQWI12MKWSNSMYLJMq23/IUCvJMS76PDqXe1fxA==}
 -    engines: {node: '>=18'}
@@ -554,7 +555,7 @@ index bfdd15c..aee8a60 100644
      engines: {node: '>=18'}
      cpu: [ia32]
      os: [win32]
- 
+
 -  '@esbuild/win32-x64@0.24.2':
 -    resolution: {integrity: sha512-7VTgWzgMGvup6aSqDPLiW5zHaxYJGTO4OokMjIlrCtf+VpEL+cXKtCvg723iguPYI5oaUNdS+/V7OU2gvXVWEg==}
 -    engines: {node: '>=18'}
@@ -570,18 +571,29 @@ index bfdd15c..aee8a60 100644
    '@esbuild/win32-x64@0.28.2':
      resolution: {integrity: sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==}
      engines: {node: '>=18'}
-@@ -4842,6 +4542,7 @@ packages:
- 
+@@ -4842,6 +4543,7 @@ packages:
+
    '@vexip-ui/icons@1.2.1':
      resolution: {integrity: sha512-ttAMzdsQ+uw6vdOKzXrvGQ8THLYkBkADqGW1AGbmkiSyyYCS0K4I2fB+ZFdqL3opL7Uvr650kzcCoXEGGfvZ6Q==}
 +    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
      peerDependencies:
        vue: ^3.2.25
- 
-@@ -5818,16 +5519,6 @@ packages:
+
+@@ -5346,8 +5048,8 @@ packages:
+     resolution: {integrity: sha512-F3PH5k5juxom4xktynS7MoFY+NUWH5LC4CnH11YB8NPew+HLpmBLCybSAEyb2F+4pRXhuhWqFesoQd6DAyc2hw==}
+     engines: {node: '>=18'}
+
+-  brace-expansion@5.0.9:
+-    resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
++  brace-expansion@5.0.12:
++    resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
+     engines: {node: 20 || >=22}
+
+   braces@3.0.3:
+@@ -5818,16 +5520,6 @@ packages:
    es-toolkit@1.52.0:
      resolution: {integrity: sha512-XTNEJQh1tY1ZJVcf6ayP/2n4ZPyaHlW2FWs7xvw5ddPuhUVjLD3olQVQS7kf58JbAB48iL0uL/jerTrjtV3lDA==}
- 
+
 -  esbuild@0.24.2:
 -    resolution: {integrity: sha512-+9egpBW8I3CD5XPe0n6BfT5fxLzxrlDzqydF3aviG+9ni1lDC/OvMHcxqEFV0+LANZG5R1bFMWfUrjVsdwxJvA==}
 -    engines: {node: '>=18'}
@@ -595,37 +607,37 @@ index bfdd15c..aee8a60 100644
    esbuild@0.28.2:
      resolution: {integrity: sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==}
      engines: {node: '>=18'}
-@@ -6091,8 +5782,8 @@ packages:
+@@ -6091,8 +5783,8 @@ packages:
    fast-string-width@3.0.2:
      resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
- 
+
 -  fast-uri@3.1.6:
 -    resolution: {integrity: sha512-7Ical1vFEMr0onbVzEDIreM22I4khW+fzyQPwvAFWBp1iwdshSZRsL4jjRvPG9JP1uiqMHRto+YU6R2/CzDz5Q==}
-+  fast-uri@3.1.7:
-+    resolution: {integrity: sha512-dOvZVzjdZdz7phd9v6jCbwxrBW3fK6n8Rc0CtdmM4bumzMnxywBYhuph6J819RRw/ku+rLbelwfMunktuzVVHg==}
- 
++  fast-uri@3.1.8:
++    resolution: {integrity: sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==}
+
    fast-wrap-ansi@0.2.2:
      resolution: {integrity: sha512-7F2Fl+TjRSenLqlU3UjSH0iyqopqoZIu7eZVpEirP2g1GtWa2G/ecEmBdgz31+Mxr+ELclgg6sokpSFIQiZ02Q==}
-@@ -6208,6 +5899,7 @@ packages:
- 
+@@ -6208,6 +5900,7 @@ packages:
+
    geojson-linestring-dissolve@0.0.1:
      resolution: {integrity: sha512-Y8I2/Ea28R/Xeki7msBcpMvJL2TaPfaPKP8xqueJfQ9/jEhps+iOJxOR2XCBGgVb12Z6XnDb1CMbaPfLepsLaw==}
 +    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
- 
+
    get-east-asian-width@1.6.0:
      resolution: {integrity: sha512-QRbvDIbx6YklUe6RxeTeleMR0yv3cYH6PsPZHcnVn7xv7zO1BHN8r0XETu8n6Ye3Q+ahtSarc3WgtNWmehIBfA==}
-@@ -6725,6 +6417,7 @@ packages:
- 
+@@ -6725,6 +6418,7 @@ packages:
+
    lucide-vue-next@0.511.0:
      resolution: {integrity: sha512-VSv0F3pHniGN7JMMzDcLFNMQbl8381+shNnHwV8hi+El7xl2ZL8qdNuzPoiBViKk8mTKK5K3ZDfmE/wEcTZVIQ==}
 +    deprecated: Package deprecated. Please use @lucide/vue instead.
      peerDependencies:
        vue: '>=3.0.1'
- 
-@@ -6941,12 +6634,6 @@ packages:
+
+@@ -6941,12 +6635,6 @@ packages:
      resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
      engines: {node: 18 || 20 || >=22}
- 
+
 -  minimist@1.2.0:
 -    resolution: {integrity: sha512-7Wl+Jz+IGWuSdgsQEJ4JunV0si/iMhg42MnQQG6h1R6TNeVenp4U9x5CC5v/gYqz/fENLQITAWXidNtVL0NNbw==}
 -
@@ -634,19 +646,19 @@ index bfdd15c..aee8a60 100644
 -
    minimist@1.2.8:
      resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
- 
-@@ -7313,8 +7000,8 @@ packages:
+
+@@ -7313,8 +7001,8 @@ packages:
      resolution: {integrity: sha512-+Owyggi9IxT1ePKGafcI87ubSmxol6smwJ+RAHDQlx9+9cPwFWDiKFFCPuWhr9ignlGpZ9vDQLw67N4dcTVFEA==}
      engines: {node: '>=20'}
- 
+
 -  qs@6.15.3:
 -    resolution: {integrity: sha512-O9gl3zCl5h5blw1KGUzQKhA5oUXSl8rwUIM5o0S3nCXMliSvy5Dzx7/DJcI+SwgICv+IneSZwhBh1oSyEHA71A==}
 +  qs@6.16.0:
 +    resolution: {integrity: sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==}
      engines: {node: '>=0.6'}
- 
+
    quansync@0.2.11:
-@@ -8193,7 +7880,7 @@ packages:
+@@ -8193,7 +7881,7 @@ packages:
        '@nuxt/kit': '>=3'
        '@nuxt/schema': '>=3'
        astro: '>=3'
@@ -655,7 +667,7 @@ index bfdd15c..aee8a60 100644
        rollup: '>=3'
        vite: '>=3'
        vue: '>=3'
-@@ -8243,7 +7930,7 @@ packages:
+@@ -8243,7 +7931,7 @@ packages:
        '@farmfe/core': '*'
        '@rspack/core': '*'
        bun-types-no-globals: '*'
@@ -664,7 +676,7 @@ index bfdd15c..aee8a60 100644
        rolldown: '*'
        rollup: '*'
        unloader: '*'
-@@ -8376,7 +8063,7 @@ packages:
+@@ -8376,7 +8064,7 @@ packages:
      peerDependencies:
        '@types/node': ^20.19.0 || >=22.12.0
        '@vitejs/devtools': ^0.4.0 || ^0.5.0
@@ -673,18 +685,18 @@ index bfdd15c..aee8a60 100644
        jiti: '>=1.21.0'
        less: ^4.0.0
        sass: ^1.70.0
-@@ -8543,6 +8230,7 @@ packages:
+@@ -8543,6 +8231,7 @@ packages:
    whatwg-encoding@2.0.0:
      resolution: {integrity: sha512-p41ogyeMUrw3jWclHWTQg1k05DSVXPLcVxRTYsXUk+ZooOCZLcoYgPZ/HL/D/N+uQPOtcp1me1WhBEaX02mhWg==}
      engines: {node: '>=12'}
 +    deprecated: Use @exodus/bytes instead for a more spec-conformant and faster implementation
- 
+
    which@1.3.1:
      resolution: {integrity: sha512-HxJdYWq1MTIQbJ3nw0cqssHoTNU267KlrDuGZ1WYlxDStUtKUhOaJmh112/TZmHxxUfuJqPXSOm7tDyas0OSIQ==}
-@@ -9566,234 +9254,81 @@ snapshots:
- 
+@@ -9566,234 +9255,81 @@ snapshots:
+
    '@es-joy/resolve.exports@1.2.0': {}
- 
+
 -  '@esbuild/aix-ppc64@0.24.2':
 -    optional: true
 -
@@ -693,7 +705,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/aix-ppc64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/android-arm64@0.24.2':
 -    optional: true
 -
@@ -702,7 +714,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/android-arm64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/android-arm@0.24.2':
 -    optional: true
 -
@@ -711,7 +723,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/android-arm@0.28.2':
      optional: true
- 
+
 -  '@esbuild/android-x64@0.24.2':
 -    optional: true
 -
@@ -720,7 +732,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/android-x64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/darwin-arm64@0.24.2':
 -    optional: true
 -
@@ -729,7 +741,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/darwin-arm64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/darwin-x64@0.24.2':
 -    optional: true
 -
@@ -738,7 +750,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/darwin-x64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/freebsd-arm64@0.24.2':
 -    optional: true
 -
@@ -747,7 +759,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/freebsd-arm64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/freebsd-x64@0.24.2':
 -    optional: true
 -
@@ -756,7 +768,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/freebsd-x64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/linux-arm64@0.24.2':
 -    optional: true
 -
@@ -765,7 +777,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/linux-arm64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/linux-arm@0.24.2':
 -    optional: true
 -
@@ -774,7 +786,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/linux-arm@0.28.2':
      optional: true
- 
+
 -  '@esbuild/linux-ia32@0.24.2':
 -    optional: true
 -
@@ -783,7 +795,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/linux-ia32@0.28.2':
      optional: true
- 
+
 -  '@esbuild/linux-loong64@0.24.2':
 -    optional: true
 -
@@ -792,7 +804,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/linux-loong64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/linux-mips64el@0.24.2':
 -    optional: true
 -
@@ -801,7 +813,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/linux-mips64el@0.28.2':
      optional: true
- 
+
 -  '@esbuild/linux-ppc64@0.24.2':
 -    optional: true
 -
@@ -810,7 +822,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/linux-ppc64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/linux-riscv64@0.24.2':
 -    optional: true
 -
@@ -819,7 +831,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/linux-riscv64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/linux-s390x@0.24.2':
 -    optional: true
 -
@@ -828,7 +840,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/linux-s390x@0.28.2':
      optional: true
- 
+
 -  '@esbuild/linux-x64@0.24.2':
 -    optional: true
 -
@@ -837,7 +849,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/linux-x64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/netbsd-arm64@0.24.2':
 -    optional: true
 -
@@ -846,7 +858,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/netbsd-arm64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/netbsd-x64@0.24.2':
 -    optional: true
 -
@@ -855,7 +867,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/netbsd-x64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/openbsd-arm64@0.24.2':
 -    optional: true
 -
@@ -864,7 +876,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/openbsd-arm64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/openbsd-x64@0.24.2':
 -    optional: true
 -
@@ -873,13 +885,13 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/openbsd-x64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/openharmony-arm64@0.27.7':
 -    optional: true
 -
    '@esbuild/openharmony-arm64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/sunos-x64@0.24.2':
 -    optional: true
 -
@@ -888,7 +900,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/sunos-x64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/win32-arm64@0.24.2':
 -    optional: true
 -
@@ -897,7 +909,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/win32-arm64@0.28.2':
      optional: true
- 
+
 -  '@esbuild/win32-ia32@0.24.2':
 -    optional: true
 -
@@ -906,7 +918,7 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/win32-ia32@0.28.2':
      optional: true
- 
+
 -  '@esbuild/win32-x64@0.24.2':
 -    optional: true
 -
@@ -915,20 +927,29 @@ index bfdd15c..aee8a60 100644
 -
    '@esbuild/win32-x64@0.28.2':
      optional: true
- 
-@@ -11414,7 +10949,7 @@ snapshots:
+
+@@ -11414,7 +10950,7 @@ snapshots:
    ajv@8.20.0:
      dependencies:
        fast-deep-equal: 3.1.3
 -      fast-uri: 3.1.6
-+      fast-uri: 3.1.7
++      fast-uri: 3.1.8
        json-schema-traverse: 1.0.0
        require-from-string: 2.0.2
- 
-@@ -12109,63 +11644,6 @@ snapshots:
- 
+
+@@ -11676,7 +11212,7 @@ snapshots:
+       widest-line: 5.0.0
+       wrap-ansi: 9.0.2
+
+-  brace-expansion@5.0.9:
++  brace-expansion@5.0.12:
+     dependencies:
+       balanced-match: 4.0.4
+
+@@ -12109,63 +11645,6 @@ snapshots:
+
    es-toolkit@1.52.0: {}
- 
+
 -  esbuild@0.24.2:
 -    optionalDependencies:
 -      '@esbuild/aix-ppc64': 0.24.2
@@ -989,72 +1010,74 @@ index bfdd15c..aee8a60 100644
    esbuild@0.28.2:
      optionalDependencies:
        '@esbuild/aix-ppc64': 0.28.2
-@@ -12522,7 +12000,7 @@ snapshots:
+@@ -12522,7 +12001,7 @@ snapshots:
      dependencies:
        fast-string-truncated-width: 3.0.3
- 
+
 -  fast-uri@3.1.6: {}
-+  fast-uri@3.1.7: {}
- 
++  fast-uri@3.1.8: {}
+
    fast-wrap-ansi@0.2.2:
      dependencies:
-@@ -12630,7 +12108,7 @@ snapshots:
+@@ -12630,7 +12109,7 @@ snapshots:
    geojson-flatten@0.2.4:
      dependencies:
        get-stdin: 6.0.0
 -      minimist: 1.2.0
 +      minimist: 1.2.8
- 
+
    geojson-linestring-dissolve@0.0.1: {}
- 
-@@ -12832,7 +12310,7 @@ snapshots:
- 
+
+@@ -12832,7 +12311,7 @@ snapshots:
+
    import-from-string@0.0.5:
      dependencies:
 -      esbuild: 0.24.2
 +      esbuild: 0.28.2
        import-meta-resolve: 4.2.0
- 
+
    import-meta-resolve@4.2.0: {}
-@@ -13495,10 +12973,6 @@ snapshots:
+@@ -13493,11 +12972,7 @@ snapshots:
+
+   minimatch@10.2.6:
      dependencies:
-       brace-expansion: 5.0.9
- 
+-      brace-expansion: 5.0.9
+-
 -  minimist@1.2.0: {}
 -
 -  minimist@1.2.6: {}
--
++      brace-expansion: 5.0.12
+
    minimist@1.2.8: {}
- 
-   mitt@3.0.1: {}
-@@ -13872,7 +13346,7 @@ snapshots:
+
+@@ -13872,7 +13347,7 @@ snapshots:
      dependencies:
        hookified: 2.2.0
- 
+
 -  qs@6.15.3:
 +  qs@6.16.0:
      dependencies:
        es-define-property: 1.0.1
        side-channel: 1.1.1
-@@ -14247,7 +13721,7 @@ snapshots:
+@@ -14247,7 +13722,7 @@ snapshots:
    simplify-geojson@1.0.5:
      dependencies:
        concat-stream: 1.4.11
 -      minimist: 1.2.6
 +      minimist: 1.2.8
        simplify-geometry: 0.0.2
- 
+
    simplify-geometry@0.0.2: {}
-@@ -14758,7 +14232,7 @@ snapshots:
- 
+@@ -14758,7 +14233,7 @@ snapshots:
+
    union@0.5.0:
      dependencies:
 -      qs: 6.15.3
 +      qs: 6.16.0
- 
+
    unist-util-is@6.0.1:
      dependencies:
-@@ -14992,7 +14466,7 @@ snapshots:
+@@ -14992,7 +14467,7 @@ snapshots:
      dependencies:
        bundle-import: 0.0.2
        chokidar: 5.0.0
@@ -1064,7 +1087,7 @@ index bfdd15c..aee8a60 100644
        picocolors: 1.1.1
        tinyglobby: 0.2.17
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index 9d966b1..c6ef78e 100755
+index 9d966b1..db6a005 100755
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -70,7 +70,7 @@ catalog:
@@ -1076,12 +1099,13 @@ index 9d966b1..c6ef78e 100755
    reka-ui: ^2.10.4
    sass-embedded: ^1.103.1
    scule: ^1.3.0
-@@ -139,3 +139,8 @@ allowBuilds:
+@@ -139,3 +139,9 @@ allowBuilds:
    esbuild: true
    simple-git-hooks: true
    vue-demi: true
 +overrides:
 +  "esbuild@<0.28.2": 0.28.2
-+  "fast-uri@<3.1.7": 3.1.7
++  "fast-uri@<3.1.8": 3.1.8
 +  "minimist@<1.2.8": 1.2.8
 +  "qs@<6.16.0": 6.16.0
++  "brace-expansion@>=4.0.0 <5.0.12": 5.0.12

@@ -8,6 +8,11 @@ import urllib.request
 from uuid import uuid4
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, file, code, message, headers, new_url):
+        return None
+
+
 def attempt(base_url, forwarded_ip):
     request = urllib.request.Request(
         f"{base_url}/api/v1/auth/login",
@@ -43,13 +48,14 @@ def main():
         actual = [attempt(args.base_url, f"198.51.100.{i}") for i in (10, 10, 11, 10)]
         assert actual == [401, 401, 401, 429], actual
         try:
-            urllib.request.urlopen(
+            urllib.request.build_opener(NoRedirect).open(
                 f"{args.base_url}/api/v1/auth/sso/callback"
                 "?code=ci-private-callback-code&state=ci-private-callback-state",
                 timeout=5,
             )
-        except urllib.error.HTTPError:
-            pass
+            raise AssertionError("SSO callback must redirect")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 302, exc.code
     print("Ingress trust and authentication limit checks passed")
 
 

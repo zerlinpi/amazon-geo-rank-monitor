@@ -51,6 +51,10 @@ unused upstream example dependency on the next upstream refresh; review by 2026-
 Do not globally suppress Vue advisories or force Vue 2 consumers onto Vue 3.
 The original high/critical findings in minimist and fast-uri are resolved; qs/esbuild
 are updated through a reproducible patch, with a frozen lockfile check in CI.
+The subsequent fresh CI audit detected additional advisories: brace-expansion is
+now pinned to 5.0.12 (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p,
+GHSA-q2hr-2g5m-vwhr) and fast-uri to 3.1.8 (GHSA-hrr3-gc8f-f4qj).
+These are targeted patch updates within the major versions already in the lockfile.
 
 Gitleaks is redacted and checks all fetched history plus the tracked working tree.
 A passing result is a point-in-time scan, not proof that credentials never existed.
