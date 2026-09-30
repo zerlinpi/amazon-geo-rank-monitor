@@ -1,0 +1,40 @@
+name: Validate
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    uses: ./.github/workflows/backend-ci.yml
+  frontend:
+    uses: ./.github/workflows/frontend-ci.yml
+  e2e:
+    needs: frontend
+    uses: ./.github/workflows/e2e-ci.yml
+  security:
+    uses: ./.github/workflows/security-ci.yml
+  compose:
+    uses: ./.github/workflows/compose-ci.yml
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [backend, frontend, e2e, security, compose]
+    steps:
+      - name: Require every validation job to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          for name, job in results.items():
+              print(name, job['result'])
+          assert results and all(job['result'] == 'success' for job in results.values())
+          PY

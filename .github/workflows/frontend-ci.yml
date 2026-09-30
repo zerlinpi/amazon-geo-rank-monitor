@@ -1,36 +1,27 @@
 name: Frontend CI
-
 on:
-  push:
-    branches:
-      - main
-      - "feat/**"
-    paths:
-      - "frontend/**"
-      - "THIRD_PARTY_NOTICES.md"
-      - ".github/workflows/frontend-ci.yml"
-  pull_request:
-    paths:
-      - "frontend/**"
-      - "THIRD_PARTY_NOTICES.md"
-      - ".github/workflows/frontend-ci.yml"
-
+  workflow_call:
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout product repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "24.15.0"
-
-      - name: Test frontend query helpers
-        run: npm --prefix frontend test
-
-      - name: Build pinned Fantastic Admin overlay
+          node-version: '24.15.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend test
+      - run: npm --prefix frontend run typecheck
+      - run: npm --prefix frontend run build
         env:
           VITE_AGRM_API_BASEURL: http://127.0.0.1:8000
-        run: npm --prefix frontend run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 3

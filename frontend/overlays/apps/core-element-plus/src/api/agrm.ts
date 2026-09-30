@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { type AxiosResponse } from 'axios'
 
 const client = axios.create({
   baseURL: import.meta.env.VITE_AGRM_API_BASEURL || 'http://localhost:8000',
@@ -30,7 +30,7 @@ client.interceptors.request.use((config) => {
 })
 
 client.interceptors.response.use(
-  response => response.data,
+  response => response,
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
@@ -43,8 +43,8 @@ client.interceptors.response.use(
   },
 )
 
-function data<T>(promise: Promise<unknown>): Promise<T> {
-  return promise as Promise<T>
+function data<T>(promise: Promise<AxiosResponse<T>>): Promise<T> {
+  return promise.then(response => response.data)
 }
 
 export interface WorkspaceMembership {

@@ -1,0 +1,35 @@
+name: Compose smoke
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      POSTGRES_PASSWORD: ci-local-database-only
+      API_KEY_PEPPER: ci-local-pepper-only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate production configuration
+        run: docker compose config --quiet
+      - name: Build production images
+        run: docker compose build
+      - name: Start and wait for migrations and healthy services
+        run: docker compose up -d --wait --wait-timeout 180
+      - name: Check readiness, frontend and scheduler/worker heartbeats
+        run: |
+          curl --fail http://127.0.0.1:8000/health
+          curl --fail http://127.0.0.1:8000/ready
+          curl --fail http://127.0.0.1:8080/ --output /dev/null
+          docker compose exec -T redis redis-cli ping
+          docker compose exec -T worker python -m amazon_geo_rank_monitor.operations.health rank
+          docker compose exec -T scheduler python -m amazon_geo_rank_monitor.operations.health scheduler
+          docker compose exec -T api alembic current
+      - name: Status and logs
+        if: failure()
+        run: docker compose ps -a && docker compose logs --tail=60
+      - name: Remove isolated CI containers and test data
+        if: always()
+        run: docker compose down --volumes --remove-orphans

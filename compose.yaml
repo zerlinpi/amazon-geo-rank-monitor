@@ -1,160 +1,110 @@
+x-backend: &backend
+  image: agrm-backend:local
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  env_file:
+    - path: .env
+      required: false
+  environment: &environment
+    DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/amazon_geo_rank
+    AUTO_CREATE_SCHEMA: 'false'
+    API_KEY_PEPPER: ${API_KEY_PEPPER:?Set API_KEY_PEPPER}
+    REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    API_HOST: 0.0.0.0
+    API_PORT: '8000'
+  init: true
+  restart: unless-stopped
+
 services:
   postgres:
     image: postgres:17
     environment:
       POSTGRES_DB: amazon_geo_rank
       POSTGRES_USER: amazon_geo_rank
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U amazon_geo_rank -d amazon_geo_rank"]
+      test: ['CMD-SHELL', 'pg_isready -U amazon_geo_rank -d amazon_geo_rank']
       interval: 5s
       timeout: 5s
       retries: 10
-
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "no"]
+    command: ['redis-server', '--appendonly', 'no']
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
-
   migrate:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
-    environment:
-      DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
+    <<: *backend
+    restart: 'no'
+    command: ['alembic', '-c', 'alembic.ini', 'upgrade', 'head']
     depends_on:
       postgres:
         condition: service_healthy
-
   api:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    environment:
-      DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
-      AUTO_CREATE_SCHEMA: "false"
-      API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
-      SCIM_TOKEN_PEPPER: ${SCIM_TOKEN_PEPPER:-}
-      API_HOST: 0.0.0.0
-      API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-120}
-      AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-20}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      ALLOW_PUBLIC_SIGNUP: ${ALLOW_PUBLIC_SIGNUP:-true}
-      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-720}
-      INVITATION_TTL_HOURS: ${INVITATION_TTL_HOURS:-168}
-      EMAIL_VERIFICATION_TTL_HOURS: ${EMAIL_VERIFICATION_TTL_HOURS:-24}
-      PASSWORD_RESET_TTL_MINUTES: ${PASSWORD_RESET_TTL_MINUTES:-30}
-      LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}
-      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
-      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:5173}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
-      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
-      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
-      MFA_ISSUER: ${MFA_ISSUER:-Amazon Geo Rank Monitor}
-      MFA_CHALLENGE_MINUTES: ${MFA_CHALLENGE_MINUTES:-5}
-      TRUSTED_DEVICE_DAYS: ${TRUSTED_DEVICE_DAYS:-30}
-      TRUSTED_DEVICE_COOKIE_NAME: ${TRUSTED_DEVICE_COOKIE_NAME:-agrm_trusted_device}
-      SSO_ENCRYPTION_KEY: ${SSO_ENCRYPTION_KEY:-}
-      SSO_CALLBACK_URL: ${SSO_CALLBACK_URL:-http://localhost:8000/api/v1/auth/sso/callback}
-      SSO_TRANSACTION_MINUTES: ${SSO_TRANSACTION_MINUTES:-5}
-      ALERT_ENCRYPTION_KEY: ${ALERT_ENCRYPTION_KEY:-}
-      ALERT_WEBHOOK_ALLOWED_HOSTS: ${ALERT_WEBHOOK_ALLOWED_HOSTS:-}
-      REPORT_ENCRYPTION_KEY: ${REPORT_ENCRYPTION_KEY:-}
-      PROBE_CACHE_MANAGED_TTL_SECONDS: ${PROBE_CACHE_MANAGED_TTL_SECONDS:-300}
-      PROBE_CACHE_STRICT_TTL_SECONDS: ${PROBE_CACHE_STRICT_TTL_SECONDS:-0}
-      PROBE_CACHE_RETENTION_HOURS: ${PROBE_CACHE_RETENTION_HOURS:-24}
-      SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-agrm_session}
-      CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-agrm_csrf}
-      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
-      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-lax}
-      OXYLABS_USERNAME: ${OXYLABS_USERNAME:-}
-      OXYLABS_PASSWORD: ${OXYLABS_PASSWORD:-}
-      RESIDENTIAL_PROXY_USERNAME: ${RESIDENTIAL_PROXY_USERNAME:-}
-      RESIDENTIAL_PROXY_PASSWORD: ${RESIDENTIAL_PROXY_PASSWORD:-}
-      RESIDENTIAL_PROXY_SERVER: ${RESIDENTIAL_PROXY_SERVER:-http://pr.oxylabs.io:7777}
-    ports:
-      - "8000:8000"
+    <<: *backend
+    ports: ['127.0.0.1:8000:8000']
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=5)"]
       interval: 10s
-      timeout: 5s
+      timeout: 8s
       retries: 6
-
   worker:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    command: ["agrm-worker"]
+    <<: *backend
+    command: ['agrm-worker']
     environment:
-      DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
-      AUTO_CREATE_SCHEMA: "false"
-      API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
-      ALERT_ENCRYPTION_KEY: ${ALERT_ENCRYPTION_KEY:-}
-      ALERT_WEBHOOK_ALLOWED_HOSTS: ${ALERT_WEBHOOK_ALLOWED_HOSTS:-}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
-      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+      <<: *environment
       WORKER_ID: ${WORKER_ID:-rank-worker-1}
-      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-3}
-      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-900}
-      JOB_RETRY_BASE_SECONDS: ${JOB_RETRY_BASE_SECONDS:-30}
-      JOB_RETRY_MAX_SECONDS: ${JOB_RETRY_MAX_SECONDS:-900}
-      PROBE_CACHE_MANAGED_TTL_SECONDS: ${PROBE_CACHE_MANAGED_TTL_SECONDS:-300}
-      PROBE_CACHE_STRICT_TTL_SECONDS: ${PROBE_CACHE_STRICT_TTL_SECONDS:-0}
-      PROBE_CACHE_RETENTION_HOURS: ${PROBE_CACHE_RETENTION_HOURS:-24}
-      OXYLABS_USERNAME: ${OXYLABS_USERNAME:-}
-      OXYLABS_PASSWORD: ${OXYLABS_PASSWORD:-}
-      RESIDENTIAL_PROXY_USERNAME: ${RESIDENTIAL_PROXY_USERNAME:-}
-      RESIDENTIAL_PROXY_PASSWORD: ${RESIDENTIAL_PROXY_PASSWORD:-}
-      RESIDENTIAL_PROXY_SERVER: ${RESIDENTIAL_PROXY_SERVER:-http://pr.oxylabs.io:7777}
     depends_on:
       migrate:
         condition: service_completed_successfully
-
+    healthcheck:
+      test: ['CMD', 'python', '-m', 'amazon_geo_rank_monitor.operations.health', 'rank']
+      interval: 30s
+      timeout: 8s
+      start_period: 30s
+      retries: 3
   scheduler:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    command: ["agrm-scheduler"]
+    <<: *backend
+    command: ['agrm-scheduler']
     environment:
-      DATABASE_URL: postgresql+psycopg://amazon_geo_rank:${POSTGRES_PASSWORD:-change-me}@postgres:5432/amazon_geo_rank
-      AUTO_CREATE_SCHEMA: "false"
-      API_KEY_PEPPER: ${API_KEY_PEPPER:-change-me}
-      REPORT_ENCRYPTION_KEY: ${REPORT_ENCRYPTION_KEY:-}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
-      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
-      SCHEDULER_POLL_SECONDS: ${SCHEDULER_POLL_SECONDS:-30}
+      <<: *environment
       SCHEDULER_ID: ${SCHEDULER_ID:-scheduler-1}
     depends_on:
       migrate:
         condition: service_completed_successfully
-
+    healthcheck:
+      test: ['CMD', 'python', '-m', 'amazon_geo_rank_monitor.operations.health', 'scheduler']
+      interval: 30s
+      timeout: 8s
+      start_period: 30s
+      retries: 3
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_AGRM_CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-agrm_csrf}
+    ports: ['127.0.0.1:8080:8080']
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:8080/']
+      interval: 10s
+      timeout: 5s
+      retries: 6
 volumes:
   postgres-data:

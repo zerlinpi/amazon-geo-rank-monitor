@@ -1,0 +1,17 @@
+.git
+**/.venv
+**/node_modules
+**/.vendor
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/test-results
+**/playwright-report
+**/*.db
+.env
+**/.env
+backups
+**/.env.local
+**/.env.production.local
+.superpowers

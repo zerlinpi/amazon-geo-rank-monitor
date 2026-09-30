@@ -25,5 +25,14 @@ if (current !== lock.commit) {
   run('git', ['checkout', '--detach', lock.commit], vendor)
   writeFileSync(marker, lock.commit)
 }
+const securityPatch = join(root, 'upstream-security.patch')
+try {
+  execFileSync('git', ['apply', '--check', securityPatch], { cwd: vendor, stdio: 'pipe' })
+  run('git', ['apply', securityPatch], vendor)
+}
+catch {
+  // A warm cache may already contain the exact reviewed patch. Reject other drift.
+  execFileSync('git', ['apply', '--reverse', '--check', securityPatch], { cwd: vendor, stdio: 'pipe' })
+}
 cpSync(overlay, vendor, { recursive: true, force: true })
 console.log(`Fantastic Admin overlay ready at ${lock.commit}`)
