@@ -78,6 +78,8 @@ CI checks separate client rate-limit buckets through the trusted ingress, reject
 forged forwarding headers at both proxy boundaries, checks SCIM JSON responses and
 verifies that callback secrets are absent from container logs both during normal
 responses and after deliberately stopping the isolated API container.
+The internal proxy connection timeout is 3 seconds, so an unavailable API returns
+a gateway error promptly; the 130-second response timeout still allows long reads.
 
 `/health` proves the API process is alive; `/ready` checks DB and configured Redis.
 Redis failure makes readiness fail even though request limiting falls back locally.
