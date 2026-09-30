@@ -98,7 +98,7 @@ class RankMonitorService:
                         search_depth=request.search_depth,
                     )
                 except Exception:
-                    logger.exception(
+                    logger.warning(
                         "probe_cache_lookup_failed owner_id=%s geo_profile_id=%s",
                         owner_id,
                         geo_profile.id,
@@ -134,7 +134,7 @@ class RankMonitorService:
                             result=result,
                         )
                     except Exception:
-                        logger.exception(
+                        logger.warning(
                             "probe_cache_store_failed owner_id=%s geo_profile_id=%s",
                             owner_id,
                             geo_profile.id,
@@ -164,7 +164,7 @@ class RankMonitorService:
                         observed_at=observed_at,
                     )
                 except Exception:
-                    logger.exception(
+                    logger.warning(
                         "competitive_capture_failed owner_id=%s run_id=%s geo_profile_id=%s",
                         owner_id,
                         run_id,
@@ -225,7 +225,7 @@ class RankMonitorService:
                             )
                         )
                     except Exception:
-                        logger.exception(
+                        logger.warning(
                             "auto_strict_history_lookup_failed "
                             "owner_id=%s run_id=%s geo_profile_id=%s",
                             owner_id,

@@ -25,6 +25,7 @@ class RankWorker:
         alert_service=None,
         probe_cache=None,
         auto_strict_verifier=None,
+        competitive_intelligence=None,
         worker_id: str = "rank-worker",
         lease_seconds: float = 900.0,
         retry_base_seconds: float = 30.0,
@@ -40,6 +41,7 @@ class RankWorker:
         self._alerts = alert_service
         self._probe_cache = probe_cache
         self._auto_strict_verifier = auto_strict_verifier
+        self._competitive_intelligence = competitive_intelligence
         self._worker_id = worker_id
         self._lease_seconds = lease_seconds
         self._retry_base_seconds = retry_base_seconds
@@ -122,7 +124,7 @@ class RankWorker:
                         request=request,
                     )
                 except Exception:
-                    logger.exception(
+                    logger.warning(
                         "probe_cache_prefetch_failed owner_id=%s job_id=%s",
                         job["owner_id"],
                         job["id"],
@@ -194,6 +196,7 @@ class RankWorker:
                 probe_cache=self._probe_cache,
                 provider_mode=job["provider_mode"],
                 strict_verifier=strict_verifier,
+                competitive_intelligence=self._competitive_intelligence,
             )
             result = await service.check_with_result(
                 request,
@@ -236,7 +239,7 @@ class RankWorker:
                 self._billing.release(reservation["id"])
             outcome = self._jobs.retry_or_dead_letter(
                 job["id"],
-                error=str(exc),
+                error=f"rank worker failed ({type(exc).__name__})",
                 base_delay_seconds=self._retry_base_seconds,
                 max_delay_seconds=self._retry_max_seconds,
             )
@@ -247,7 +250,7 @@ class RankWorker:
                     else "retry_wait"
                 ),
                 last_job_id=job["id"],
-                last_error=str(exc),
+                last_error=f"rank worker failed ({type(exc).__name__})",
                 processed_delta=1,
             )
             return outcome

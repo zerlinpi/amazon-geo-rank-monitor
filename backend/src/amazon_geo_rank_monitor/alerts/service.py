@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
+from amazon_geo_rank_monitor.ranking.preferred import preferred_observations
+
 logger = logging.getLogger("amazon_geo_rank_monitor.alerts")
 
 VERIFICATION_TYPES = frozenset(
@@ -271,7 +273,7 @@ class AlertService:
                     if event is not None:
                         emitted.append(event)
             except Exception:
-                logger.exception(
+                logger.warning(
                     "alert_rule_evaluation_failed rule_id=%s run_id=%s",
                     rule["id"],
                     run_id,
@@ -793,7 +795,7 @@ class AlertService:
         geo_filter: str | None,
     ) -> list[dict]:
         candidates = []
-        for row in current["observations"]:
+        for row in preferred_observations(current["observations"]):
             if asin_filter and row["asin"] != asin_filter:
                 continue
             if geo_filter and row["geo_profile_id"] != geo_filter:
@@ -971,14 +973,18 @@ class AlertService:
                 channel_type=channel_type,
                 destination=self._mask_url(url),
                 status="failed",
-                error=str(exc),
+                error=(
+                    f"HTTP {exc.response.status_code}"
+                    if isinstance(exc, httpx.HTTPStatusError)
+                    else type(exc).__name__
+                ),
             )
 
     def _record_delivery(self, **kwargs) -> None:
         try:
             self._repository.record_delivery(**kwargs)
         except Exception:
-            logger.exception(
+            logger.warning(
                 "alert_delivery_record_failed event_id=%s",
                 kwargs.get("event_id"),
             )

@@ -57,7 +57,7 @@ class MonitorScheduler:
                 outcomes.append(
                     {
                         "monitor_id": monitor["id"],
-                        "error": str(exc),
+                        "error": f"scheduler operation failed ({type(exc).__name__})",
                     }
                 )
         return outcomes

@@ -82,7 +82,7 @@ class FakeOidcProvider:
             hashes.SHA256(),
         )
         if self.tamper_signature:
-            signature = b"x" + signature[1:]
+            signature = bytes([signature[0] ^ 1]) + signature[1:]
         return f"{encoded_header}.{encoded_claims}.{b64url(signature)}"
 
     def handler(self, request: httpx.Request) -> httpx.Response:

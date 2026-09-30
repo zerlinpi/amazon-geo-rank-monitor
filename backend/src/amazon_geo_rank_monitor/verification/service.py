@@ -250,7 +250,7 @@ class AutoStrictVerifier:
                     search_depth=search_depth,
                 )
             except Exception:
-                logger.exception(
+                logger.warning(
                     "auto_strict_cache_lookup_failed "
                     "owner_id=%s geo_profile_id=%s",
                     owner_id,
@@ -400,7 +400,7 @@ class AutoStrictVerifier:
                         result=strict_result,
                     )
                 except Exception:
-                    logger.exception(
+                    logger.warning(
                         "auto_strict_cache_store_failed "
                         "owner_id=%s geo_profile_id=%s",
                         owner_id,

@@ -225,7 +225,7 @@ class ReportService:
                     )
                     sent_count += 1
                 except Exception as exc:
-                    errors.append(f"{recipient}: {str(exc)[:500]}")
+                    errors.append(f"email delivery failed ({type(exc).__name__})")
 
             if sent_count == len(recipients):
                 status = "sent"
@@ -253,7 +253,7 @@ class ReportService:
                 status="failed",
                 sent_count=0,
                 summary={},
-                error=str(exc),
+                error=f"report failed ({type(exc).__name__})",
             )
 
     def _validate_schedule_payload(

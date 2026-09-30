@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import sessionmaker
 
+from amazon_geo_rank_monitor.ranking.preferred import preferred_observations
+
 from .models import (
     RankJobRow,
     RankObservationRow,
@@ -103,6 +105,7 @@ class AnalyticsRepository:
                 RankObservationRow.effective_rank,
                 RankObservationRow.provider,
                 RankObservationRow.verification_level,
+                RankObservationRow.status.label("observation_status"),
             )
             .select_from(RankJobRow)
             .join(RankRunRow, RankRunRow.id == RankJobRow.run_id)
@@ -124,6 +127,7 @@ class AnalyticsRepository:
                 RankRunRow.id,
                 RankObservationRow.asin,
                 RankObservationRow.geo_profile_id,
+                RankObservationRow.id,
             )
         )
         if asin:
@@ -135,7 +139,7 @@ class AnalyticsRepository:
 
         with self._sessions() as session:
             rows = session.execute(statement).all()
-        return [
+        points = [
             {
                 "run_id": row.id,
                 "completed_at": row.completed_at,
@@ -149,8 +153,13 @@ class AnalyticsRepository:
                 "effective_rank": row.effective_rank,
                 "provider": row.provider,
                 "verification_level": row.verification_level,
+                "status": row.observation_status,
             }
             for row in rows
+        ]
+        return [
+            {key: value for key, value in point.items() if key != "status"}
+            for point in preferred_observations(points)
         ]
 
     @staticmethod

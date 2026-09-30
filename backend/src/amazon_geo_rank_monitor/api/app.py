@@ -191,7 +191,23 @@ def create_app(
         else:
             remaining = limiter.limit
 
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            # External SDK exceptions may embed credentials or request bodies.
+            logger.error("api_error request_id=%s error_type=%s", request_id, type(exc).__name__)
+            is_scim = request.url.path.startswith("/scim/v2")
+            response = JSONResponse(
+                status_code=500,
+                content=(
+                    scim_error_payload(status_code=500, detail="Internal server error")
+                    if is_scim else error_payload(
+                        request, status_code=500, detail="Internal server error",
+                        code="INTERNAL_ERROR",
+                    )
+                ),
+                media_type="application/scim+json" if is_scim else "application/json",
+            )
         response.headers["X-Request-ID"] = request_id
         if rate_credential and not exempt and limiter.limit:
             response.headers["X-RateLimit-Limit"] = str(limiter.limit)
@@ -220,7 +236,7 @@ def create_app(
                     user_agent=request.headers.get("User-Agent"),
                 )
             except Exception:
-                logger.exception(
+                logger.warning(
                     "audit_record_failed request_id=%s",
                     request_id,
                 )
@@ -249,6 +265,12 @@ def create_app(
 
     @app.get("/ready")
     def ready():
+        for limiter in (app.state.rate_limiter, app.state.auth_rate_limiter):
+            if hasattr(limiter, "ready") and not limiter.ready():
+                return JSONResponse(
+                    status_code=503,
+                    content={"status": "not_ready", "redis": "unavailable"},
+                )
         engine = services.database_engine
         if engine is None:
             return {"status": "ok"}
