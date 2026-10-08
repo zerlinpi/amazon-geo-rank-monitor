@@ -267,6 +267,7 @@ class RankRepository:
             "strict_attempted": 0,
             "strict_succeeded": 0,
             "strict_skipped": 0,
+            "pacing_deferred": 0,
             "manual_requested": 0,
             "automatic_requested": 0,
             "unclassified_requested": 0,
@@ -316,6 +317,7 @@ class RankRepository:
                     "attempted": 0,
                     "succeeded": 0,
                     "skipped": 0,
+                    "pacing_deferred": 0,
                     "manual_requested": 0,
                     "cache_hits": 0,
                     "recovered_failed_geos": 0,
@@ -359,6 +361,13 @@ class RankRepository:
                 if skipped_reason:
                     key = str(skipped_reason)
                     skip_reason_counts[key] = skip_reason_counts.get(key, 0) + 1
+                    if (
+                        key == "daily_budget_pacing_deferred"
+                        and not is_manual
+                        and event.get("requested", True)
+                    ):
+                        totals["pacing_deferred"] += 1
+                        point["pacing_deferred"] += 1
 
             if requested > classified_events:
                 totals["unclassified_requested"] += requested - classified_events

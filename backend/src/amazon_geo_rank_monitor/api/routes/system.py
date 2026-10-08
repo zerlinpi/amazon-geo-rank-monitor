@@ -150,6 +150,7 @@ def verification_analytics(
                 "attempted": 0,
                 "succeeded": 0,
                 "skipped": 0,
+                "pacing_deferred": 0,
                 "manual_requested": 0,
                 "cache_hits": 0,
                 "recovered_failed_geos": 0,
@@ -161,6 +162,8 @@ def verification_analytics(
     requested = analytics["strict_requested"]
     succeeded = analytics["strict_succeeded"]
     skipped = analytics["strict_skipped"]
+    automatic_requested = analytics["automatic_requested"]
+    pacing_deferred = analytics["pacing_deferred"]
     credits_spent = usage["credits_spent"]
     return {
         "window": {
@@ -177,6 +180,11 @@ def verification_analytics(
         "skip_rate_pct": (
             round((skipped / requested) * 100, 2)
             if requested
+            else 0.0
+        ),
+        "pacing_deferral_rate_pct": (
+            round((pacing_deferred / automatic_requested) * 100, 2)
+            if automatic_requested
             else 0.0
         ),
         "billing_available": billing_available,
