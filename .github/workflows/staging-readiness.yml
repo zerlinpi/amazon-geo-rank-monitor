@@ -50,6 +50,9 @@ jobs:
       RESIDENTIAL_PROXY_USERNAME: ${{ secrets.RESIDENTIAL_PROXY_USERNAME }}
       RESIDENTIAL_PROXY_PASSWORD: ${{ secrets.RESIDENTIAL_PROXY_PASSWORD }}
       RESIDENTIAL_PROXY_SERVER: ${{ vars.RESIDENTIAL_PROXY_SERVER || 'http://pr.oxylabs.io:7777' }}
+      READINESS_PAID_PROVIDER_PROBES: ${{ inputs.paid_provider_probes }}
+      READINESS_KEYWORD: ${{ inputs.keyword }}
+      READINESS_POSTAL_CODE: ${{ inputs.postal_code }}
 
     steps:
       - name: Checkout
@@ -93,8 +96,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          args=(--live --keyword "${{ inputs.keyword }}" --postal-code "${{ inputs.postal_code }}")
-          if [ "${{ inputs.paid_provider_probes }}" = "true" ]; then
+          args=(--live --keyword "$READINESS_KEYWORD" --postal-code "$READINESS_POSTAL_CODE")
+          if [ "$READINESS_PAID_PROVIDER_PROBES" = "true" ]; then
             args+=(--paid-provider-probes)
           fi
           set +e
