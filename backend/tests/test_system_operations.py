@@ -338,3 +338,95 @@ def test_system_operations_cannot_read_or_requeue_another_tenants_job():
     metrics = client.get("/api/v1/system/metrics", headers=auth).text
     assert 'agrm_auto_strict_verification_total{outcome="requested"} 0' in metrics
     assert 'agrm_rank_jobs{status="dead_letter"} 1' not in metrics
+
+
+def test_strict_pacing_deferral_analytics_are_tenant_scoped() -> None:
+    (
+        client,
+        tenants,
+        keys,
+        _jobs,
+        _workers,
+        ranks,
+        _billing,
+    ) = build_system_client()
+    tenant = tenants.create_tenant("Pacing workspace")
+    reader = keys.create(
+        owner_id=tenant["id"],
+        name="pacing reader",
+        scopes=["system:read"],
+    )
+    headers = {"X-API-Key": reader.plaintext}
+
+    initial = client.get(
+        "/api/v1/system/verification-analytics?hours=24",
+        headers=headers,
+    )
+    assert initial.status_code == 200
+    assert initial.json()["pacing_deferred"] == 0
+    assert initial.json()["pacing_deferral_rate_pct"] == 0.0
+
+    def save_run(owner_id: str, *, triggers: list[str], reason: str | None):
+        run_id = ranks.create_run(
+            owner_id=owner_id,
+            marketplace="amazon.com",
+            keyword="towing hitch",
+            requested_probe_count=1,
+        )
+        ranks.complete_run(
+            run_id,
+            status="succeeded",
+            settled_probe_count=1,
+            verification_metadata={
+                "strict_requested_count": 1,
+                "strict_attempted_count": int(reason is None),
+                "strict_succeeded_count": int(reason is None),
+                "strict_skipped_count": int(reason is not None),
+                "events": [{
+                    "geo_profile_id": "us-ny",
+                    "requested": True,
+                    "attempted": reason is None,
+                    "succeeded": reason is None,
+                    "triggers": triggers,
+                    "skipped_reason": reason,
+                }],
+            },
+        )
+
+    save_run(
+        tenant["id"],
+        triggers=["low_confidence:0.40"],
+        reason="daily_budget_pacing_deferred",
+    )
+    save_run(
+        tenant["id"],
+        triggers=["low_confidence:0.42"],
+        reason=None,
+    )
+    # Defensive exclusion: manual-force events are never counted as auto pacing.
+    save_run(
+        tenant["id"],
+        triggers=["manual_force"],
+        reason="daily_budget_pacing_deferred",
+    )
+    other = tenants.create_tenant("Other workspace")
+    save_run(
+        other["id"],
+        triggers=["low_confidence:0.40"],
+        reason="daily_budget_pacing_deferred",
+    )
+
+    response = client.get(
+        "/api/v1/system/verification-analytics?hours=24",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["run_count"] == 3
+    assert body["automatic_requested"] == 2
+    assert body["manual_requested"] == 1
+    assert body["pacing_deferred"] == 1
+    assert body["pacing_deferral_rate_pct"] == 50.0
+    assert body["skip_reason_counts"]["daily_budget_pacing_deferred"] == 2
+    assert len(body["daily"]) == 1
+    assert body["daily"][0]["pacing_deferred"] == 1
