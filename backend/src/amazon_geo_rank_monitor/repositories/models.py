@@ -762,6 +762,15 @@ class ReportDeliveryRow(Base):
 
 class RankJobRow(Base):
     __tablename__ = "rank_jobs"
+    __table_args__ = (
+        Index(
+            "ix_rank_jobs_owner_monitor_status_run",
+            "owner_id",
+            "monitor_target_id",
+            "status",
+            "run_id",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)

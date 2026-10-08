@@ -7,8 +7,8 @@ Amazon geographic organic-rank monitoring service. It observes the same Amazon k
 Phase 32 hardens the existing product: account/workspace access, geo profiles,
 monitors, managed/strict verification, queued execution, weighted snapshots,
 history, analytics, alerts and prepaid credits. It adds no new business subsystem.
-The baseline entering hardening is `2ef06d5` (2026-09-30); the latest database head
-remains `20260928_0021`. No published migration is rewritten.
+The baseline entering hardening is `2ef06d5` (2026-09-30); the current database head
+is `20261008_0022`. No published migration is rewritten.
 
 The required **validate** check covers backend, PostgreSQL migrations/concurrency,
 Redis, frontend tests/typecheck/build, browser E2E in UTC/New York/Singapore,
@@ -58,6 +58,14 @@ completed at or after the current run cannot become a baseline. History is not
 limited to the newest 20 jobs; after a long failure streak, the last valid
 baseline remains eligible. If no valid earlier run exists, transition alerts
 wait for a baseline. This change does not require a database migration.
+
+Phase 37 adds a covering index on `rank_jobs(owner_id, monitor_target_id, status, run_id)`
+to keep the unbounded, tenant-scoped alert baseline lookup efficient as job history
+grows. Upgrade with `alembic -c alembic.ini upgrade head` before deploying the new
+code; existing job data and alert semantics are unchanged. The index is created by
+revision `20261008_0022`, which can be downgraded independently. On large
+PostgreSQL installations, schedule this standard index migration during a
+maintenance window because index creation can block concurrent writes.
 
 ## Rank semantics
 
