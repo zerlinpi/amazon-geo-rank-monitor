@@ -9,6 +9,11 @@
   deployed HTTPS frontend/API health before integration checks.
 - Upload sanitized readiness JSON as short-lived workflow evidence.
 - Add a staging readiness runbook and keep release/tag creation manual.
+- Refresh the pinned Fantastic Admin security patch for `shell-quote` 1.12.0
+  and `source-map-js` 1.2.2.
+- Split frontend security auditing into a zero-exception production dependency
+  gate plus an exact development-only exception for unpatched
+  `GHSA-vfj7-8cjw-p6xm` (`braces`).
 
 No schema change. Existing migration head remains `20260928_0021`.
 A release still requires the normal exact-commit `validate` gate plus staging
