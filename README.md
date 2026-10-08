@@ -1499,6 +1499,7 @@ Supported rule types:
 - `strict_verification_failed`: a strict upstream verification attempt fails.
 - `strict_insufficient_credits`: strict verification is requested but skipped because prepaid credits are insufficient.
 - `strict_daily_budget_pacing_deferred`: an automatic paid strict probe is intentionally deferred by forecast-aware pacing; the alert event preserves the estimated resume time and current pacing allowance.
+  Email, Slack and webhook alert summaries also show the **estimated** resume timestamp and paced credit allowance when available; the estimate is advisory, not a guaranteed restart time.
 - `strict_probe_budget_exhausted`: a requested strict probe is skipped because the per-run upstream budget is exhausted.
 - `strict_provider_unavailable`: the strict browser provider is unavailable when verification is requested.
 - `strict_runtime_disabled`: a manually forced strict verification is blocked by the runtime global kill switch.
