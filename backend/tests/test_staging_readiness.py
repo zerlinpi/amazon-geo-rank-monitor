@@ -136,3 +136,29 @@ async def test_insecure_staging_configuration_fails_before_release() -> None:
     assert "secure_session_cookie" in failed
     assert "public_web_https" in failed
     assert "cors_https_only" in failed
+
+
+
+@pytest.mark.asyncio
+async def test_invalid_paid_probe_zip_fails_without_calling_provider() -> None:
+    calls = []
+
+    async def provider(_settings, **kwargs):
+        calls.append(kwargs)
+
+    payload = await run_staging_readiness(
+        settings(),
+        paid_provider_probes=True,
+        postal_code="ABCDE",
+        managed_probe=provider,
+        strict_probe=provider,
+    )
+
+    assert payload["status"] == "fail"
+    assert calls == []
+    check = next(
+        item
+        for item in payload["checks"]
+        if item["name"] == "paid_probe_postal_code"
+    )
+    assert check["status"] == "fail"
