@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import smtplib
 import ssl
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from decimal import Decimal
-from typing import Awaitable, Callable
 from urllib.parse import urlparse
 
 from amazon_geo_rank_monitor.config import (
