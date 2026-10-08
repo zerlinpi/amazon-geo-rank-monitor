@@ -515,6 +515,27 @@ def test_strict_pacing_deferral_alert_without_resume_evidence_is_safe() -> None:
     assert "Pacing allowance:" not in mailer.messages[0].text
 
 
+def test_strict_pacing_notification_preserves_zero_allowance() -> None:
+    summary = AlertService._summary(
+        event={
+            "event_type": "strict_daily_budget_pacing_deferred",
+            "geo_profile_id": GEO_ID,
+            "run_id": "current",
+            "details": {
+                "scope": "verification",
+                "skipped_reason": "daily_budget_pacing_deferred",
+                "pacing_resume_at": None,
+                "pacing_allowance_credits": 0,
+            },
+            "current_value": None,
+            "previous_value": None,
+        },
+        rule={"name": "Strict pacing deferred"},
+    )
+    assert "Pacing allowance: 0 credits" in summary
+    assert "Estimated resume:" not in summary
+
+
 def test_strict_daily_budget_near_cap_alert_uses_live_status() -> None:
     service, mailer = build_service(
         runs={
