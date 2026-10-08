@@ -1035,6 +1035,15 @@ class AlertService:
                     f"(projected {details.get('projected_utilization_pct')}%, "
                     f"runway {details.get('runway_minutes')} minutes)"
                 )
+            elif event["event_type"] == "strict_daily_budget_pacing_deferred":
+                details = event["details"]
+                reason = "daily_budget_pacing_deferred"
+                resume_at = details.get("pacing_resume_at")
+                allowance = details.get("pacing_allowance_credits")
+                if resume_at:
+                    reason += f"\nEstimated resume: {resume_at}"
+                if allowance is not None:
+                    reason += f"\nPacing allowance: {allowance} credits"
             else:
                 reason = (
                     event["details"].get("skipped_reason")
