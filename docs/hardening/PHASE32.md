@@ -56,6 +56,17 @@ now pinned to 5.0.12 (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p,
 GHSA-q2hr-2g5m-vwhr) and fast-uri to 3.1.8 (GHSA-hrr3-gc8f-f4qj).
 These are targeted patch updates within the major versions already in the lockfile.
 
+A fresh 2026-10-08 registry audit added `shell-quote`
+(`GHSA-pqg4-j6r4-53mv`) and `source-map-js` (`GHSA-68fv-2mgg-jv7q`);
+the pinned upstream patch now resolves them to 1.12.0 and 1.2.2 respectively.
+The same audit added `braces` `GHSA-vfj7-8cjw-p6xm`. npm still has no
+patched `braces` release, so CI does not use a blanket suppression. It first
+runs a zero-exception high/critical audit over all production dependencies,
+then runs the complete workspace audit with only that exact GHSA ignored for
+development tooling. If `braces` ever enters a production dependency graph,
+the first audit becomes a release blocker. Recheck the exception on every
+upstream refresh and remove it immediately when a patched release is available.
+
 Gitleaks is redacted and checks all fetched history plus the tracked working tree.
 A passing result is a point-in-time scan, not proof that credentials never existed.
 No real secret findings were reported in the initial full-history scan. The final

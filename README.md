@@ -23,7 +23,20 @@ created automatically.
 - [Security policy](SECURITY.md)
 - [GitHub required checks](docs/GITHUB_RULESET.md)
 - [Hardening evidence and limitations](docs/hardening/PHASE32.md)
+- [Staging release readiness](docs/STAGING_READINESS.md)
 - [Changelog](CHANGELOG.md)
+
+## Staging release readiness
+
+Phase 33 adds a manual staging verification layer without changing rank semantics
+or automatically publishing a release. `agrm-readiness` checks production-style
+HTTPS/cookie/CORS configuration and can authenticate to SMTP and Stripe without
+sending email or creating a payment.
+
+A separate manual-only GitHub Actions **Staging Readiness** workflow verifies the
+deployed frontend, `/health` and `/ready`. Real managed and Strict provider probes
+are disabled by default and require explicit operator opt-in because they may consume
+provider credits. See [the runbook](docs/STAGING_READINESS.md).
 
 ## Scope
 
