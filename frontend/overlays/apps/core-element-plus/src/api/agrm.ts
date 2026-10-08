@@ -678,6 +678,7 @@ export interface VerificationAnalyticsDaily {
   attempted: number
   succeeded: number
   skipped: number
+  pacing_deferred: number
   manual_requested: number
   cache_hits: number
   recovered_failed_geos: number
@@ -695,6 +696,8 @@ export interface VerificationAnalytics {
   strict_attempted: number
   strict_succeeded: number
   strict_skipped: number
+  pacing_deferred: number
+  pacing_deferral_rate_pct: number
   manual_requested: number
   automatic_requested: number
   unclassified_requested: number
