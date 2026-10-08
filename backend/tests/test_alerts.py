@@ -475,6 +475,44 @@ def test_strict_daily_budget_pacing_deferred_alert_includes_resume_evidence() ->
     assert event["details"]["pacing_allowance_credits"] == 15
     assert len(mailer.messages) == 1
     assert "daily_budget_pacing_deferred" in mailer.messages[0].text
+    assert "Estimated resume: 2026-09-28T09:30:00+00:00" in mailer.messages[0].text
+    assert "Pacing allowance: 15 credits" in mailer.messages[0].text
+
+
+def test_strict_pacing_deferral_alert_without_resume_evidence_is_safe() -> None:
+    current = verification_run(
+        "current",
+        skipped_reason="daily_budget_pacing_deferred",
+    )
+    current["verification_metadata"]["manual_force_requested"] = False
+    current["verification_metadata"]["events"][0]["triggers"] = ["low_confidence"]
+    service, mailer = build_service(
+        runs={"current": current},
+        jobs=completed_jobs("current"),
+    )
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Strict pacing deferred",
+        rule_type="strict_daily_budget_pacing_deferred",
+        threshold=None,
+        asin=None,
+        geo_profile_id=GEO_ID,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        run_id="current",
+    )
+
+    assert len(events) == 1
+    assert len(mailer.messages) == 1
+    assert "daily_budget_pacing_deferred" in mailer.messages[0].text
+    assert "Estimated resume:" not in mailer.messages[0].text
+    assert "Pacing allowance:" not in mailer.messages[0].text
 
 
 def test_strict_daily_budget_near_cap_alert_uses_live_status() -> None:
