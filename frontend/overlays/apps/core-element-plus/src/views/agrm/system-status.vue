@@ -26,6 +26,8 @@ const verification = ref<VerificationAnalytics>({
   strict_attempted: 0,
   strict_succeeded: 0,
   strict_skipped: 0,
+  pacing_deferred: 0,
+  pacing_deferral_rate_pct: 0,
   manual_requested: 0,
   automatic_requested: 0,
   unclassified_requested: 0,
@@ -296,6 +298,23 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <div class="grid gap-4 mt-4 sm:grid-cols-2">
+        <div class="rounded-lg border p-4">
+          <div class="text-sm text-muted-foreground">Automatic pacing deferrals</div>
+          <div class="text-3xl font-semibold mt-2">{{ verification.pacing_deferred }}</div>
+          <div class="text-xs text-muted-foreground mt-2">
+            Paid automatic Strict probes deferred by the forecast-aware budget guardrail
+          </div>
+        </div>
+        <div class="rounded-lg border p-4">
+          <div class="text-sm text-muted-foreground">Automatic deferral rate</div>
+          <div class="text-3xl font-semibold mt-2">{{ verification.pacing_deferral_rate_pct }}%</div>
+          <div class="text-xs text-muted-foreground mt-2">
+            Of {{ verification.automatic_requested }} automatic Strict requests · excludes manual force
+          </div>
+        </div>
+      </div>
+
       <div
         v-if="dailyBudgetStatus"
         class="rounded-lg border p-4 mt-4"
@@ -415,6 +434,7 @@ onUnmounted(() => {
           <el-table-column prop="requested" label="Requested" width="100" />
           <el-table-column prop="succeeded" label="Succeeded" width="100" />
           <el-table-column prop="skipped" label="Skipped" width="90" />
+          <el-table-column prop="pacing_deferred" label="Pacing deferred" width="145" />
           <el-table-column prop="recovered_failed_geos" label="Recovered" width="100" />
           <el-table-column prop="cache_hits" label="Cache" width="80" />
           <el-table-column prop="credits_spent" label="Credits" width="90" />
