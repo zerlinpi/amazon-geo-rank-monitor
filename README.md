@@ -625,6 +625,8 @@ It reports:
 
 - requested, attempted, succeeded and skipped strict verification;
 - automatic versus manually forced requests;
+- forecast-aware automatic pacing deferrals and deferral percentage of automatic Strict requests;
+- daily UTC pacing deferrals, excluding manual-force probes;
 - recovered managed Geo probe failures;
 - strict cache hits;
 - normalized anomaly-trigger and skip-reason counts;
