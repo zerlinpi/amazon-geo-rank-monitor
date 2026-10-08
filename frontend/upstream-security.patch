@@ -13,7 +13,7 @@ index bfdd15c..37c6d19 100644
      reka-ui:
        specifier: ^2.10.4
        version: 2.10.4
-@@ -359,6 +359,13 @@ catalogs:
+@@ -359,6 +359,15 @@ catalogs:
        specifier: ^2.3.40
        version: 2.3.40
 
@@ -23,11 +23,13 @@ index bfdd15c..37c6d19 100644
 +  minimist@<1.2.8: 1.2.8
 +  qs@<6.16.0: 6.16.0
 +  brace-expansion@>=4.0.0 <5.0.12: 5.0.12
++  shell-quote@>=1.8.4 <1.11.0: ^1.11.0
++  source-map-js@>=1.0.0 <1.2.2: ^1.2.2
 +
  importers:
 
    .:
-@@ -509,7 +516,7 @@ importers:
+@@ -509,7 +518,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -36,7 +38,7 @@ index bfdd15c..37c6d19 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -699,7 +706,7 @@ importers:
+@@ -699,7 +708,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -45,7 +47,7 @@ index bfdd15c..37c6d19 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -889,7 +896,7 @@ importers:
+@@ -889,7 +898,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -54,7 +56,7 @@ index bfdd15c..37c6d19 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1076,7 +1083,7 @@ importers:
+@@ -1076,7 +1085,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -63,7 +65,7 @@ index bfdd15c..37c6d19 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1269,7 +1276,7 @@ importers:
+@@ -1269,7 +1278,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -72,7 +74,7 @@ index bfdd15c..37c6d19 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1456,7 +1463,7 @@ importers:
+@@ -1456,7 +1465,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -81,7 +83,7 @@ index bfdd15c..37c6d19 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1646,7 +1653,7 @@ importers:
+@@ -1646,7 +1655,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -90,7 +92,7 @@ index bfdd15c..37c6d19 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -1836,7 +1843,7 @@ importers:
+@@ -1836,7 +1845,7 @@ importers:
          version: 3.29.3
        qs:
          specifier: 'catalog:'
@@ -99,7 +101,7 @@ index bfdd15c..37c6d19 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -2044,7 +2051,7 @@ importers:
+@@ -2044,7 +2053,7 @@ importers:
          version: 1.6.0
        qs:
          specifier: 'catalog:'
@@ -108,7 +110,7 @@ index bfdd15c..37c6d19 100644
        reka-ui:
          specifier: 'catalog:'
          version: 2.10.4(vue@3.5.42(typescript@6.0.3))
-@@ -3116,462 +3123,156 @@ packages:
+@@ -3116,462 +3125,156 @@ packages:
      resolution: {integrity: sha512-Q9hjxWI5xBM+qW2enxfe8wDKdFWMfd0Z29k5ZJnuBqD/CasY5Zryj09aCA6owbGATWz+39p5uIdaHXpopOcG8g==}
      engines: {node: '>=10'}
 
@@ -571,7 +573,7 @@ index bfdd15c..37c6d19 100644
    '@esbuild/win32-x64@0.28.2':
      resolution: {integrity: sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==}
      engines: {node: '>=18'}
-@@ -4842,6 +4543,7 @@ packages:
+@@ -4842,6 +4545,7 @@ packages:
 
    '@vexip-ui/icons@1.2.1':
      resolution: {integrity: sha512-ttAMzdsQ+uw6vdOKzXrvGQ8THLYkBkADqGW1AGbmkiSyyYCS0K4I2fB+ZFdqL3opL7Uvr650kzcCoXEGGfvZ6Q==}
@@ -579,7 +581,7 @@ index bfdd15c..37c6d19 100644
      peerDependencies:
        vue: ^3.2.25
 
-@@ -5346,8 +5048,8 @@ packages:
+@@ -5346,8 +5050,8 @@ packages:
      resolution: {integrity: sha512-F3PH5k5juxom4xktynS7MoFY+NUWH5LC4CnH11YB8NPew+HLpmBLCybSAEyb2F+4pRXhuhWqFesoQd6DAyc2hw==}
      engines: {node: '>=18'}
 
@@ -590,7 +592,7 @@ index bfdd15c..37c6d19 100644
      engines: {node: 20 || >=22}
 
    braces@3.0.3:
-@@ -5818,16 +5520,6 @@ packages:
+@@ -5818,16 +5522,6 @@ packages:
    es-toolkit@1.52.0:
      resolution: {integrity: sha512-XTNEJQh1tY1ZJVcf6ayP/2n4ZPyaHlW2FWs7xvw5ddPuhUVjLD3olQVQS7kf58JbAB48iL0uL/jerTrjtV3lDA==}
 
@@ -607,7 +609,7 @@ index bfdd15c..37c6d19 100644
    esbuild@0.28.2:
      resolution: {integrity: sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==}
      engines: {node: '>=18'}
-@@ -6091,8 +5783,8 @@ packages:
+@@ -6091,8 +5785,8 @@ packages:
    fast-string-width@3.0.2:
      resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
 
@@ -618,7 +620,7 @@ index bfdd15c..37c6d19 100644
 
    fast-wrap-ansi@0.2.2:
      resolution: {integrity: sha512-7F2Fl+TjRSenLqlU3UjSH0iyqopqoZIu7eZVpEirP2g1GtWa2G/ecEmBdgz31+Mxr+ELclgg6sokpSFIQiZ02Q==}
-@@ -6208,6 +5900,7 @@ packages:
+@@ -6208,6 +5902,7 @@ packages:
 
    geojson-linestring-dissolve@0.0.1:
      resolution: {integrity: sha512-Y8I2/Ea28R/Xeki7msBcpMvJL2TaPfaPKP8xqueJfQ9/jEhps+iOJxOR2XCBGgVb12Z6XnDb1CMbaPfLepsLaw==}
@@ -626,7 +628,7 @@ index bfdd15c..37c6d19 100644
 
    get-east-asian-width@1.6.0:
      resolution: {integrity: sha512-QRbvDIbx6YklUe6RxeTeleMR0yv3cYH6PsPZHcnVn7xv7zO1BHN8r0XETu8n6Ye3Q+ahtSarc3WgtNWmehIBfA==}
-@@ -6725,6 +6418,7 @@ packages:
+@@ -6725,6 +6420,7 @@ packages:
 
    lucide-vue-next@0.511.0:
      resolution: {integrity: sha512-VSv0F3pHniGN7JMMzDcLFNMQbl8381+shNnHwV8hi+El7xl2ZL8qdNuzPoiBViKk8mTKK5K3ZDfmE/wEcTZVIQ==}
@@ -634,7 +636,7 @@ index bfdd15c..37c6d19 100644
      peerDependencies:
        vue: '>=3.0.1'
 
-@@ -6941,12 +6635,6 @@ packages:
+@@ -6941,12 +6637,6 @@ packages:
      resolution: {integrity: sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==}
      engines: {node: 18 || 20 || >=22}
 
@@ -647,7 +649,7 @@ index bfdd15c..37c6d19 100644
    minimist@1.2.8:
      resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
 
-@@ -7313,8 +7001,8 @@ packages:
+@@ -7313,8 +7003,8 @@ packages:
      resolution: {integrity: sha512-+Owyggi9IxT1ePKGafcI87ubSmxol6smwJ+RAHDQlx9+9cPwFWDiKFFCPuWhr9ignlGpZ9vDQLw67N4dcTVFEA==}
      engines: {node: '>=20'}
 
@@ -658,7 +660,29 @@ index bfdd15c..37c6d19 100644
      engines: {node: '>=0.6'}
 
    quansync@0.2.11:
-@@ -8193,7 +7881,7 @@ packages:
+@@ -7640,8 +7330,8 @@ packages:
+     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
+     engines: {node: '>=8'}
+
+-  shell-quote@1.10.0:
+-    resolution: {integrity: sha512-w1aiOKwKuRgtwAReIIj89puqg+I7GvX4IbLrvmhXbzQsj1+Zwi4VO3+fa6ZF91TWSjIxoEkKnMeHcLEODK5ZXA==}
++  shell-quote@1.12.0:
++    resolution: {integrity: sha512-PcByqNyT/38F2kDNi006HAMRJaULuBzq/FOsw3qdZvX/GA9W/jamDaRskgHjubHiftXK5sIFxLNkvrXUwcof6Q==}
+     engines: {node: '>= 0.4'}
+
+   side-channel-list@1.0.1:
+@@ -7705,8 +7395,8 @@ packages:
+   sortablejs@1.15.7:
+     resolution: {integrity: sha512-Kk8wLQPlS+yi1ZEf48a4+fzHa4yxjC30M/Sr2AnQu+f/MPwvvX9XjZ6OWejiz8crBsLwSq8GHqaxaET7u6ux0A==}
+
+-  source-map-js@1.2.1:
+-    resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
++  source-map-js@1.2.2:
++    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
+     engines: {node: '>=0.10.0'}
+
+   source-map-support@0.5.21:
+@@ -8193,7 +7883,7 @@ packages:
        '@nuxt/kit': '>=3'
        '@nuxt/schema': '>=3'
        astro: '>=3'
@@ -667,7 +691,7 @@ index bfdd15c..37c6d19 100644
        rollup: '>=3'
        vite: '>=3'
        vue: '>=3'
-@@ -8243,7 +7931,7 @@ packages:
+@@ -8243,7 +7933,7 @@ packages:
        '@farmfe/core': '*'
        '@rspack/core': '*'
        bun-types-no-globals: '*'
@@ -676,7 +700,7 @@ index bfdd15c..37c6d19 100644
        rolldown: '*'
        rollup: '*'
        unloader: '*'
-@@ -8376,7 +8064,7 @@ packages:
+@@ -8376,7 +8066,7 @@ packages:
      peerDependencies:
        '@types/node': ^20.19.0 || >=22.12.0
        '@vitejs/devtools': ^0.4.0 || ^0.5.0
@@ -685,7 +709,7 @@ index bfdd15c..37c6d19 100644
        jiti: '>=1.21.0'
        less: ^4.0.0
        sass: ^1.70.0
-@@ -8543,6 +8231,7 @@ packages:
+@@ -8543,6 +8233,7 @@ packages:
    whatwg-encoding@2.0.0:
      resolution: {integrity: sha512-p41ogyeMUrw3jWclHWTQg1k05DSVXPLcVxRTYsXUk+ZooOCZLcoYgPZ/HL/D/N+uQPOtcp1me1WhBEaX02mhWg==}
      engines: {node: '>=12'}
@@ -693,7 +717,7 @@ index bfdd15c..37c6d19 100644
 
    which@1.3.1:
      resolution: {integrity: sha512-HxJdYWq1MTIQbJ3nw0cqssHoTNU267KlrDuGZ1WYlxDStUtKUhOaJmh112/TZmHxxUfuJqPXSOm7tDyas0OSIQ==}
-@@ -9566,234 +9255,81 @@ snapshots:
+@@ -9566,234 +9257,81 @@ snapshots:
 
    '@es-joy/resolve.exports@1.2.0': {}
 
@@ -928,7 +952,49 @@ index bfdd15c..37c6d19 100644
    '@esbuild/win32-x64@0.28.2':
      optional: true
 
-@@ -11414,7 +10950,7 @@ snapshots:
+@@ -9839,7 +9377,7 @@ snapshots:
+   '@eslint/css-tree@4.0.5':
+     dependencies:
+       mdn-data: 2.29.0
+-      source-map-js: 1.2.1
++      source-map-js: 1.2.2
+
+   '@eslint/markdown@8.0.3(supports-color@10.2.2)':
+     dependencies:
+@@ -11216,7 +10754,7 @@ snapshots:
+       '@vue/shared': 3.5.42
+       entities: 7.0.1
+       estree-walker: 2.0.2
+-      source-map-js: 1.2.1
++      source-map-js: 1.2.2
+
+   '@vue/compiler-dom@3.5.42':
+     dependencies:
+@@ -11241,7 +10779,7 @@ snapshots:
+       estree-walker: 2.0.2
+       magic-string: 0.30.21
+       postcss: 8.5.26
+-      source-map-js: 1.2.1
++      source-map-js: 1.2.2
+
+   '@vue/compiler-ssr@3.5.42':
+     dependencies:
+@@ -11921,12 +11459,12 @@ snapshots:
+   css-tree@2.2.1:
+     dependencies:
+       mdn-data: 2.0.28
+-      source-map-js: 1.2.1
++      source-map-js: 1.2.2
+
+   css-tree@3.2.1:
+     dependencies:
+       mdn-data: 2.27.1
+-      source-map-js: 1.2.1
++      source-map-js: 1.2.2
+
+   css-what@7.0.0: {}
+
+@@ -11414,7 +10952,7 @@ snapshots:
    ajv@8.20.0:
      dependencies:
        fast-deep-equal: 3.1.3
@@ -937,7 +1003,7 @@ index bfdd15c..37c6d19 100644
        json-schema-traverse: 1.0.0
        require-from-string: 2.0.2
 
-@@ -11676,7 +11212,7 @@ snapshots:
+@@ -11676,7 +11214,7 @@ snapshots:
        widest-line: 5.0.0
        wrap-ansi: 9.0.2
 
@@ -946,7 +1012,7 @@ index bfdd15c..37c6d19 100644
      dependencies:
        balanced-match: 4.0.4
 
-@@ -12109,63 +11645,6 @@ snapshots:
+@@ -12109,63 +11647,6 @@ snapshots:
 
    es-toolkit@1.52.0: {}
 
@@ -1010,7 +1076,7 @@ index bfdd15c..37c6d19 100644
    esbuild@0.28.2:
      optionalDependencies:
        '@esbuild/aix-ppc64': 0.28.2
-@@ -12522,7 +12001,7 @@ snapshots:
+@@ -12522,7 +12003,7 @@ snapshots:
      dependencies:
        fast-string-truncated-width: 3.0.3
 
@@ -1019,7 +1085,7 @@ index bfdd15c..37c6d19 100644
 
    fast-wrap-ansi@0.2.2:
      dependencies:
-@@ -12630,7 +12109,7 @@ snapshots:
+@@ -12630,7 +12111,7 @@ snapshots:
    geojson-flatten@0.2.4:
      dependencies:
        get-stdin: 6.0.0
@@ -1028,7 +1094,7 @@ index bfdd15c..37c6d19 100644
 
    geojson-linestring-dissolve@0.0.1: {}
 
-@@ -12832,7 +12311,7 @@ snapshots:
+@@ -12832,7 +12313,7 @@ snapshots:
 
    import-from-string@0.0.5:
      dependencies:
@@ -1037,7 +1103,16 @@ index bfdd15c..37c6d19 100644
        import-meta-resolve: 4.2.0
 
    import-meta-resolve@4.2.0: {}
-@@ -13493,11 +12972,7 @@ snapshots:
+@@ -12981,7 +12462,7 @@ snapshots:
+   launch-editor@2.14.1:
+     dependencies:
+       picocolors: 1.1.1
+-      shell-quote: 1.10.0
++      shell-quote: 1.12.0
+
+   lazystream@1.0.1:
+     dependencies:
+@@ -13493,11 +12974,7 @@ snapshots:
 
    minimatch@10.2.6:
      dependencies:
@@ -1050,7 +1125,25 @@ index bfdd15c..37c6d19 100644
 
    minimist@1.2.8: {}
 
-@@ -13872,7 +13347,7 @@ snapshots:
+@@ -13575,7 +13052,7 @@ snapshots:
+       picomatch: 4.0.7
+       pidtree: 1.0.0
+       read-package-json-fast: 6.0.0
+-      shell-quote: 1.10.0
++      shell-quote: 1.12.0
+       which: 7.0.0
+
+   nprogress@0.2.0: {}
+@@ -13845,7 +13322,7 @@ snapshots:
+     dependencies:
+       nanoid: 3.3.18
+       picocolors: 1.1.1
+-      source-map-js: 1.2.1
++      source-map-js: 1.2.2
+
+   powershell-utils@0.1.0: {}
+
+@@ -13872,7 +13349,7 @@ snapshots:
      dependencies:
        hookified: 2.2.0
 
@@ -1059,7 +1152,25 @@ index bfdd15c..37c6d19 100644
      dependencies:
        es-define-property: 1.0.1
        side-channel: 1.1.1
-@@ -14247,7 +13722,7 @@ snapshots:
+@@ -14148,7 +13625,7 @@ snapshots:
+     dependencies:
+       chokidar: 5.0.0
+       immutable: 5.1.9
+-      source-map-js: 1.2.1
++      source-map-js: 1.2.2
+     optionalDependencies:
+       '@parcel/watcher': 2.6.0
+     optional: true
+@@ -14198,7 +13675,7 @@ snapshots:
+
+   shebang-regex@3.0.0: {}
+
+-  shell-quote@1.10.0: {}
++  shell-quote@1.12.0: {}
+
+   side-channel-list@1.0.1:
+     dependencies:
+@@ -14247,7 +13724,7 @@ snapshots:
    simplify-geojson@1.0.5:
      dependencies:
        concat-stream: 1.4.11
@@ -1068,7 +1179,16 @@ index bfdd15c..37c6d19 100644
        simplify-geometry: 0.0.2
 
    simplify-geometry@0.0.2: {}
-@@ -14758,7 +14233,7 @@ snapshots:
+@@ -14272,7 +13749,7 @@ snapshots:
+
+   sortablejs@1.15.7: {}
+
+-  source-map-js@1.2.1: {}
++  source-map-js@1.2.2: {}
+
+   source-map-support@0.5.21:
+     dependencies:
+@@ -14758,7 +14235,7 @@ snapshots:
 
    union@0.5.0:
      dependencies:
@@ -1077,7 +1197,7 @@ index bfdd15c..37c6d19 100644
 
    unist-util-is@6.0.1:
      dependencies:
-@@ -14992,7 +14467,7 @@ snapshots:
+@@ -14992,7 +14469,7 @@ snapshots:
      dependencies:
        bundle-import: 0.0.2
        chokidar: 5.0.0
@@ -1099,7 +1219,7 @@ index 9d966b1..db6a005 100755
    reka-ui: ^2.10.4
    sass-embedded: ^1.103.1
    scule: ^1.3.0
-@@ -139,3 +139,9 @@ allowBuilds:
+@@ -139,3 +139,11 @@ allowBuilds:
    esbuild: true
    simple-git-hooks: true
    vue-demi: true
@@ -1109,3 +1229,5 @@ index 9d966b1..db6a005 100755
 +  "minimist@<1.2.8": 1.2.8
 +  "qs@<6.16.0": 6.16.0
 +  "brace-expansion@>=4.0.0 <5.0.12": 5.0.12
++  shell-quote@>=1.8.4 <1.11.0: ^1.11.0
++  source-map-js@>=1.0.0 <1.2.2: ^1.2.2
