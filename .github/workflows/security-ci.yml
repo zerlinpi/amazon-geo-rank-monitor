@@ -28,7 +28,7 @@ jobs:
           npm --prefix frontend run sync
           cd frontend/.vendor/fantastic-admin
           corepack pnpm install --frozen-lockfile
-          corepack pnpm audit --fix --ignore-unfixable
+          corepack pnpm audit --fix=override --ignore-unfixable
           git diff -- pnpm-lock.yaml pnpm-workspace.yaml
           git diff --exit-code -- pnpm-lock.yaml pnpm-workspace.yaml
       - name: Install verified Gitleaks binary
