@@ -50,13 +50,24 @@ class FakeCompetitiveRepository:
 
 
 class FakeJobRepository:
-    def __init__(self, jobs: list[dict]) -> None:
+    def __init__(self, jobs: list[dict], runs: dict[str, dict]) -> None:
         self.jobs = jobs
+        self.runs = runs
 
-    def list_for_monitor(self, *, owner_id: str, monitor_target_id: str, limit: int):
+    def previous_successful_run_id(
+        self, *, owner_id: str, monitor_target_id: str, current_run_id: str
+    ) -> str | None:
         assert owner_id == OWNER_ID
         assert monitor_target_id == MONITOR_ID
-        return self.jobs[:limit]
+        for job in self.jobs:
+            run_id = job["run_id"]
+            if (
+                run_id != current_run_id
+                and run_id in self.runs
+                and job["status"] in {"succeeded", "partially_succeeded"}
+            ):
+                return run_id
+        return None
 
 
 def aggregate_run(run_id: str, rank: int, *, found_weight: float = 1.0) -> dict:
@@ -163,7 +174,7 @@ def build_service(
     service = AlertService(
         repository=AlertRepository(engine),
         rank_repository=FakeRankRepository(runs),
-        job_repository=FakeJobRepository(jobs),
+        job_repository=FakeJobRepository(jobs, runs),
         monitor_repository=FakeMonitorRepository(),
         competitive_repository=FakeCompetitiveRepository(competitive_points),
         email_sender=mailer,
@@ -191,6 +202,41 @@ def completed_jobs(current: str, previous: str | None = None) -> list[dict]:
             }
         )
     return rows
+
+
+def test_rank_drop_finds_baseline_beyond_twenty_failed_jobs() -> None:
+    runs = {
+        "previous": aggregate_run("previous", 8),
+        "current": aggregate_run("current", 24),
+    }
+    jobs = completed_jobs("current")
+    jobs.extend(
+        {"run_id": None, "status": "failed", "monitor_target_id": MONITOR_ID}
+        for _ in range(25)
+    )
+    jobs.append(
+        {"run_id": "deleted", "status": "succeeded", "monitor_target_id": MONITOR_ID}
+    )
+    jobs.append(completed_jobs("previous")[0])
+    service, _ = build_service(runs=runs, jobs=jobs)
+    service.create_rule(
+        owner_id=OWNER_ID,
+        monitor_target_id=MONITOR_ID,
+        name="Drop after failures",
+        rule_type="rank_drop",
+        threshold=Decimal("10"),
+        asin=ASIN,
+        geo_profile_id=None,
+        channels={"emails": ["alerts@example.com"]},
+        cooldown_minutes=0,
+    )
+
+    events = service.evaluate_run(
+        owner_id=OWNER_ID, monitor_target_id=MONITOR_ID, run_id="current"
+    )
+    assert len(events) == 1
+    assert events[0]["previous_value"] == Decimal("8")
+    assert events[0]["current_value"] == Decimal("24")
 
 
 def test_rank_drop_emits_email_and_cooldown_suppresses_duplicate() -> None:

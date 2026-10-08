@@ -49,6 +49,16 @@ The architecture uses a Hybrid provider model:
 
 Managed mode must not be described as strict IP verification. The Oxylabs adapter records the requested IP geography as metadata while using the delivery postal code for the managed Amazon search geography.
 
+## Alert history baseline
+
+Rank-change and competitive transition alerts compare against the most recently
+**completed** earlier successful or partially successful run for the same
+workspace and monitor. Failed or cancelled jobs, missing run records, and runs
+completed at or after the current run cannot become a baseline. History is not
+limited to the newest 20 jobs; after a long failure streak, the last valid
+baseline remains eligible. If no valid earlier run exists, transition alerts
+wait for a baseline. This change does not require a database migration.
+
 ## Rank semantics
 
 The system keeps three concepts separate:
