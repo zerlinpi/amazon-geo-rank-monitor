@@ -14,6 +14,7 @@ from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 from amazon_geo_rank_monitor.mcp.server import build_local_mcp_server
 from amazon_geo_rank_monitor.mcp.tools import RankMcpTools
 from amazon_geo_rank_monitor.operations.health import keep_worker_alive
+from amazon_geo_rank_monitor.operations.readiness import run_staging_readiness
 from amazon_geo_rank_monitor.runtime import build_services
 from amazon_geo_rank_monitor.scheduling.reports import ReportScheduler
 from amazon_geo_rank_monitor.scheduling.service import MonitorScheduler
@@ -143,6 +144,41 @@ def scheduler_main() -> None:
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     asyncio.run(_scheduler_loop(once=args.once))
+
+
+def readiness_main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Validate staging release readiness without exposing secrets"
+    )
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="authenticate to SMTP and Stripe without sending email or charging",
+    )
+    parser.add_argument(
+        "--paid-provider-probes",
+        action="store_true",
+        help=(
+            "run one controlled managed and strict provider probe; "
+            "this may consume provider credits"
+        ),
+    )
+    parser.add_argument("--keyword", default="walking pad")
+    parser.add_argument("--postal-code", default="10001")
+    args = parser.parse_args()
+
+    payload = asyncio.run(
+        run_staging_readiness(
+            AppSettings(),
+            live=args.live or args.paid_provider_probes,
+            paid_provider_probes=args.paid_provider_probes,
+            keyword=args.keyword,
+            postal_code=args.postal_code,
+        )
+    )
+    print(json.dumps(payload, sort_keys=True))
+    if payload["status"] != "pass":
+        raise SystemExit(1)
 
 
 def mcp_main() -> None:
