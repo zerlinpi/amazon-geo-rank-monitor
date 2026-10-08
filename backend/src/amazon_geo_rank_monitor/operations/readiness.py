@@ -238,33 +238,62 @@ async def run_staging_readiness(
             ("stripe_live", stripe_probe or _stripe_live_probe),
         ):
             try:
-                await asyncio.to_thread(probe, settings)
+                await asyncio.wait_for(
+                    asyncio.to_thread(probe, settings),
+                    timeout=30.0,
+                )
             except Exception as exc:
                 checks.append(_result(name, False, _exception_detail(exc)))
             else:
                 checks.append(_result(name, True, "live authentication succeeded"))
 
     if paid_provider_probes:
-        for name, probe in (
-            ("managed_provider_paid_probe", managed_probe or _managed_paid_probe),
-            ("strict_provider_paid_probe", strict_probe or _strict_paid_probe),
-        ):
-            try:
-                await probe(
-                    settings,
-                    keyword=keyword,
-                    postal_code=postal_code,
+        if len(postal_code) != 5 or not postal_code.isdigit():
+            checks.append(
+                _result(
+                    "paid_probe_postal_code",
+                    False,
+                    "paid provider probe ZIP must be exactly five digits",
                 )
-            except Exception as exc:
-                checks.append(_result(name, False, _exception_detail(exc)))
-            else:
-                checks.append(
-                    _result(
-                        name,
-                        True,
-                        "controlled paid staging probe succeeded",
+            )
+        elif not keyword.strip():
+            checks.append(
+                _result(
+                    "paid_probe_keyword",
+                    False,
+                    "paid provider probe keyword must not be empty",
+                )
+            )
+        else:
+            for name, probe in (
+                (
+                    "managed_provider_paid_probe",
+                    managed_probe or _managed_paid_probe,
+                ),
+                (
+                    "strict_provider_paid_probe",
+                    strict_probe or _strict_paid_probe,
+                ),
+            ):
+                try:
+                    await asyncio.wait_for(
+                        probe(
+                            settings,
+                            keyword=keyword.strip(),
+                            postal_code=postal_code,
+                        ),
+                        timeout=180.0,
                     )
-                )
+                except Exception as exc:
+                    checks.append(_result(name, False, _exception_detail(exc)))
+                else:
+                    checks.append(
+                        _result(
+                            name,
+                            True,
+                            "controlled paid staging probe succeeded",
+                        )
+                    )
 
     payload = {
         "status": "pass" if all(item.passed for item in checks) else "fail",
