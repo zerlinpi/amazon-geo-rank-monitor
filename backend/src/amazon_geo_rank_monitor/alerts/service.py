@@ -287,25 +287,18 @@ class AlertService:
         monitor_target_id: str,
         current_run_id: str,
     ) -> dict | None:
-        jobs = self._jobs.list_for_monitor(
+        previous_run_id = self._jobs.previous_successful_run_id(
             owner_id=owner_id,
             monitor_target_id=monitor_target_id,
-            limit=20,
+            current_run_id=current_run_id,
         )
-        for job in jobs:
-            if (
-                job["run_id"]
-                and job["run_id"] != current_run_id
-                and job["status"] in {"succeeded", "partially_succeeded"}
-            ):
-                try:
-                    return self._ranks.get_run(
-                        job["run_id"],
-                        owner_id=owner_id,
-                    )
-                except KeyError:
-                    continue
-        return None
+        if previous_run_id is None:
+            return None
+        try:
+            return self._ranks.get_run(previous_run_id, owner_id=owner_id)
+        except KeyError:
+            # A run can be deleted after the history query.
+            return None
 
     def _evaluate_rule(
         self,

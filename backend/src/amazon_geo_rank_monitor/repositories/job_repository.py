@@ -7,7 +7,7 @@ from sqlalchemy import Engine, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
-from .models import RankJobRow
+from .models import RankJobRow, RankRunRow
 
 
 class JobRepository:
@@ -343,6 +343,54 @@ class JobRepository:
             if row is None:
                 raise KeyError(f"rank job not found: {job_id}")
             return self._serialize(row)
+
+    def previous_successful_run_id(
+        self,
+        *,
+        owner_id: str,
+        monitor_target_id: str,
+        current_run_id: str,
+    ) -> str | None:
+        """Return the last completed, valid run before this monitor's current run.
+
+        Query the full history rather than the newest N jobs. A run must exist,
+        belong to the same owner, and have a successful terminal status.
+        """
+        successful = ("succeeded", "partially_succeeded")
+        with self._sessions() as session:
+            current_completed_at = session.scalar(
+                select(RankRunRow.completed_at)
+                .join(RankJobRow, RankJobRow.run_id == RankRunRow.id)
+                .where(
+                    RankRunRow.id == current_run_id,
+                    RankRunRow.owner_id == owner_id,
+                    RankRunRow.status.in_(successful),
+                    RankJobRow.owner_id == owner_id,
+                    RankJobRow.monitor_target_id == monitor_target_id,
+                    RankJobRow.status.in_(successful),
+                )
+                .limit(1)
+            )
+            if current_completed_at is None:
+                return None
+            return session.scalar(
+                select(RankRunRow.id)
+                .join(RankJobRow, RankJobRow.run_id == RankRunRow.id)
+                .where(
+                    RankJobRow.owner_id == owner_id,
+                    RankJobRow.monitor_target_id == monitor_target_id,
+                    RankJobRow.status.in_(successful),
+                    RankRunRow.owner_id == owner_id,
+                    RankRunRow.status.in_(successful),
+                    RankRunRow.completed_at < current_completed_at,
+                )
+                .order_by(
+                    RankRunRow.completed_at.desc(),
+                    RankRunRow.started_at.desc(),
+                    RankRunRow.id.desc(),
+                )
+                .limit(1)
+            )
 
     def list_for_monitor(
         self,

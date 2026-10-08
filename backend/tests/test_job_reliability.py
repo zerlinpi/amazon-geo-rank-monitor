@@ -2,13 +2,14 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from amazon_geo_rank_monitor.application.provider_registry import ProviderRegistry
 from amazon_geo_rank_monitor.domain.errors import ProviderUnavailableError
 from amazon_geo_rank_monitor.domain.models import GeoProfile, RankCheckRequest
 from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
-from amazon_geo_rank_monitor.repositories.models import Base
+from amazon_geo_rank_monitor.repositories.models import Base, RankJobRow, RankRunRow
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
 from amazon_geo_rank_monitor.workers.rank_worker import RankWorker
 
@@ -21,6 +22,105 @@ def build_jobs(*, max_attempts: int = 3) -> JobRepository:
     )
     Base.metadata.create_all(engine)
     return JobRepository(engine, default_max_attempts=max_attempts)
+
+
+def test_previous_successful_run_uses_completion_order_and_full_history() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    jobs = JobRepository(engine)
+    start = datetime(2026, 10, 8, 8, 0, tzinfo=UTC)
+
+    with Session(engine) as session, session.begin():
+        def record(
+            run_id: str,
+            completed_minute: int,
+            *,
+            owner: str = "tenant-a",
+            monitor: str = "monitor-a",
+            created_minute: int = 0,
+            run_status: str = "succeeded",
+        ) -> None:
+            session.add(
+                RankRunRow(
+                    id=run_id,
+                    owner_id=owner,
+                    marketplace="amazon.com",
+                    keyword="walking pad",
+                    status=run_status,
+                    requested_probe_count=1,
+                    settled_probe_count=1,
+                    started_at=start + timedelta(minutes=created_minute),
+                    completed_at=start + timedelta(minutes=completed_minute),
+                )
+            )
+            session.add(
+                RankJobRow(
+                    id=f"job-{run_id}",
+                    owner_id=owner,
+                    monitor_target_id=monitor,
+                    provider_mode="managed",
+                    request_payload={},
+                    status="succeeded",
+                    run_id=run_id,
+                    created_at=start + timedelta(minutes=created_minute),
+                    completed_at=start + timedelta(minutes=completed_minute),
+                    available_at=start,
+                )
+            )
+
+        record("previous", 2, created_minute=0)
+        record("current", 10, created_minute=1)
+        record("latest-prior", 7, created_minute=4)
+        record("future", 11, created_minute=3)
+        record("other-tenant", 9, owner="tenant-b")
+        record("other-monitor", 9, monitor="monitor-b")
+        record("invalid-run", 9, run_status="failed")
+        session.add(
+            RankJobRow(
+                id="dangling",
+                owner_id="tenant-a",
+                monitor_target_id="monitor-a",
+                provider_mode="managed",
+                request_payload={},
+                status="succeeded",
+                run_id="deleted-run",
+                available_at=start,
+                completed_at=start + timedelta(minutes=9),
+            )
+        )
+        for i in range(25):
+            session.add(
+                RankJobRow(
+                    id=f"failed-{i}",
+                    owner_id="tenant-a",
+                    monitor_target_id="monitor-a",
+                    provider_mode="managed",
+                    request_payload={},
+                    status="failed",
+                    available_at=start,
+                    completed_at=start + timedelta(minutes=9),
+                )
+            )
+
+    assert jobs.previous_successful_run_id(
+        owner_id="tenant-a",
+        monitor_target_id="monitor-a",
+        current_run_id="current",
+    ) == "latest-prior"
+    assert jobs.previous_successful_run_id(
+        owner_id="tenant-b",
+        monitor_target_id="monitor-a",
+        current_run_id="current",
+    ) is None
+    assert jobs.previous_successful_run_id(
+        owner_id="tenant-a",
+        monitor_target_id="monitor-b",
+        current_run_id="current",
+    ) is None
 
 
 def test_retry_backoff_then_dead_letter_and_manual_requeue() -> None:
