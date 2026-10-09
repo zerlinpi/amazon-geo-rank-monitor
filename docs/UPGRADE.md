@@ -11,11 +11,20 @@
    Check readiness, heartbeats and a test account's history/analytics. Observe retries,
    latency, reservation balances and alert/report delivery before normal scheduling.
 
-Phase 32 adds no migration; its single head is `20260928_0021`. Published revisions
-are immutable. CI tests empty PostgreSQL→head, column parity with models and the
-bounded `20260928_0021`→`20260927_0020`→head sequence while preserving an existing run.
-The historical initial migration imports model metadata; its contents are unchanged.
-CI guards fresh-schema behavior; future schema changes must use new revisions.
+Phase 32 originally introduced no new migration and ended with
+`20260928_0021`. **The current database head is `20261008_0022`**, added by
+Phase 37 for the tenant/monitor/status/run composite index. Phase 38 and Phase 39
+are code-only changes and do not add a schema revision. Published migrations
+are immutable; never modify an existing revision to make an old deployment
+appear current. Verify the target revision with `alembic heads` and the
+installed database with `alembic current` before upgrading.
+
+CI exercises fresh PostgreSQL migrations and schema/model parity plus bounded
+upgrade/downgrade paths. For an existing database at `20260928_0021`, running
+`alembic -c alembic.ini upgrade head` installs `20261008_0022` without
+deleting existing rank data. Index creation is a standard (non-concurrent)
+PostgreSQL index build and may temporarily block writes to a large table.
+Schedule the migration in a maintenance window, after a tested backup.
 
 For a code-only rollback, stop scheduler/worker, redeploy the recorded previous
 images/SHA with the same keys/database, and recheck readiness. Do not blindly

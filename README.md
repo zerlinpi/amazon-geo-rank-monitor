@@ -2,7 +2,29 @@
 
 Amazon geographic organic-rank monitoring service. It observes the same Amazon keyword from multiple geographic profiles, locates one or more ASINs in each SERP, and calculates a weighted organic rank.
 
-## Current Stable Baseline
+## Start here
+
+This is a **web SaaS**, not a standalone Windows desktop application. The backend
+runs FastAPI, PostgreSQL, Redis, workers and a scheduler; the browser UI is
+based on Fantastic Admin. A signed Windows `.exe` is not currently produced.
+
+| Goal | Documentation |
+| --- | --- |
+| Learn every main user workflow (中文) | [Chinese user guide](docs/USER_GUIDE.zh-CN.md) |
+| Install and operate the Linux/Compose service | [Production deployment](docs/DEPLOYMENT.md) |
+| Investigate stalls, performance and failed jobs | [Performance and stability runbook](docs/PERFORMANCE_STABILITY.md) |
+| Upgrade safely and roll back | [Upgrade and rollback](docs/UPGRADE.md) |
+| Verify external staging dependencies | [Staging readiness](docs/STAGING_READINESS.md) |
+| Understand Windows installers and code signing | [Windows release requirements](docs/WINDOWS_RELEASE.md) |
+
+The modern Run History endpoint loads bounded summaries via
+`GET /api/v1/runs/page`. Phase 39 additionally batches legacy full-detail
+`list_runs` reads into one run query, one observation query and one snapshot
+query, avoiding per-run database requests while preserving the existing
+response contract. This is an **SQL query-count optimization**, not a promise
+of zero UI latency or a benchmarked throughput figure.
+
+## Architecture and stable baseline
 
 Phase 32 hardens the existing product: account/workspace access, geo profiles,
 monitors, managed/strict verification, queued execution, weighted snapshots,

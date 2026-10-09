@@ -209,17 +209,25 @@ class RankRepository:
             ]
 
     @staticmethod
-    def _serialize_run(session: Session, run: RankRunRow) -> dict:
-        observations = session.scalars(
-            select(RankObservationRow)
-            .where(RankObservationRow.rank_run_id == run.id)
-            .order_by(RankObservationRow.id)
-        ).all()
-        snapshots = session.scalars(
-            select(RankSnapshotRow)
-            .where(RankSnapshotRow.rank_run_id == run.id)
-            .order_by(RankSnapshotRow.id)
-        ).all()
+    def _serialize_run(
+        session: Session,
+        run: RankRunRow,
+        *,
+        observations: list[RankObservationRow] | None = None,
+        snapshots: list[RankSnapshotRow] | None = None,
+    ) -> dict:
+        if observations is None:
+            observations = session.scalars(
+                select(RankObservationRow)
+                .where(RankObservationRow.rank_run_id == run.id)
+                .order_by(RankObservationRow.id)
+            ).all()
+        if snapshots is None:
+            snapshots = session.scalars(
+                select(RankSnapshotRow)
+                .where(RankSnapshotRow.rank_run_id == run.id)
+                .order_by(RankSnapshotRow.id)
+            ).all()
         return {
             "id": run.id,
             "owner_id": run.owner_id,
@@ -437,14 +445,46 @@ class RankRepository:
         return totals
 
     def list_runs(self, *, owner_id: str, limit: int = 50) -> list[dict]:
+        """Keep legacy full-detail responses while avoiding N+1 SQL queries."""
         with self._sessions() as session:
-            run_ids = session.scalars(
-                select(RankRunRow.id)
+            runs = session.scalars(
+                select(RankRunRow)
                 .where(RankRunRow.owner_id == owner_id)
-                .order_by(RankRunRow.started_at.desc())
+                .order_by(RankRunRow.started_at.desc(), RankRunRow.id.desc())
                 .limit(limit)
             ).all()
-        return [self.get_run(run_id, owner_id=owner_id) for run_id in run_ids]
+            if not runs:
+                return []
+
+            run_ids = [run.id for run in runs]
+            observations_by_run: dict[str, list[RankObservationRow]] = {
+                run_id: [] for run_id in run_ids
+            }
+            snapshots_by_run: dict[str, list[RankSnapshotRow]] = {
+                run_id: [] for run_id in run_ids
+            }
+            for row in session.scalars(
+                select(RankObservationRow)
+                .where(RankObservationRow.rank_run_id.in_(run_ids))
+                .order_by(RankObservationRow.rank_run_id, RankObservationRow.id)
+            ):
+                observations_by_run[row.rank_run_id].append(row)
+            for row in session.scalars(
+                select(RankSnapshotRow)
+                .where(RankSnapshotRow.rank_run_id.in_(run_ids))
+                .order_by(RankSnapshotRow.rank_run_id, RankSnapshotRow.id)
+            ):
+                snapshots_by_run[row.rank_run_id].append(row)
+
+            return [
+                self._serialize_run(
+                    session,
+                    run,
+                    observations=observations_by_run[run.id],
+                    snapshots=snapshots_by_run[run.id],
+                )
+                for run in runs
+            ]
 
     def list_run_page(
         self,
