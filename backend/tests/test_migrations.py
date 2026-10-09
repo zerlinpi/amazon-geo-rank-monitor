@@ -2,6 +2,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
 from alembic import command
+from amazon_geo_rank_monitor.repositories.job_repository import JobRepository
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
 
 
@@ -174,3 +175,60 @@ def test_history_index_upgrade_and_downgrade_preserve_existing_runs(tmp_path, mo
     assert ranks.get_run(run_id, owner_id="tenant-a")["keyword"] == "trailer hitch"
     command.upgrade(config, "head")
     assert ranks.get_run(run_id, owner_id="tenant-a")["keyword"] == "trailer hitch"
+
+def test_alert_baseline_index_upgrade_and_downgrade_preserve_jobs(
+    tmp_path, monkeypatch
+) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'alert-index-migration.db'}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    config = Config("alembic.ini")
+    command.upgrade(config, "20260928_0021")
+    engine = create_engine(database_url)
+    jobs = JobRepository(engine)
+    created = jobs.enqueue(
+        owner_id="tenant-a",
+        monitor_target_id="monitor-a",
+        provider_mode="managed",
+        request_payload={"keyword": "trailer hitch"},
+    )
+    index_name = "ix_rank_jobs_owner_monitor_status_run"
+    # The older baseline migration imports current ORM metadata, which also
+    # creates newly-declared indexes. Remove it to simulate a real pre-0022 DB.
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "DROP INDEX IF EXISTS ix_rank_jobs_owner_monitor_status_run"
+        )
+    assert index_name not in {
+        item["name"] for item in inspect(engine).get_indexes("rank_jobs")
+    }
+
+    command.upgrade(config, "head")
+    indexes = {
+        item["name"]: item for item in inspect(engine).get_indexes("rank_jobs")
+    }
+    assert indexes[index_name]["column_names"] == [
+        "owner_id",
+        "monitor_target_id",
+        "status",
+        "run_id",
+    ]
+    with engine.connect() as connection:
+        plan = connection.exec_driver_sql(
+            "EXPLAIN QUERY PLAN SELECT run_id FROM rank_jobs "
+            "WHERE owner_id = ? AND monitor_target_id = ? AND status = ?",
+            ("tenant-a", "monitor-a", "succeeded"),
+        ).all()
+    assert any(index_name in row[3] for row in plan)
+    assert jobs.get(created["id"], owner_id="tenant-a")["monitor_target_id"] == (
+        "monitor-a"
+    )
+
+    command.downgrade(config, "20260928_0021")
+    assert index_name not in {
+        item["name"] for item in inspect(engine).get_indexes("rank_jobs")
+    }
+    assert jobs.get(created["id"], owner_id="tenant-a")["status"] == "pending"
+    command.upgrade(config, "head")
+    assert index_name in {
+        item["name"] for item in inspect(engine).get_indexes("rank_jobs")
+    }

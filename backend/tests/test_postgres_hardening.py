@@ -66,8 +66,12 @@ def race(action, count=8):
 def test_fresh_postgres_migration_schema_and_bounded_rollback(database, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", database.url.render_as_string(hide_password=False))
     config = Config("alembic.ini")
-    assert ScriptDirectory.from_config(config).get_heads() == ["20260928_0021"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["20261008_0022"]
     command.upgrade(config, "head")
+    baseline_index = "ix_rank_jobs_owner_monitor_status_run"
+    assert baseline_index in {
+        i["name"] for i in inspect(database).get_indexes("rank_jobs")
+    }
     inspector = inspect(database)
     for table in Base.metadata.sorted_tables:
         assert {c.name for c in table.columns} == {
@@ -84,10 +88,16 @@ def test_fresh_postgres_migration_schema_and_bounded_rollback(database, monkeypa
     assert "ix_rank_runs_owner_started_id" not in {
         i["name"] for i in inspect(database).get_indexes("rank_runs")
     }
+    assert baseline_index not in {
+        i["name"] for i in inspect(database).get_indexes("rank_jobs")
+    }
     command.upgrade(config, "head")
     assert ranks.get_run(run_id)["keyword"] == "preserve me"
     assert "ix_rank_runs_owner_started_id" in {
         i["name"] for i in inspect(database).get_indexes("rank_runs")
+    }
+    assert baseline_index in {
+        i["name"] for i in inspect(database).get_indexes("rank_jobs")
     }
 
 
