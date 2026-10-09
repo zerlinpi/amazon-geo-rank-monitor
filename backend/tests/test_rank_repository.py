@@ -195,3 +195,55 @@ def test_verification_analytics_breaks_down_effectiveness_and_reasons() -> None:
     assert len(analytics["daily"]) == 1
     assert analytics["daily"][0]["requested"] == 3
     assert analytics["daily"][0]["cache_hits"] == 1
+
+
+def test_previous_observations_uses_valid_geo_before_current_start() -> None:
+    repository = repo()
+    older = repository.create_run(
+        owner_id="tenant-1", marketplace="amazon.com",
+        keyword="walking pad", requested_probe_count=1,
+    )
+    repository.save_observations(older, [observation()])
+    repository.complete_run(older, status="succeeded", settled_probe_count=1)
+    current = repository.create_run(
+        owner_id="tenant-1", marketplace="amazon.com",
+        keyword="walking pad", requested_probe_count=1,
+    )
+    newer = repository.create_run(
+        owner_id="tenant-1", marketplace="amazon.com",
+        keyword="walking pad", requested_probe_count=1,
+    )
+    repository.save_observations(newer, [observation()])
+    repository.complete_run(newer, status="succeeded", settled_probe_count=1)
+    selected = repository.previous_observations(
+        owner_id="tenant-1", marketplace="amazon.com",
+        keyword="walking pad", geo_profile_id="us-ny-10001",
+        exclude_run_id=current,
+    )
+    assert len(selected) == 1
+    assert selected[0].asin == "B0TARGET01"
+
+
+def test_previous_observations_skips_newest_run_without_matching_geo() -> None:
+    repository = repo()
+    older = repository.create_run(
+        owner_id="tenant-1", marketplace="amazon.com",
+        keyword="walking pad", requested_probe_count=1,
+    )
+    repository.save_observations(older, [observation()])
+    repository.complete_run(older, status="succeeded", settled_probe_count=1)
+    empty = repository.create_run(
+        owner_id="tenant-1", marketplace="amazon.com",
+        keyword="walking pad", requested_probe_count=1,
+    )
+    repository.complete_run(empty, status="succeeded", settled_probe_count=0)
+    current = repository.create_run(
+        owner_id="tenant-1", marketplace="amazon.com",
+        keyword="walking pad", requested_probe_count=1,
+    )
+    selected = repository.previous_observations(
+        owner_id="tenant-1", marketplace="amazon.com",
+        keyword="walking pad", geo_profile_id="us-ny-10001",
+        exclude_run_id=current,
+    )
+    assert [item.asin for item in selected] == ["B0TARGET01"]
