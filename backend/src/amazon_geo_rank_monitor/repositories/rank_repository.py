@@ -123,17 +123,40 @@ class RankRepository:
         exclude_run_id: str,
     ) -> list[RankObservation]:
         with self._sessions() as session:
+            current_started_at = session.scalar(
+                select(RankRunRow.started_at).where(
+                    RankRunRow.id == exclude_run_id,
+                    RankRunRow.owner_id.is_(None) if owner_id is None
+                    else RankRunRow.owner_id == owner_id,
+                )
+            )
+            if current_started_at is None:
+                return []
+
+            valid_observation = (
+                select(RankObservationRow.id)
+                .where(
+                    RankObservationRow.rank_run_id == RankRunRow.id,
+                    RankObservationRow.geo_profile_id == geo_profile_id,
+                    RankObservationRow.status.in_(("success_found", "success_not_found")),
+                )
+                .exists()
+            )
             statement = (
-                select(RankRunRow)
+                select(RankRunRow.id)
                 .where(
                     RankRunRow.marketplace == marketplace,
                     RankRunRow.keyword == keyword,
                     RankRunRow.id != exclude_run_id,
                     RankRunRow.status.in_(("succeeded", "partially_succeeded")),
+                    RankRunRow.completed_at.is_not(None),
+                    RankRunRow.completed_at <= current_started_at,
+                    valid_observation,
                 )
                 .order_by(
                     RankRunRow.completed_at.desc(),
                     RankRunRow.started_at.desc(),
+                    RankRunRow.id.desc(),
                 )
                 .limit(1)
             )
@@ -141,15 +164,16 @@ class RankRepository:
                 statement = statement.where(RankRunRow.owner_id.is_(None))
             else:
                 statement = statement.where(RankRunRow.owner_id == owner_id)
-            previous_run = session.scalar(statement)
-            if previous_run is None:
+            previous_run_id = session.scalar(statement)
+            if previous_run_id is None:
                 return []
 
             rows = session.scalars(
                 select(RankObservationRow)
                 .where(
-                    RankObservationRow.rank_run_id == previous_run.id,
+                    RankObservationRow.rank_run_id == previous_run_id,
                     RankObservationRow.geo_profile_id == geo_profile_id,
+                    RankObservationRow.status.in_(("success_found", "success_not_found")),
                 )
                 .order_by(RankObservationRow.id)
             ).all()
