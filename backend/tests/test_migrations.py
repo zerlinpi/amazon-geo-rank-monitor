@@ -192,6 +192,12 @@ def test_alert_baseline_index_upgrade_and_downgrade_preserve_jobs(
         request_payload={"keyword": "trailer hitch"},
     )
     index_name = "ix_rank_jobs_owner_monitor_status_run"
+    # The older baseline migration imports current ORM metadata, which also
+    # creates newly-declared indexes. Remove it to simulate a real pre-0022 DB.
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "DROP INDEX IF EXISTS ix_rank_jobs_owner_monitor_status_run"
+        )
     assert index_name not in {
         item["name"] for item in inspect(engine).get_indexes("rank_jobs")
     }
