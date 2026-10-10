@@ -140,3 +140,56 @@ async def test_service_preserves_provider_verification_level() -> None:
         observation.verification_level == VerificationLevel.STRICT
         for observation in repository.observations
     )
+
+
+class UnexpectedFailureProvider(RecordingProvider):
+    def __init__(self, failed_geos: set[str]) -> None:
+        super().__init__()
+        self.failed_geos = failed_geos
+
+    async def search(self, *, marketplace, keyword, geo_profile, device, search_depth):
+        if geo_profile.id in self.failed_geos:
+            self.calls.append(geo_profile.id)
+            raise RuntimeError("sensitive-token=do-not-expose")
+        return await super().search(
+            marketplace=marketplace,
+            keyword=keyword,
+            geo_profile=geo_profile,
+            device=device,
+            search_depth=search_depth,
+        )
+
+
+@pytest.mark.asyncio
+async def test_unexpected_provider_failure_isolated_per_geo() -> None:
+    provider = UnexpectedFailureProvider({"la"})
+    repository = RecordingRepository()
+    service = RankMonitorService(provider=provider, repository=repository)
+
+    result = await service.check_with_result(request())
+
+    assert provider.calls == ["ny", "la", "tx"]
+    assert result.status == "partially_succeeded"
+    assert len(result.observations) == 4
+    assert result.primary_upstream_probe_count == 2
+    assert repository.completed["settled_probe_count"] == 2
+    assert repository.completed["error_summary"] == "la: provider_unexpected_error"
+    assert "sensitive-token" not in str(result.errors)
+
+
+@pytest.mark.asyncio
+async def test_all_unexpected_provider_failures_complete_failed_run() -> None:
+    provider = UnexpectedFailureProvider({"ny", "la", "tx"})
+    repository = RecordingRepository()
+    service = RankMonitorService(provider=provider, repository=repository)
+
+    result = await service.check_with_result(request())
+
+    assert provider.calls == ["ny", "la", "tx"]
+    assert result.status == "failed"
+    assert result.observations == []
+    assert result.snapshots == []
+    assert result.primary_upstream_probe_count == 0
+    assert repository.completed["settled_probe_count"] == 0
+    assert repository.completed["error_summary"].count("provider_unexpected_error") == 3
+    assert "sensitive-token" not in repository.completed["error_summary"]
