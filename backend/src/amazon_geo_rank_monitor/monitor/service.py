@@ -120,6 +120,19 @@ class RankMonitorService:
                     errors.append(f"{geo_profile.id}: {exc}")
                     failed_geo_profiles.append(geo_profile)
                     continue
+                except Exception as exc:
+                    # Provider SDKs can throw exceptions outside our domain hierarchy.
+                    # Do not leak exception messages: they may contain proxy credentials
+                    # or raw upstream request details.
+                    logger.warning(
+                        "unexpected_provider_error run_id=%s geo_profile_id=%s exception_type=%s",
+                        run_id,
+                        geo_profile.id,
+                        type(exc).__name__,
+                    )
+                    errors.append(f"{geo_profile.id}: provider_unexpected_error")
+                    failed_geo_profiles.append(geo_profile)
+                    continue
                 primary_upstream_probe_count += 1
                 if self._probe_cache is not None and self._provider_mode is not None:
                     try:
