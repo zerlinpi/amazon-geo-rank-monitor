@@ -35,7 +35,7 @@ def match_asins(
     Organic and sponsored ranks are derived from their respective ordered
     collections so ads never inflate the organic rank.
     """
-    organic = _ranked_index_by_asin(result.organic_products)
+    organic = _ranked_index_by_asin(result.organic_products[:search_depth])
     sponsored = _ranked_index_by_asin(result.sponsored_products)
 
     normalized_asins: list[str] = []
