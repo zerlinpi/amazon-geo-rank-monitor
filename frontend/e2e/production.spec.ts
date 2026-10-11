@@ -57,12 +57,22 @@ test('email configuration notices recover from errors and reflect configuration 
 
 test('sending a report without SMTP records a visible failure and zero deliveries', async ({ page, context }, info) => {
   const csrf = (await context.cookies()).find(c => c.name === 'agrm_csrf')!.value
-  const monitors = await context.request.get('http://127.0.0.1:8000/api/v1/monitors')
-  expect(monitors.ok()).toBe(true)
+  const headers = { 'X-CSRF-Token': csrf }
+  const geo = await context.request.post('http://127.0.0.1:8000/api/v1/geo-profiles', { headers, data: {
+    id: `report-${info.project.name}`, name: 'Report New York', marketplace: 'amazon.com',
+    ip_country: 'US', delivery_country: 'US', delivery_postal_code: '10001', weight: 100,
+  } })
+  expect(geo.status()).toBe(201)
+  const monitor = await context.request.post('http://127.0.0.1:8000/api/v1/monitors', { headers, data: {
+    name: 'Report monitor', marketplace: 'amazon.com', keyword: 'report delivery fixture',
+    asins: ['B0TARGET01'], geo_profile_ids: [(await geo.json()).id],
+    provider_mode: 'managed', search_depth: 100,
+  } })
+  expect(monitor.status()).toBe(201)
   const name = `Email configuration regression ${info.project.name}`
   const schedule = await context.request.post('http://127.0.0.1:8000/api/v1/reports/schedules', {
-    headers: { 'X-CSRF-Token': csrf }, data: {
-      name, monitor_target_ids: [(await monitors.json())[0].id],
+    headers, data: {
+      name, monitor_target_ids: [(await monitor.json()).id],
       recipients: ['fixture@example.com'], schedule: '0 9 * * 1',
       lookback_hours: 168, include_csv: true, enabled: true,
     },
