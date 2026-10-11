@@ -25,6 +25,63 @@ async function history(page) {
   await expect(page.getByText('Page 1 · 50 runs · newest first')).toBeVisible()
 }
 
+test('email configuration notices recover from errors and reflect configuration changes', async ({ page }) => {
+  const endpoint = '**/api/v1/notifications/status'
+  const warning = page.getByText('Email delivery is not configured', { exact: true })
+  const refresh = page.getByRole('button', { name: 'Refresh delivery status', exact: true })
+  await page.route(endpoint, route => route.fulfill({
+    status: 503, json: { detail: 'Fixture unavailable' },
+  }), { times: 1 })
+  await page.goto('/#/workspace/alerts')
+  await expect(page.getByText('Unable to load email configuration', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create alert', exact: true })).toBeEnabled()
+  await refresh.click()
+  await expect(warning).toBeVisible()
+  await page.route(endpoint, route => route.fulfill({
+    json: { email: { configured: true } },
+  }), { times: 1 })
+  await refresh.click()
+  await expect(warning).toBeHidden()
+
+  await page.goto('/#/ranking/analytics')
+  await expect(warning).toBeVisible()
+  await page.goto('/#/workspace/system-status')
+  await expect(warning).toBeVisible()
+  await page.route(endpoint, route => route.fulfill({
+    json: { email: { configured: true } },
+  }), { times: 1 })
+  await refresh.click()
+  await expect(page.getByText('Email delivery configured', { exact: true })).toBeVisible()
+  await expect(page.getByText('Configuration does not guarantee delivery.', { exact: false })).toBeVisible()
+})
+
+test('sending a report without SMTP records a visible failure and zero deliveries', async ({ page, context }, info) => {
+  const csrf = (await context.cookies()).find(c => c.name === 'agrm_csrf')!.value
+  const monitors = await context.request.get('http://127.0.0.1:8000/api/v1/monitors')
+  expect(monitors.ok()).toBe(true)
+  const name = `Email configuration regression ${info.project.name}`
+  const schedule = await context.request.post('http://127.0.0.1:8000/api/v1/reports/schedules', {
+    headers: { 'X-CSRF-Token': csrf }, data: {
+      name, monitor_target_ids: [(await monitors.json())[0].id],
+      recipients: ['fixture@example.com'], schedule: '0 9 * * 1',
+      lookback_hours: 168, include_csv: true, enabled: true,
+    },
+  })
+  expect(schedule.status()).toBe(201)
+  const id = (await schedule.json()).id
+  await page.goto('/#/ranking/analytics')
+  const response = page.waitForResponse(r => r.url().endsWith(`/api/v1/reports/schedules/${id}/send`))
+  await page.getByRole('row').filter({ hasText: name }).getByRole('button', { name: 'Send now', exact: true }).click()
+  expect((await response).status()).toBe(200)
+  const delivery = await (await response).json()
+  expect(delivery.status).toBe('failed')
+  expect(delivery.sent_count).toBe(0)
+  const history = page.locator('.el-card').filter({ has: page.getByText('Report delivery history', { exact: true }) })
+  await expect(history.getByText('0/1', { exact: true })).toBeVisible()
+  await expect(history.getByText('failed', { exact: true })).toBeVisible()
+  await expect(history.getByText('Email delivery is not configured', { exact: true })).toBeVisible()
+})
+
 test('50-row pages and lazy detail loading', async ({ page }) => {
   const details: string[] = []
   page.on('request', r => {

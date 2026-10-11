@@ -19,6 +19,10 @@ Local SQLite remains useful for development; use PostgreSQL for multiple workers
    Set Stripe return URLs to the public billing page (hash routes where applicable).
 4. Configure SMTP host/port/from/login and STARTTLS. Console delivery does not send
    email; verification, recovery, invitations, alerts and reports need working SMTP.
+   Missing SMTP is recorded as a failed alert/report delivery with zero report
+   recipients sent. Check the configuration notice in Workspace → System Status;
+   it does not test connectivity or mailbox delivery. Apply settings to API,
+   worker and scheduler together and restart all three after changing them.
    Confirm delivery in an isolated test account before opening public signup.
 5. Set provider credentials only when enabling live collection. Managed Oxylabs
    requires `OXYLABS_USERNAME/PASSWORD`; strict probes require the residential

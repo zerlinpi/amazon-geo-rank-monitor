@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Email delivery status
+
+- Record missing SMTP as a failed email alert/report attempt instead of a false
+  success; preserve report idempotency and independent webhook delivery.
+- Add an authenticated, read-only notification configuration endpoint that exposes
+  no SMTP secrets and performs no network probes.
+- Show email configuration, request failure/retry and delivery error feedback in
+  Rank Alerts, Analytics & Reports and System Status.
+- Preserve privacy-safe registration/recovery responses and token-safe logging.
+- Cover configuration, delivery failure and recovery in backend and browser tests.
+
+No schema change. Current migration head remains `20261008_0022`.
+Existing delivery history is retained; failed attempts are not automatically replayed.
+
 ## Unreleased — Phase 33 staging release readiness
 
 - Add `agrm-readiness` for secret-safe production-style configuration checks.

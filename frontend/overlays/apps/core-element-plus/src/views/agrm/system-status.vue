@@ -9,6 +9,7 @@ import type {
 } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
+import EmailDeliveryNotice from './components/EmailDeliveryNotice.vue'
 
 defineOptions({ name: 'SystemStatus' })
 
@@ -209,6 +210,8 @@ onUnmounted(() => {
       </div>
       <el-button @click="load()">Refresh</el-button>
     </div>
+
+    <EmailDeliveryNotice show-configured />
 
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <el-card shadow="never">

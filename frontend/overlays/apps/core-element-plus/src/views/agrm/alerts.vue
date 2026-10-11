@@ -8,6 +8,7 @@ import type {
 } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
+import EmailDeliveryNotice from './components/EmailDeliveryNotice.vue'
 
 defineOptions({ name: 'RankAlerts' })
 
@@ -333,6 +334,8 @@ onMounted(async () => {
       <el-button type="primary" @click="openCreate">Create alert</el-button>
     </div>
 
+    <EmailDeliveryNotice />
+
     <el-card shadow="never" v-loading="loading">
       <template #header><span class="font-medium">Alert rules</span></template>
       <el-table :data="rules" empty-text="No alert rules yet">
@@ -409,14 +412,17 @@ onMounted(async () => {
         <el-table-column label="Delivery" min-width="180">
           <template #default="{ row }">
             <div class="flex flex-wrap gap-1">
-              <el-tag
+              <div
                 v-for="delivery in row.deliveries"
                 :key="delivery.id"
-                :type="delivery.status === 'sent' ? 'success' : 'danger'"
-                size="small"
               >
-                {{ delivery.channel_type }} · {{ delivery.status }}
-              </el-tag>
+                <el-tag :type="delivery.status === 'sent' ? 'success' : 'danger'" size="small">
+                  {{ delivery.channel_type }} · {{ delivery.status }}
+                </el-tag>
+                <div v-if="delivery.error" class="text-xs text-muted-foreground mt-1">
+                  {{ delivery.error }}
+                </div>
+              </div>
               <span v-if="!row.deliveries.length" class="text-xs text-muted-foreground">No delivery</span>
             </div>
           </template>

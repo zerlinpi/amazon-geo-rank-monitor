@@ -307,6 +307,7 @@ def build_services(settings: AppSettings) -> AppServices:
         analytics=analytics,
         report_repository=report_repository,
         reports=reports,
+        email_delivery_configured=bool(settings.smtp_host and settings.smtp_from_email),
         billing_repository=billing,
         rate_card=RateCard(
             managed_serp=settings.managed_serp_credit_cost,

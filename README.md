@@ -1029,7 +1029,11 @@ Login success, login failure, lockouts, reset requests/completions, registration
 
 ### Email delivery
 
-Development defaults to a console/log email sender. Production can use SMTP:
+Without SMTP configuration, the fallback sender does not send mail or log message
+bodies, recipients, verification links or reset tokens. Email alert attempts and
+scheduled report attempts are recorded as `failed` with
+`Email delivery is not configured`; reports have `sent_count=0`.
+Other alert channels can still deliver independently. Configure SMTP to enable email:
 
 ```env
 PUBLIC_WEB_URL=https://app.example.com
@@ -1043,6 +1047,31 @@ SMTP_PASSWORD=...
 SMTP_FROM_EMAIL=no-reply@example.com
 SMTP_STARTTLS=true
 ```
+
+Apply the same settings to the API, worker and scheduler, then restart those
+processes. **Workspace → Rank Alerts**, **Ranking → Analytics & Reports** and
+**Workspace → System Status** show a warning when email is not configured, with
+**Refresh delivery status** to recheck. Rules and schedules can still be prepared.
+If the status request fails, the notice reports that failure and offers a retry.
+System Status also shows when email is configured.
+
+`GET /api/v1/notifications/status` requires authentication and `monitors:read`.
+It returns only `{"email":{"configured":true}}` (or `false`), with no SMTP host,
+credentials or sender address. This is a configuration check of the API process,
+not an SMTP connection test or proof of mailbox delivery. In non-Compose deployments,
+ensure the worker and scheduler have the same configuration. Use the
+[staging readiness runbook](docs/STAGING_READINESS.md) for live integration checks.
+
+Review **Recent alert events → Delivery** and **Report delivery history** for the
+result and safe error reason for each attempt. `sent` means the SMTP server accepted
+the message, not that it reached the inbox. Failed attempts remain in history and
+are not automatically replayed; after fixing configuration, use a report's
+**Send now** action or wait for the next scheduled report/new alert event. Existing
+historical statuses are not rewritten by this update.
+
+Registration and password recovery keep their privacy-safe responses even if email
+cannot be sent. A recovery response does not reveal whether an account exists or
+whether its message was delivered. Verify SMTP before enabling public signup.
 
 The sender abstraction is intentionally separate from account logic, so a managed provider such as SES, Postmark or Resend can replace SMTP later without changing recovery-token behavior.
 

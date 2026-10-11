@@ -555,6 +555,10 @@ export interface ReportSchedulePayload {
   enabled: boolean
 }
 
+export interface NotificationStatus {
+  email: { configured: boolean }
+}
+
 export interface ReportDelivery {
   id: string
   owner_id: string
@@ -1018,6 +1022,7 @@ export const agrmApi = {
   getReportDeliveries: (limit = 100) => data<ReportDelivery[]>(
     client.get('/api/v1/reports/deliveries', { params: { limit } }),
   ),
+  getNotificationStatus: () => data<NotificationStatus>(client.get('/api/v1/notifications/status')),
   getAlertRules: () => data<AlertRule[]>(client.get('/api/v1/alerts/rules')),
   createAlertRule: (payload: AlertRulePayload) => data<AlertRule>(
     client.post('/api/v1/alerts/rules', payload),

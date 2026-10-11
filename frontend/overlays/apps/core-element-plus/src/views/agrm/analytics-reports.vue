@@ -10,6 +10,7 @@ import type {
 } from '@/api/agrm'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
+import EmailDeliveryNotice from './components/EmailDeliveryNotice.vue'
 
 defineOptions({ name: 'AnalyticsReports' })
 
@@ -497,6 +498,8 @@ onMounted(load)
     />
 
     <template v-else>
+      <EmailDeliveryNotice />
+
       <el-card shadow="never" v-loading="reportsLoading">
         <template #header>
           <div class="flex flex-wrap items-center justify-between gap-3">

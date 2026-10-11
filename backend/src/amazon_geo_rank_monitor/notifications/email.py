@@ -5,7 +5,16 @@ import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
 
+from amazon_geo_rank_monitor.domain.errors import EmailNotConfiguredError
+
 logger = logging.getLogger("amazon_geo_rank_monitor.email")
+
+
+def email_delivery_error(exc: Exception) -> str:
+    """Describe failures without persisting provider responses or credentials."""
+    if isinstance(exc, EmailNotConfiguredError):
+        return "Email delivery is not configured"
+    return f"email delivery failed ({type(exc).__name__})"
 
 
 @dataclass(frozen=True)
@@ -36,6 +45,7 @@ class ConsoleEmailSender:
             "email_not_sent smtp_not_configured attachment_count=%s",
             len(attachments or []),
         )
+        raise EmailNotConfiguredError("Email delivery is not configured")
 
 
 class MemoryEmailSender:
