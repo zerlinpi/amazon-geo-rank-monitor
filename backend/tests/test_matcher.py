@@ -64,3 +64,53 @@ def test_duplicate_asins_do_not_duplicate_observations() -> None:
         verification_level=VerificationLevel.MANAGED,
     )
     assert len(observations) == 1
+
+
+def test_organic_rank_at_search_depth_boundary_is_found() -> None:
+    result = SerpResult(
+        organic_products=[
+            SerpProduct(asin=f"B0RANK{i:05d}", position=i + 3, page=(i - 1) // 20 + 1)
+            for i in range(1, 102)
+        ]
+    )
+    obs = match_asins(
+        result,
+        ["B0RANK00100"],
+        search_depth=100,
+        geo_profile_id="us-ny-10001",
+        provider="oxylabs",
+        verification_level=VerificationLevel.MANAGED,
+    )[0]
+    assert obs.status == ProbeStatus.SUCCESS_FOUND
+    assert obs.found is True
+    assert obs.organic_rank == 100
+    assert obs.absolute_rank == 103
+    assert obs.effective_rank == 100
+    assert obs.page == 5
+
+
+def test_organic_rank_beyond_depth_is_missing_even_when_sponsored() -> None:
+    result = SerpResult(
+        organic_products=[
+            SerpProduct(asin=f"B0RANK{i:05d}", position=i + 3, page=(i - 1) // 20 + 1)
+            for i in range(1, 102)
+        ],
+        sponsored_products=[
+            SerpProduct(asin="B0RANK00101", position=1, page=1, sponsored=True)
+        ],
+    )
+    obs = match_asins(
+        result,
+        ["B0RANK00101"],
+        search_depth=100,
+        geo_profile_id="us-ny-10001",
+        provider="oxylabs",
+        verification_level=VerificationLevel.MANAGED,
+    )[0]
+    assert obs.status == ProbeStatus.SUCCESS_NOT_FOUND
+    assert obs.found is False
+    assert obs.organic_rank is None
+    assert obs.absolute_rank is None
+    assert obs.sponsored_rank == 1
+    assert obs.effective_rank == 101
+    assert obs.page is None
