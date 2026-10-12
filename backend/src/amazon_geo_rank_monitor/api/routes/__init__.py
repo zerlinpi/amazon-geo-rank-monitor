@@ -6,6 +6,7 @@ from .billing import router as billing_router
 from .competitive import router as competitive_router
 from .geo_profiles import router as geo_profiles_router
 from .monitors import router as monitors_router
+from .notifications import router as notifications_router
 from .rank import router as rank_router
 from .reports import router as reports_router
 from .scim import router as scim_router
@@ -21,6 +22,7 @@ __all__ = [
     "competitive_router",
     "geo_profiles_router",
     "monitors_router",
+    "notifications_router",
     "rank_router",
     "reports_router",
     "scim_router",

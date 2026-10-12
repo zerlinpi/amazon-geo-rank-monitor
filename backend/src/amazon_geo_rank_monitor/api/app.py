@@ -28,6 +28,7 @@ from .routes import (
     competitive_router,
     geo_profiles_router,
     monitors_router,
+    notifications_router,
     rank_router,
     reports_router,
     scim_router,
@@ -55,6 +56,7 @@ class AppServices:
     analytics: Any | None = None
     report_repository: Any | None = None
     reports: Any | None = None
+    email_delivery_configured: bool = False
     billing_repository: Any | None = None
     rate_card: Any | None = None
     auto_strict_verifier: Any | None = None
@@ -291,6 +293,7 @@ def create_app(
     app.include_router(team_router)
     app.include_router(geo_profiles_router)
     app.include_router(monitors_router)
+    app.include_router(notifications_router)
     app.include_router(rank_router)
     app.include_router(reports_router)
     app.include_router(scim_router)

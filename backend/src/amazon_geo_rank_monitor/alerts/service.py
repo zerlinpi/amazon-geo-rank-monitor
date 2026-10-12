@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
+from amazon_geo_rank_monitor.notifications.email import email_delivery_error
 from amazon_geo_rank_monitor.ranking.preferred import preferred_observations
 
 logger = logging.getLogger("amazon_geo_rank_monitor.alerts")
@@ -894,7 +895,7 @@ class AlertService:
                     channel_type="email",
                     destination=address,
                     status="failed",
-                    error=f"email delivery failed ({type(exc).__name__})",
+                    error=email_delivery_error(exc),
                 )
 
         slack_url = channels.get("slack_webhook_url")

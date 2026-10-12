@@ -18,6 +18,10 @@ class ConfigurationError(RankMonitorError):
     """Raised when required runtime configuration is missing or invalid."""
 
 
+class EmailNotConfiguredError(ConfigurationError):
+    """Raised when email delivery is requested without an SMTP configuration."""
+
+
 class UpstreamBlockedError(ProviderUnavailableError):
     """Raised when the upstream presents a robot or CAPTCHA challenge."""
 

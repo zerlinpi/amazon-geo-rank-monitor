@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from amazon_geo_rank_monitor.notifications.email import EmailAttachment
+from amazon_geo_rank_monitor.notifications.email import EmailAttachment, email_delivery_error
 from amazon_geo_rank_monitor.scheduling.cron import normalize_schedule
 
 
@@ -225,7 +225,7 @@ class ReportService:
                     )
                     sent_count += 1
                 except Exception as exc:
-                    errors.append(f"email delivery failed ({type(exc).__name__})")
+                    errors.append(email_delivery_error(exc))
 
             if sent_count == len(recipients):
                 status = "sent"

@@ -19,6 +19,7 @@ from amazon_geo_rank_monitor.api.rate_limit import (
     RedisWindowRateLimiter,
     ResilientRateLimiter,
 )
+from amazon_geo_rank_monitor.domain.errors import EmailNotConfiguredError
 from amazon_geo_rank_monitor.notifications.email import ConsoleEmailSender
 from amazon_geo_rank_monitor.repositories.models import RankObservationRow
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
@@ -73,7 +74,7 @@ def test_successful_strict_result_prevents_obsolete_managed_geo_alert(rule_type,
 
 
 def test_console_email_never_logs_authentication_links(caplog):
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO), pytest.raises(EmailNotConfiguredError):
         ConsoleEmailSender().send(
             to="fixture@example.com", subject="Reset your password",
             text="https://example.com/reset?token=secret-reset-token",
