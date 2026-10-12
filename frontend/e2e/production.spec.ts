@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test'
 
 test.beforeEach(async ({ page, context }, info) => {
+  // Capture only status and path: auth bodies, headers and query strings contain secrets.
+  const apiResponses: { method: string, path: string, status: number }[] = []
+  page.on('response', (response) => {
+    const path = new URL(response.url()).pathname
+    if (path.startsWith('/api/v1/')) {
+      apiResponses.push({ method: response.request().method(), path, status: response.status() })
+    }
+  })
   await context.route('**/*', async (route) => {
     const host = new URL(route.request().url()).hostname
     if (!['127.0.0.1', 'localhost'].includes(host)) {
@@ -11,8 +19,18 @@ test.beforeEach(async ({ page, context }, info) => {
   await page.goto('/#/login')
   await page.getByPlaceholder('you@company.com').fill(`${info.project.name}@example.com`)
   await page.locator('input[autocomplete="current-password"]').fill('offline-secure-password')
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page).toHaveURL(/\/#\/$/)
+  const [login] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/auth/login'
+      && response.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Sign in', exact: true }).click(),
+  ])
+  expect(login.status(), 'Sign-in API response status').toBe(200)
+  try {
+    await expect(page).toHaveURL(/\/#\/$/)
+  }
+  catch (error) {
+    throw new Error(`Sign-in navigation failed; API responses: ${JSON.stringify(apiResponses)}`, { cause: error })
+  }
   await expect(page.getByRole('heading', { name: /Geo Rank|Dashboard|Rank overview/i }).first()).toBeVisible()
   const cookies = await context.cookies()
   expect(cookies.find(c => c.name === 'agrm_session')?.httpOnly).toBe(true)
