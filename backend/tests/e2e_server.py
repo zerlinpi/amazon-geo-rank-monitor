@@ -9,6 +9,7 @@ from uuid import uuid4
 from offline_stack import build_offline_services, offline_worker
 
 from amazon_geo_rank_monitor.api.app import create_app
+from amazon_geo_rank_monitor.api.rate_limit import FixedWindowRateLimiter
 from amazon_geo_rank_monitor.domain.models import RankSnapshot
 from amazon_geo_rank_monitor.repositories.models import RankRunRow
 
@@ -58,8 +59,10 @@ async def lifespan(app):
         directory.cleanup()
 
 
-app = create_app(
-    services, cors_origins=["http://127.0.0.1:4173"],
-    api_rate_limit_per_minute=10000, auth_rate_limit_per_minute=1000,
-)
+# Browser journeys share one client IP. Runtime services already own their limiters,
+# so create_app's fallback limits do not override them. Keep this load allowance
+# inside the fixture; production rate limits have dedicated backend coverage.
+services.rate_limiter = FixedWindowRateLimiter(requests_per_minute=10000)
+services.auth_rate_limiter = FixedWindowRateLimiter(requests_per_minute=1000)
+app = create_app(services, cors_origins=["http://127.0.0.1:4173"])
 app.router.lifespan_context = lifespan
