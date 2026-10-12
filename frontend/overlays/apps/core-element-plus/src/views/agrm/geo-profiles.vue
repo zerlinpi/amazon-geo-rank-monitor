@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { agrmApi, type GeoProfile } from '@/api/agrm'
+import { apiErrorMessage } from '@/utils/api-error'
 
 defineOptions({ name: 'GeoProfiles' })
 
@@ -8,7 +9,10 @@ const rows = ref<GeoProfile[]>([])
 const loading = ref(false)
 const dialog = ref(false)
 const submitting = ref(false)
-const form = reactive({
+const loadError = ref('')
+const formError = ref('')
+const advanced = ref<string[]>([])
+const defaults = () => ({
   name: '',
   marketplace: 'amazon.com',
   ip_country: 'US',
@@ -21,11 +25,25 @@ const form = reactive({
   weight: 10,
   enabled: true,
 })
+const form = reactive(defaults())
+
+watch(dialog, (open) => {
+  if (open) {
+    Object.assign(form, defaults())
+    formError.value = ''
+    advanced.value = []
+  }
+})
 
 async function load() {
+  if (loading.value) return
   loading.value = true
+  loadError.value = ''
   try {
     rows.value = await agrmApi.getGeoProfiles()
+  }
+  catch {
+    loadError.value = 'Unable to load regions. Please try again.'
   }
   finally {
     loading.value = false
@@ -33,8 +51,10 @@ async function load() {
 }
 
 async function create() {
+  if (submitting.value) return
+  formError.value = ''
   if (!form.name.trim() || !form.delivery_postal_code.trim() || form.weight <= 0) {
-    ElMessage.warning('Name, delivery ZIP and positive weight are required')
+    formError.value = 'Name, delivery ZIP and positive weight are required.'
     return
   }
   submitting.value = true
@@ -56,8 +76,8 @@ async function create() {
     dialog.value = false
     await load()
   }
-  catch (error: any) {
-    ElMessage.error(error.response?.data?.detail || 'Failed to create Geo Profile')
+  catch (error) {
+    formError.value = apiErrorMessage(error, 'Unable to create this region. Your input has been kept; please try again.')
   }
   finally {
     submitting.value = false
@@ -77,9 +97,14 @@ onMounted(load)
           IP geography and Amazon Deliver-to address are intentionally stored separately.
         </p>
       </div>
-      <el-button type="primary" @click="dialog = true">Add Geo Profile</el-button>
+      <div class="flex flex-wrap gap-2">
+        <el-button :loading="loading" @click="load">Refresh</el-button>
+        <el-button @click="$router.push('/ranking/monitors')">Go to monitors</el-button>
+        <el-button type="primary" @click="dialog = true">Add Geo Profile</el-button>
+      </div>
     </div>
 
+    <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
     <el-card shadow="never" v-loading="loading">
       <el-table :data="rows">
         <el-table-column prop="name" label="Name" min-width="150" />
@@ -101,34 +126,40 @@ onMounted(load)
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialog" title="Add Geo Profile" width="min(720px, 92vw)">
-      <el-form label-position="top">
-        <el-form-item label="Name">
-          <el-input v-model="form.name" placeholder="New York · 10001" />
+    <el-dialog v-model="dialog" title="Add Geo Profile" width="min(720px, 92vw)" :close-on-click-modal="false" :close-on-press-escape="!submitting" :show-close="!submitting">
+      <el-form label-position="top" :disabled="submitting">
+        <el-alert v-if="formError" :title="formError" type="error" :closable="false" class="mb-4" />
+        <el-form-item label="Name" for="geo-name">
+          <el-input id="geo-name" v-model="form.name" placeholder="New York · 10001" />
         </el-form-item>
-        <div class="grid gap-x-4 md:grid-cols-3">
-          <el-form-item label="IP country">
-            <el-input v-model="form.ip_country" />
-          </el-form-item>
-          <el-form-item label="IP state">
-            <el-input v-model="form.ip_state" placeholder="NY" />
-          </el-form-item>
-          <el-form-item label="IP city">
-            <el-input v-model="form.ip_city" placeholder="New York" />
-          </el-form-item>
-        </div>
-        <el-form-item label="IP postal code">
-          <el-input v-model="form.ip_postal_code" placeholder="10001" />
+        <el-form-item label="Delivery postal code" for="geo-delivery-zip">
+          <el-input id="geo-delivery-zip" v-model="form.delivery_postal_code" placeholder="10001" />
         </el-form-item>
-        <el-divider content-position="left">Amazon Deliver-to</el-divider>
-        <div class="grid gap-x-4 md:grid-cols-2">
-          <el-form-item label="Delivery country">
-            <el-input v-model="form.delivery_country" />
-          </el-form-item>
-          <el-form-item label="Delivery postal code">
-            <el-input v-model="form.delivery_postal_code" placeholder="10001" />
-          </el-form-item>
-        </div>
+        <p class="text-sm text-muted-foreground mb-4">Amazon.com · US · Desktop. Start with a delivery ZIP for Managed monitoring. Configure requested IP geography below if you need Strict verification.</p>
+        <el-collapse v-model="advanced">
+          <el-collapse-item title="Advanced region settings" name="advanced">
+            <div class="grid gap-x-4 md:grid-cols-3">
+              <el-form-item label="IP country">
+                <el-input v-model="form.ip_country" />
+              </el-form-item>
+              <el-form-item label="IP state">
+                <el-input v-model="form.ip_state" placeholder="NY" />
+              </el-form-item>
+              <el-form-item label="IP city">
+                <el-input v-model="form.ip_city" placeholder="New York" />
+              </el-form-item>
+            </div>
+            <el-form-item label="IP postal code">
+              <el-input v-model="form.ip_postal_code" placeholder="10001" />
+            </el-form-item>
+            <el-divider content-position="left">Amazon Deliver-to</el-divider>
+            <div class="grid gap-x-4 md:grid-cols-2">
+              <el-form-item label="Delivery country">
+                <el-input v-model="form.delivery_country" />
+              </el-form-item>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
         <div class="grid gap-x-4 md:grid-cols-2">
           <el-form-item label="Device">
             <el-select v-model="form.device" class="w-full">
@@ -142,7 +173,7 @@ onMounted(load)
         </div>
       </el-form>
       <template #footer>
-        <el-button @click="dialog = false">Cancel</el-button>
+        <el-button :disabled="submitting" @click="dialog = false">Cancel</el-button>
         <el-button type="primary" :loading="submitting" @click="create">Create</el-button>
       </template>
     </el-dialog>

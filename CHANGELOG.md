@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — Practical monitor workflow
+
+- Fix browser Geo Profile creation returning 422 because the API required an ID
+  that the repository replaces with its own generated ID. Preserve legacy input
+  compatibility, field validation and workspace isolation.
+- Simplify region/monitor forms with advanced settings and UTC frequency presets;
+  keep custom cron and make existing monitors editable without resetting their
+  automatic verification overrides or deleting history.
+- Replace the wide fixed monitor action column with responsive, searchable cards.
+- Show recent monitor jobs and automatically refresh active job status, with
+  recoverable read failures and direct links to exact run details.
+- Guard repeated queue submissions while a request is pending and treat cancelled
+  strict confirmation as cancellation, not an error.
+- Add browser journeys for mobile creation/edit/run/results, save/load recovery,
+  policy preservation and status-refresh failures without duplicate submission.
+
+No schema migration or new dependencies. Provider calls remain explicit manual
+runs or configured schedules; external production readiness is a separate check.
+
 ## Unreleased — Email delivery status
 
 - Record missing SMTP as a failed email alert/report attempt instead of a false

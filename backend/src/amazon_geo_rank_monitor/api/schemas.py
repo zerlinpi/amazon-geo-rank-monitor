@@ -1,6 +1,14 @@
+from uuid import uuid4
+
 from pydantic import BaseModel, Field, field_validator
 
 from amazon_geo_rank_monitor.auth.api_keys import normalize_scopes
+from amazon_geo_rank_monitor.domain.models import GeoProfile
+
+
+class GeoProfileCreate(GeoProfile):
+    # The repository owns persisted IDs. Legacy clients may still send an ID.
+    id: str = Field(default_factory=lambda: str(uuid4()), min_length=1)
 
 
 class MonitorCreate(BaseModel):

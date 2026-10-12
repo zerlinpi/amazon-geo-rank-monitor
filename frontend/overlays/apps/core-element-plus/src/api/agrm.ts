@@ -1043,7 +1043,11 @@ export const agrmApi = {
     client.patch('/api/v1/monitors/' + id, payload),
   ),
   deleteMonitor: (id: string) => data<void>(client.delete('/api/v1/monitors/' + id)),
-  runMonitor: (id: string, force_strict_verification = false) => data<any>(
+  getMonitorHistory: (id: string, limit = 10) => data<{ job: RankJob, run: RankRun | null }[]>(
+    client.get('/api/v1/monitors/' + id + '/history', { params: { limit } }),
+  ),
+  getJob: (id: string) => data<RankJob>(client.get('/api/v1/jobs/' + id)),
+  runMonitor: (id: string, force_strict_verification = false) => data<RankJob>(
     client.post('/api/v1/monitors/' + id + '/run', {
       force_strict_verification,
     }),
