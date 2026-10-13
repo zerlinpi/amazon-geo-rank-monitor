@@ -97,6 +97,13 @@ def configuration_checks(settings: AppSettings) -> list[ReadinessCheck]:
             else "CORS_ORIGINS must contain only HTTPS origins",
         ),
         _result(
+            "smtp_auth_requires_tls",
+            not (settings.smtp_username and not settings.smtp_starttls),
+            "SMTP authentication uses STARTTLS or no authentication is configured"
+            if not (settings.smtp_username and not settings.smtp_starttls)
+            else "SMTP_USERNAME requires SMTP_STARTTLS=true",
+        ),
+        _result(
             "smtp_configured",
             bool(settings.smtp_host and settings.smtp_from_email),
             "SMTP host and sender configured"
@@ -139,6 +146,8 @@ def configuration_checks(settings: AppSettings) -> list[ReadinessCheck]:
 def _smtp_live_probe(settings: AppSettings) -> None:
     if not settings.smtp_host or not settings.smtp_from_email:
         raise RuntimeError("SMTP is not configured")
+    if settings.smtp_username and not settings.smtp_starttls:
+        raise ValueError("SMTP authentication requires STARTTLS")
     with smtplib.SMTP(
         settings.smtp_host,
         settings.smtp_port,
