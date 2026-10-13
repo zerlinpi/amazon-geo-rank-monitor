@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
 
@@ -115,13 +116,16 @@ class SmtpEmailSender:
                 filename=attachment.filename,
             )
 
+        if self._username and not self._starttls:
+            raise ValueError("SMTP authentication requires STARTTLS")
+
         with smtplib.SMTP(
             self._host,
             self._port,
             timeout=self._timeout,
         ) as client:
             if self._starttls:
-                client.starttls()
+                client.starttls(context=ssl.create_default_context())
             if self._username:
                 client.login(self._username, self._password or "")
             client.send_message(message)
