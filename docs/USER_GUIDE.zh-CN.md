@@ -83,6 +83,8 @@ docker compose exec -T api alembic current
 
 若请求成功但目标 ASIN 在搜索深度内未找到，通常是 `found=false`、`effective_rank=search_depth+1`。供应商失败要检查错误，不应认定商品掉出排名。
 
+搜索深度按自然结果数量判断，不按估算页数判断。Managed 和 Strict 最多扫描 20 页；到达限制仍无法覆盖目标深度且搜索未结束时，会显示采集错误。更深搜索可能增加上游请求和费用。升级后的新采集使用修正后的排名口径，旧历史不会自动重写；详见 [实际使用验收](ACCEPTANCE.zh-CN.md)。
+
 **成本估算**：一次 SERP 请求可匹配多个 ASIN，账单主要由 GEO 探针次数和验证模式决定，不能用 ASIN × GEO 简单估价。默认 Managed 每探针 1 credit、Strict 每探针 5 credits，但应以当前 Workspace 的费率与结算规则为准。切勿用生产密钥批量实验。
 
 ## 5. 查看历史、趋势与竞品

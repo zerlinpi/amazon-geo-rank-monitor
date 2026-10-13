@@ -117,12 +117,39 @@ def test_capture_merges_channels_and_preserves_cache_provenance() -> None:
     )
     comp = next(row for row in rows if row["asin"] == "COMP1")
     assert len([row for row in rows if row["asin"] == "COMP1"]) == 1
-    assert comp["organic_position"] == 2
+    assert comp["organic_position"] == 1
     assert comp["sponsored_position"] == 1
     assert comp["absolute_position"] == 3
     assert comp["probe_source"] == "cache"
     assert comp["cache_age_seconds"] == 42
     assert comp["title"] == "Competitor One"
+
+
+def test_capture_uses_channel_ranks_and_enforces_organic_depth() -> None:
+    engine, repository, service = build_service()
+    now = datetime.now(UTC)
+    add_run(engine, run_id="bounded-run", completed_at=now)
+    service.capture_probe(
+        owner_id="tenant-a", run_id="bounded-run", geo_profile_id="ny",
+        result=SerpResult(
+            organic_products=[
+                SerpProduct(asin="COMP1", position=4),
+                SerpProduct(asin="OWNED1", position=7),
+                SerpProduct(asin="OUTSIDE", position=8),
+            ],
+            sponsored_products=[SerpProduct(asin="COMP1", position=3, sponsored=True)],
+        ),
+        search_depth=2, probe_source="upstream", cache_age_seconds=None, observed_at=now,
+    )
+    rows = repository.monitor_points(
+        owner_id="tenant-a", monitor_target_id="monitor-1",
+        since=now - timedelta(minutes=1), until=now + timedelta(minutes=1),
+    )
+    positions = {row["asin"]: row for row in rows}
+    assert set(positions) == {"COMP1", "OWNED1"}
+    assert positions["COMP1"]["organic_position"] == 1
+    assert positions["OWNED1"]["organic_position"] == 2
+    assert positions["COMP1"]["sponsored_position"] == 1
 
 
 def test_summary_calculates_share_coverage_and_excludes_tracked_asin() -> None:

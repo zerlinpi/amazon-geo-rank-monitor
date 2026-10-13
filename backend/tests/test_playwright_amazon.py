@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from amazon_geo_rank_monitor.domain.errors import UpstreamBlockedError
+from amazon_geo_rank_monitor.domain.errors import ProviderResponseError, UpstreamBlockedError
 from amazon_geo_rank_monitor.providers.playwright_amazon import (
     PlaywrightAmazonBrowserClient,
     PlaywrightSessionFactory,
@@ -400,3 +400,18 @@ async def test_search_paginates_until_requested_organic_depth() -> None:
         2,
         2,
     ]
+
+
+@pytest.mark.asyncio
+async def test_page_limit_does_not_claim_incomplete_search_is_successful() -> None:
+    page = PagedSearchPage([
+        [FakeCard("B0ORGANIC1", "Organic 1")],
+        [FakeCard("B0ORGANIC2", "Organic 2")],
+    ])
+    client = PlaywrightAmazonBrowserClient(
+        proxy(), session_factory=FakeSessionFactory(page), max_pages=1,
+    )
+    async with client:
+        with pytest.raises(ProviderResponseError, match="depth.*page limit"):
+            await client.search(keyword="hitch", marketplace="amazon.com", search_depth=2)
+    assert page.page_index == 0

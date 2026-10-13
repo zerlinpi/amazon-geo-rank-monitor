@@ -26,9 +26,10 @@ class CompetitiveIntelligenceService:
             return
         products: dict[str, dict] = {}
 
-        def record(items, field: str) -> None:
-            for item in items:
-                if item.position > search_depth:
+        def record(items, field: str, *, channel_rank: bool = False) -> None:
+            for rank, item in enumerate(items, start=1):
+                position = rank if channel_rank else item.position
+                if position > search_depth:
                     continue
                 asin = item.asin.strip().upper()
                 if not asin:
@@ -44,13 +45,13 @@ class CompetitiveIntelligenceService:
                     },
                 )
                 current = row[field]
-                if current is None or item.position < current:
-                    row[field] = item.position
+                if current is None or position < current:
+                    row[field] = position
                 if not row.get("title") and item.title:
                     row["title"] = item.title
 
-        record(result.organic_products, "organic_position")
-        record(result.sponsored_products, "sponsored_position")
+        record(result.organic_products, "organic_position", channel_rank=True)
+        record(result.sponsored_products, "sponsored_position", channel_rank=True)
         record(result.absolute_products, "absolute_position")
         self._repository.save_probe(
             owner_id=owner_id,

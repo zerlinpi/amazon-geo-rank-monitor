@@ -108,6 +108,24 @@ def cache_service(db, *, managed_ttl: int = 300, strict_ttl: int = 0):
 
 
 @pytest.mark.asyncio
+async def test_provider_parser_upgrade_does_not_reuse_older_probe_results() -> None:
+    db = engine()
+    provider = CountingProvider()
+    cache = cache_service(db)
+    service = RankMonitorService(
+        provider=provider, repository=RankRepository(db),
+        probe_cache=cache, provider_mode="managed",
+    )
+    payload = request(geo())
+    await service.check_with_result(payload, owner_id="tenant-a")
+    provider.cache_version = 2
+    upgraded = await service.check_with_result(payload, owner_id="tenant-a")
+    assert upgraded.cache_hit_count == 0
+    assert upgraded.upstream_probe_count == 1
+    assert len(provider.calls) == 2
+
+
+@pytest.mark.asyncio
 async def test_second_identical_probe_uses_cache_and_preserves_provenance() -> None:
     db = engine()
     provider = CountingProvider()
