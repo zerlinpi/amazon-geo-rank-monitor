@@ -165,7 +165,7 @@ async function remove(row: Monitor) {
     await ElMessageBox.confirm(
       `Delete monitor "${row.name}"? Existing rank history will be retained.`,
       'Delete monitor',
-      { type: 'warning', confirmButtonText: 'Delete' },
+      { type: 'warning', confirmButtonText: 'Delete', cancelButtonText: 'Cancel' },
     )
     await agrmApi.deleteMonitor(row.id)
     ElMessage.success('Monitor deleted')
@@ -194,7 +194,7 @@ async function run(row: Monitor, forceStrict = false) {
       await ElMessageBox.confirm(
         'Force strict verification for this run? This can consume additional credits and remains subject to the configured probe budget.',
         'Force strict verification',
-        { type: 'warning', confirmButtonText: 'Queue verified run' },
+        { type: 'warning', confirmButtonText: 'Queue verified run', cancelButtonText: 'Cancel' },
       )
     }
     const job = await agrmApi.runMonitor(row.id, forceStrict)
