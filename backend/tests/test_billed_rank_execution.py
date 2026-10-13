@@ -1,4 +1,5 @@
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -13,9 +14,12 @@ from amazon_geo_rank_monitor.domain.errors import (
     ProviderUnavailableError,
 )
 from amazon_geo_rank_monitor.domain.models import GeoProfile, SerpProduct, SerpResult
+from amazon_geo_rank_monitor.probe_cache import ProbeCacheService
+from amazon_geo_rank_monitor.providers.oxylabs import OxylabsRankProvider
 from amazon_geo_rank_monitor.repositories.billing_repository import BillingRepository
 from amazon_geo_rank_monitor.repositories.geo_repository import GeoRepository
 from amazon_geo_rank_monitor.repositories.models import Base, TenantRow
+from amazon_geo_rank_monitor.repositories.probe_cache_repository import ProbeCacheRepository
 from amazon_geo_rank_monitor.repositories.rank_repository import RankRepository
 from amazon_geo_rank_monitor.repositories.tenant_repository import TenantRepository
 from amazon_geo_rank_monitor.verification import (
@@ -68,6 +72,7 @@ def make_services(
         strict=strict_provider or provider,
     )
     services = AppServices(
+        database_engine=engine,
         tenant_repository=TenantRepository(engine),
         geo_repository=geo,
         monitor_repository=None,
@@ -105,6 +110,43 @@ def add_geo(repo, profile_id, zip_code):
             weight=Decimal("1"),
         ),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("parse_status", [12002, 12004, 12008])
+async def test_failed_parser_is_not_billed_cached_or_reported_as_not_found(parse_status):
+    class FailedParser:
+        def __init__(self):
+            self.calls = 0
+
+        def scrape_search(self, *args, **kwargs):
+            self.calls += 1
+            return SimpleNamespace(results=[SimpleNamespace(content={
+                "page": 1, "last_visible_page": 1,
+                "parse_status_code": parse_status, "results": {"organic": []},
+            })])
+
+    amazon = FailedParser()
+    provider = OxylabsRankProvider(client=SimpleNamespace(amazon=amazon))
+    services, geo, billing = make_services(provider)
+    services.probe_cache = ProbeCacheService(
+        repository=ProbeCacheRepository(services.database_engine),
+    )
+    item = add_geo(geo, "ny", "10001")
+    billing.grant(owner_id="tenant-1", credits=10, idempotency_key="parser-test")
+    for reference in ["parser-first", "parser-second"]:
+        result = await execute_rank_check(
+            services=services, owner_id="tenant-1", marketplace="amazon.com",
+            keyword="trailer hitch", asins=["B0TARGET01"],
+            geo_profile_ids=[item["id"]], search_depth=100, provider_mode="managed",
+            reference_id=reference,
+        )
+        assert result.status == "failed"
+        assert result.observations == []
+        assert result.primary_upstream_probe_count == 0
+        assert result.cache_hit_count == 0
+    assert amazon.calls == 2
+    assert billing.get_balance("tenant-1") == {"balance": 10, "reserved": 0, "available": 10}
 
 
 @pytest.mark.asyncio

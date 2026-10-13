@@ -227,6 +227,11 @@ class PlaywrightAmazonBrowserClient:
             if await next_link.count() == 0:
                 break
 
+            if page_number >= page_limit:
+                raise ProviderResponseError(
+                    "Strict search depth was not reached before the page limit"
+                )
+
             await next_link.first.click()
             if hasattr(self.page, "wait_for_load_state"):
                 await self.page.wait_for_load_state("domcontentloaded")

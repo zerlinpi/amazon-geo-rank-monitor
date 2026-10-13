@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Operational rank acceptance
+
+- Enforce organic search-depth boundaries in target matching and align competitor
+  channel ranks with monitor results.
+- Continue managed pagination using observed organic counts, order returned pages,
+  support documented total-page metadata, and reject missing/duplicate pages,
+  failed/partial parsing, contradictory pagination and malformed organic records.
+- Preserve documented relative-position sponsored entries and fail incomplete
+  Managed/Strict scans at the 20-page ceiling instead of reporting false not-found.
+- Version provider cache identities so earlier parser results are not reused.
+- Add regression coverage and a Chinese operational acceptance record separating
+  offline/CI evidence from still-unverified live deployment and signed Windows delivery.
+
+No schema change or dependency update. Historical records are retained. Accurate
+depth collection may use more upstream page requests; application credit rates
+are unchanged, and upstream costs must be checked before live rollout.
+
 ## Unreleased — Practical monitor workflow
 
 - Fix browser Geo Profile creation returning 422 because the API required an ID

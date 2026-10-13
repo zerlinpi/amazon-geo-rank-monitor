@@ -22,6 +22,7 @@ BrowserClientFactory = Callable[[BrowserProxyConfig], AmazonBrowserClient]
 
 class StrictBrowserRankProvider:
     provider_name = "strict_browser"
+    cache_version = 2
     verification_level = VerificationLevel.STRICT
 
     def __init__(

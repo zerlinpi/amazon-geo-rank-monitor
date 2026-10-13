@@ -193,6 +193,7 @@ class ProbeCacheService:
         search_depth: int,
     ) -> tuple[str, dict]:
         identity = {
+            "provider_cache_version": getattr(provider, "cache_version", 1),
             "provider_mode": provider_mode,
             "provider_name": str(
                 getattr(provider, "provider_name", provider.__class__.__name__)

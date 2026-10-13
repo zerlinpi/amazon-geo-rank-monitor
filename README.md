@@ -10,6 +10,7 @@ based on Fantastic Admin. A signed Windows `.exe` is not currently produced.
 
 | Goal | Documentation |
 | --- | --- |
+| Check actual usability, acceptance evidence and remaining delivery conditions (中文) | [Operational acceptance](docs/ACCEPTANCE.zh-CN.md) |
 | Learn every main user workflow (中文) | [Chinese user guide](docs/USER_GUIDE.zh-CN.md) |
 | Install and operate the Linux/Compose service | [Production deployment](docs/DEPLOYMENT.md) |
 | Investigate stalls, performance and failed jobs | [Performance and stability runbook](docs/PERFORMANCE_STABILITY.md) |
@@ -133,6 +134,15 @@ effective_rank = search_depth + 1
 ```
 
 A provider failure is an error, not an ASIN-not-found result.
+
+Managed collection continues according to observed organic counts, with a 20-page
+ceiling. Missing/duplicate provider pages, invalid organic records and a page cap
+reached before sufficient coverage produce errors instead of false not-found
+observations. Strict collection likewise fails on an incomplete page-limited scan.
+Competitor organic/sponsored positions use their respective channel ordinals.
+Deeper collection can require more provider requests; application credits remain
+per GEO probe and are not a quote for external provider charges. Parser-versioned
+cache keys invalidate older results; historical records are not rewritten.
 
 ## One SERP, many ASINs
 
