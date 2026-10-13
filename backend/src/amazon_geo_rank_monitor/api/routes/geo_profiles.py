@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
-from amazon_geo_rank_monitor.domain.models import GeoProfile
+from amazon_geo_rank_monitor.api.schemas import GeoProfileCreate
 
 router = APIRouter(prefix="/api/v1/geo-profiles", tags=["geo-profiles"])
 
@@ -16,7 +16,7 @@ def list_geo_profiles(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_geo_profile(
-    profile: GeoProfile,
+    profile: GeoProfileCreate,
     request: Request,
     owner_id: str = Depends(require_scope("geo:write")),
 ):

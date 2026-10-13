@@ -227,3 +227,156 @@ test('real account session creates monitor and worker result reaches history and
   const summary = await context.request.get(`http://127.0.0.1:8000/api/v1/analytics/monitors/${id}/summary`)
   expect((await summary.json()).run_count).toBe(1)
 })
+
+test('mobile user creates a region, edits a monitor and opens the completed result', async ({ page, context }, info) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/ranking/geo-profiles')
+  await page.getByRole('button', { name: 'Add Geo Profile', exact: true }).click()
+  const geoDialog = page.getByRole('dialog', { name: 'Add Geo Profile', exact: true })
+  await geoDialog.getByLabel('Name', { exact: true }).fill(`Workflow region ${info.project.name}`)
+  await geoDialog.getByLabel('Delivery postal code', { exact: true }).fill('10001')
+  const geoResponse = page.waitForResponse(r => r.url().endsWith('/api/v1/geo-profiles') && r.request().method() === 'POST')
+  await geoDialog.getByRole('button', { name: 'Create', exact: true }).click()
+  expect((await geoResponse).status()).toBe(201)
+  await expect(geoDialog).toBeHidden()
+
+  await page.goto('/#/ranking/monitors')
+  await page.getByRole('button', { name: 'Create monitor', exact: true }).click()
+  const form = page.getByRole('dialog', { name: 'Create monitor', exact: true })
+  await form.getByLabel('Name', { exact: true }).fill(`Workflow ${info.project.name}`)
+  await form.getByLabel('Keyword', { exact: true }).fill('initial workflow')
+  await form.getByLabel('ASINs', { exact: true }).fill('b0target01, B0TARGET01\nB0TARGET02')
+  await form.locator('.el-select').filter({ has: page.getByLabel('Geo Profiles', { exact: true }) }).click()
+  await page.getByRole('option', { name: `Workflow region ${info.project.name} · 10001`, exact: true }).click()
+  await page.keyboard.press('Escape')
+  await form.locator('.el-select').filter({ has: page.getByLabel('Run frequency', { exact: true }) }).click()
+  await page.getByRole('option', { name: 'Every 6 hours (UTC)', exact: true }).click()
+  await expect(form.getByLabel('Search depth', { exact: true })).toBeHidden()
+  const created = page.waitForResponse(r => r.url().endsWith('/api/v1/monitors') && r.request().method() === 'POST')
+  await form.getByRole('button', { name: 'Create', exact: true }).click()
+  expect((await created).status()).toBe(201)
+  const monitor = await (await created).json()
+  expect(monitor.schedule).toBe('0 */6 * * *')
+  expect(monitor.asins).toEqual(['B0TARGET01', 'B0TARGET02'])
+  await expect(form).toBeHidden()
+  const card = page.getByRole('article', { name: `Workflow ${info.project.name}`, exact: true })
+  await card.getByRole('button', { name: 'Edit', exact: true }).click()
+  const edit = page.getByRole('dialog', { name: 'Edit monitor', exact: true })
+  await expect(edit.getByLabel('Keyword', { exact: true })).toHaveValue('initial workflow')
+  await edit.getByLabel('Keyword', { exact: true }).fill(`workflow result ${info.project.name}`)
+  await edit.locator('.el-select').filter({ has: page.getByLabel('Run frequency', { exact: true }) }).click()
+  await page.getByRole('option', { name: 'Manual only', exact: true }).click()
+  await edit.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(edit).toBeHidden()
+  const saved = await (await context.request.get(`http://127.0.0.1:8000/api/v1/monitors/${monitor.id}`)).json()
+  expect(saved.schedule).toBeNull()
+  expect(saved.auto_strict_enabled).toBeNull()
+  expect(saved.keyword).toBe(`workflow result ${info.project.name}`)
+  const box = await card.boundingBox()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  await card.getByRole('button', { name: 'Run now', exact: true }).click()
+  const activity = page.getByRole('dialog', { name: 'Monitor activity', exact: true })
+  await expect(activity.getByText('Completed', { exact: true })).toBeVisible()
+  await activity.getByRole('button', { name: 'View result', exact: true }).first().click()
+  await expect(page).toHaveURL(/ranking\/history\?run=/)
+  const details = page.getByRole('dialog', { name: 'Rank run details' })
+  await expect(details.getByText('B0TARGET02', { exact: true }).first()).toBeVisible()
+  await page.reload()
+  await expect(details.getByText('B0TARGET02', { exact: true }).first()).toBeVisible()
+})
+
+test('monitor load and save failures are recoverable without losing form input', async ({ page, context }, info) => {
+  const csrf = (await context.cookies()).find(c => c.name === 'agrm_csrf')!.value
+  const region = await context.request.post('http://127.0.0.1:8000/api/v1/geo-profiles', {
+    headers: { 'X-CSRF-Token': csrf }, data: {
+      name: `Draft region ${info.project.name}`, marketplace: 'amazon.com', ip_country: 'US',
+      delivery_country: 'US', delivery_postal_code: '10001', weight: 100,
+    },
+  })
+  expect(region.status()).toBe(201)
+  await page.route('**/api/v1/monitors', route => route.fulfill({ status: 503, json: { detail: 'Fixture unavailable' } }), { times: 1 })
+  await page.goto('/#/ranking/monitors')
+  await expect(page.getByText('Unable to load monitors and regions. Please try again.', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(page.getByText('Unable to load monitors and regions. Please try again.', { exact: true })).toBeHidden()
+  await page.getByRole('button', { name: 'Create monitor', exact: true }).click()
+  const form = page.getByRole('dialog', { name: 'Create monitor', exact: true })
+  await form.getByLabel('Name', { exact: true }).fill('Preserve draft')
+  await form.getByLabel('Keyword', { exact: true }).fill('draft keyword')
+  await form.getByLabel('ASINs', { exact: true }).fill('B0TARGET01')
+  await form.locator('.el-select').filter({ has: page.getByLabel('Geo Profiles', { exact: true }) }).click()
+  await page.getByRole('option', { name: `Draft region ${info.project.name} · 10001`, exact: true }).click()
+  await page.keyboard.press('Escape')
+  await page.route('**/api/v1/monitors', route => route.fulfill({ status: 422, json: { detail: [{ loc: ['body', 'keyword'], msg: 'Fixture validation failure' }] } }), { times: 1 })
+  await form.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(form.getByText('keyword: Fixture validation failure', { exact: true })).toBeVisible()
+  await expect(form.getByLabel('Keyword', { exact: true })).toHaveValue('draft keyword')
+  await form.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(form).toBeHidden()
+})
+
+test('one queue request survives an activity refresh failure without resubmitting', async ({ page, context }, info) => {
+  const csrf = (await context.cookies()).find(c => c.name === 'agrm_csrf')!.value
+  const headers = { 'X-CSRF-Token': csrf }
+  const geo = await context.request.post('http://127.0.0.1:8000/api/v1/geo-profiles', { headers, data: {
+    name: 'Activity region', marketplace: 'amazon.com', ip_country: 'US',
+    delivery_country: 'US', delivery_postal_code: '10001', weight: 100,
+  } })
+  expect(geo.status()).toBe(201)
+  const created = await context.request.post('http://127.0.0.1:8000/api/v1/monitors', { headers, data: {
+    name: `Activity ${info.project.name}`, marketplace: 'amazon.com', keyword: 'activity recovery',
+    asins: ['B0TARGET01'], geo_profile_ids: [(await geo.json()).id],
+    auto_strict_enabled: false, auto_strict_min_confidence: 0.6,
+    auto_strict_max_probes_per_run: 0, schedule: '15 7 * * 1',
+  } })
+  expect(created.status()).toBe(201)
+  const monitor = await created.json()
+  await page.goto('/#/ranking/monitors')
+  const card = page.getByRole('article', { name: monitor.name, exact: true })
+  await card.getByRole('button', { name: 'Edit', exact: true }).click()
+  const edit = page.getByRole('dialog', { name: 'Edit monitor', exact: true })
+  await expect(edit.getByLabel('Custom UTC cron', { exact: true })).toHaveValue('15 7 * * 1')
+  await edit.getByLabel('Keyword', { exact: true }).fill('activity recovery edited')
+  await edit.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(edit).toBeHidden()
+  const saved = await (await context.request.get(`http://127.0.0.1:8000/api/v1/monitors/${monitor.id}`)).json()
+  expect(saved.schedule).toBe(monitor.schedule)
+  expect(saved.auto_strict_enabled).toBe(false)
+  expect(Number(saved.auto_strict_min_confidence)).toBe(0.6)
+  expect(saved.auto_strict_max_probes_per_run).toBe(0)
+
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let queueCount = 0
+  let queuedJob: any
+  await page.route(`**/api/v1/monitors/${monitor.id}/run`, async (route) => {
+    ++queueCount
+    const response = await route.fetch()
+    queuedJob = await response.json()
+    await gate
+    await route.fulfill({ response })
+  })
+  await page.route(`**/api/v1/monitors/${monitor.id}/history?*`, route => route.fulfill({
+    json: [{ job: { ...queuedJob, status: 'pending', run_id: null }, run: null }],
+  }), { times: 1 })
+  await page.route('**/api/v1/jobs/*', route => route.fulfill({ status: 503, json: { detail: 'Temporary status failure' } }), { times: 1 })
+  await card.getByRole('button', { name: 'Run now', exact: true }).click()
+  await expect(card.getByRole('button', { name: 'Run now', exact: true })).toBeDisabled()
+  await expect.poll(() => queueCount).toBe(1)
+  release()
+  const activity = page.getByRole('dialog', { name: 'Monitor activity', exact: true })
+  await expect(activity.getByText('Queued', { exact: true })).toBeVisible()
+  await expect(activity.getByText('Unable to refresh monitor activity. Your job has not been resubmitted.', { exact: true })).toBeVisible()
+  await activity.getByRole('button', { name: 'Refresh activity', exact: true }).click()
+  await expect(activity.getByText('Completed', { exact: true })).toBeVisible()
+  expect(queueCount).toBe(1)
+  await activity.getByRole('button', { name: 'Close', exact: true }).click()
+  await card.getByRole('button', { name: 'More', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Verify now', exact: true }).click()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Queue verified run', exact: true })).toBeHidden()
+  await expect(card.getByRole('button', { name: 'Run now', exact: true })).toBeEnabled()
+  await expect(page.locator('.el-message--error')).toHaveCount(0)
+  expect(queueCount).toBe(1)
+})

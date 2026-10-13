@@ -52,18 +52,27 @@ onMounted(load)
           Weighted organic rank monitoring across geographic contexts.
         </p>
       </div>
-      <FaButton @click="$router.push('/ranking/explorer')">
+      <FaButton @click="$router.push('/ranking/monitors')">
         <FaIcon name="i-lucide:search" class="mr-2" />
-        New rank check
+        Manage monitors
       </FaButton>
     </div>
+
+    <el-card v-if="!loading && !monitors.length" shadow="never">
+      <h2 class="font-semibold">Start monitoring</h2>
+      <p class="text-sm text-muted-foreground mt-2">Add a delivery region, create a keyword monitor, then choose Run now. Results shows its progress and completed rankings.</p>
+      <div class="flex flex-wrap gap-2 mt-4">
+        <el-button @click="$router.push('/ranking/geo-profiles')">1. Add a region</el-button>
+        <el-button type="primary" @click="$router.push('/ranking/monitors')">2. Create a monitor</el-button>
+      </div>
+    </el-card>
 
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <el-card shadow="never">
         <el-statistic title="Available credits" :value="credits.available" />
       </el-card>
       <el-card shadow="never">
-        <el-statistic title="Active monitors" :value="monitors.length" />
+        <el-statistic title="Active monitors" :value="monitors.filter(monitor => monitor.enabled).length" />
       </el-card>
       <el-card shadow="never">
         <el-statistic title="Geo profiles" :value="geos.length" />

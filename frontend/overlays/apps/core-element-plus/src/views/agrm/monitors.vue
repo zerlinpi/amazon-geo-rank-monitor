@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { agrmApi, type GeoProfile, type Monitor } from '@/api/agrm'
+import { agrmApi, type GeoProfile, type Monitor, type RankJob } from '@/api/agrm'
+import { useAppAccountStore } from '@/store/modules/app/account'
+import { apiErrorMessage } from '@/utils/api-error'
+import MonitorEditor from './components/MonitorEditor.vue'
+import MonitorActivity from './components/MonitorActivity.vue'
 
 defineOptions({ name: 'Monitors' })
 
@@ -9,23 +13,22 @@ const loading = ref(false)
 const monitors = ref<Monitor[]>([])
 const geos = ref<GeoProfile[]>([])
 const dialog = ref(false)
-const submitting = ref(false)
+const editing = ref<Monitor | null>(null)
+const loadError = ref('')
+const query = ref('')
+const busy = ref<string[]>([])
+const activityOpen = ref(false)
+const activityMonitor = ref<Monitor | null>(null)
+const queuedJob = ref<RankJob | null>(null)
+const account = useAppAccountStore()
+const canWrite = computed(() => !account.permissions.includes('viewer'))
+const filtered = computed(() => {
+  const text = query.value.trim().toLowerCase()
+  return monitors.value.filter(row => [row.name, row.keyword, ...row.asins].some(value => value.toLowerCase().includes(text)))
+})
 const policyDialog = ref(false)
 const policySubmitting = ref(false)
 const policyMonitor = ref<Monitor | null>(null)
-const form = reactive({
-  name: '',
-  marketplace: 'amazon.com',
-  keyword: '',
-  asinsText: '',
-  geo_profile_ids: [] as string[],
-  search_depth: 100,
-  provider_mode: 'managed' as 'managed' | 'strict',
-  auto_strict_mode: 'inherit' as 'inherit' | 'on' | 'off',
-  auto_strict_min_confidence: 75,
-  auto_strict_max_probes_per_run: 3,
-  schedule: '',
-})
 const policyForm = reactive({
   mode: 'inherit' as 'inherit' | 'on' | 'off',
   minConfidence: 75,
@@ -33,7 +36,9 @@ const policyForm = reactive({
 })
 
 async function load() {
+  if (loading.value) return
   loading.value = true
+  loadError.value = ''
   try {
     const [monitorData, geoData] = await Promise.all([
       agrmApi.getMonitors(),
@@ -42,74 +47,39 @@ async function load() {
     monitors.value = monitorData
     geos.value = geoData
   }
+  catch {
+    loadError.value = 'Unable to load monitors and regions. Please try again.'
+  }
   finally {
     loading.value = false
   }
 }
 
-function resetForm() {
-  Object.assign(form, {
-    name: '',
-    marketplace: 'amazon.com',
-    keyword: '',
-    asinsText: '',
-    geo_profile_ids: [],
-    search_depth: 100,
-    provider_mode: 'managed',
-    auto_strict_mode: 'inherit',
-    auto_strict_min_confidence: 75,
-    auto_strict_max_probes_per_run: 3,
-    schedule: '',
-  })
+function openEditor(row: Monitor | null = null) {
+  editing.value = row
+  dialog.value = true
 }
 
-async function create() {
-  const asins = form.asinsText
-    .split(/[\n,\s]+/)
-    .map(item => item.trim().toUpperCase())
-    .filter(Boolean)
-  if (!form.name.trim() || !form.keyword.trim() || !asins.length || !form.geo_profile_ids.length) {
-    ElMessage.warning('Name, keyword, ASINs and geo profiles are required')
-    return
+function saved(row: Monitor) {
+  const index = monitors.value.findIndex(item => item.id === row.id)
+  if (index < 0) monitors.value.push(row)
+  else monitors.value[index] = row
+  ElMessage.success(editing.value ? 'Monitor updated' : 'Monitor created. Choose Run now when ready.')
+}
+
+function results(row: Monitor, job: RankJob | null = null) {
+  activityMonitor.value = row
+  queuedJob.value = job
+  activityOpen.value = true
+}
+
+function frequency(row: Monitor) {
+  const labels: Record<string, string> = {
+    '0 * * * *': 'Every hour (UTC)',
+    '0 */6 * * *': 'Every 6 hours (UTC)',
+    '0 9 * * *': 'Daily at 09:00 UTC',
   }
-  submitting.value = true
-  try {
-    await agrmApi.createMonitor({
-      name: form.name.trim(),
-      marketplace: form.marketplace,
-      keyword: form.keyword.trim(),
-      asins,
-      geo_profile_ids: form.geo_profile_ids,
-      search_depth: form.search_depth,
-      provider_mode: form.provider_mode,
-      auto_strict_enabled: (
-        form.auto_strict_mode === 'inherit'
-          ? null
-          : form.auto_strict_mode === 'on'
-      ),
-      auto_strict_min_confidence: (
-        form.auto_strict_mode === 'inherit'
-          ? null
-          : form.auto_strict_min_confidence / 100
-      ),
-      auto_strict_max_probes_per_run: (
-        form.auto_strict_mode === 'inherit'
-          ? null
-          : form.auto_strict_max_probes_per_run
-      ),
-      schedule: form.schedule.trim() || null,
-    })
-    ElMessage.success('Monitor created')
-    dialog.value = false
-    resetForm()
-    await load()
-  }
-  catch (error: any) {
-    ElMessage.error(error.response?.data?.detail || 'Failed to create monitor')
-  }
-  finally {
-    submitting.value = false
-  }
+  return row.schedule ? labels[row.schedule] ?? `${row.schedule} (UTC)` : 'Manual only'
 }
 
 function policyMode(row: Monitor): 'inherit' | 'on' | 'off' {
@@ -195,7 +165,7 @@ async function remove(row: Monitor) {
     await ElMessageBox.confirm(
       `Delete monitor "${row.name}"? Existing rank history will be retained.`,
       'Delete monitor',
-      { type: 'warning', confirmButtonText: 'Delete' },
+      { type: 'warning', confirmButtonText: 'Delete', cancelButtonText: 'Cancel' },
     )
     await agrmApi.deleteMonitor(row.id)
     ElMessage.success('Monitor deleted')
@@ -216,24 +186,35 @@ function openAlerts(row: Monitor) {
   })
 }
 
-async function run(row: any, forceStrict = false) {
+async function run(row: Monitor, forceStrict = false) {
+  if (busy.value.includes(row.id)) return
+  busy.value.push(row.id)
   try {
-    const monitor = row as Monitor
     if (forceStrict) {
       await ElMessageBox.confirm(
-        'Force strict browser verification for this run? Strict probes can consume additional credits and remain subject to the configured per-run probe budget.',
+        'Force strict verification for this run? This can consume additional credits and remains subject to the configured probe budget.',
         'Force strict verification',
-        { type: 'warning', confirmButtonText: 'Queue verified run' },
+        { type: 'warning', confirmButtonText: 'Queue verified run', cancelButtonText: 'Cancel' },
       )
     }
-    const job: any = await agrmApi.runMonitor(monitor.id, forceStrict)
-    ElMessage.success(
-      (forceStrict ? 'Verified run queued: ' : 'Run queued: ') + job.id,
-    )
+    const job = await agrmApi.runMonitor(row.id, forceStrict)
+    results(row, job)
   }
-  catch (error: any) {
-    ElMessage.error(error.response?.data?.detail || 'Failed to queue monitor')
+  catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error(apiErrorMessage(error, 'Unable to queue this monitor. Check Results before trying again.'))
   }
+  finally {
+    busy.value = busy.value.filter(id => id !== row.id)
+  }
+}
+
+function more(command: string, row: Monitor) {
+  if (command === 'alerts') openAlerts(row)
+  if (command === 'policy') openPolicy(row)
+  if (command === 'verify') void run(row, true)
+  if (command === 'toggle') void toggleEnabled(row)
+  if (command === 'delete') void remove(row)
 }
 
 onMounted(load)
@@ -247,151 +228,59 @@ onMounted(load)
         <h1 class="text-2xl font-semibold mt-1">Monitors</h1>
         <p class="text-sm text-muted-foreground mt-1">Reusable keyword + ASIN + geographic profile definitions.</p>
       </div>
-      <el-button type="primary" @click="dialog = true">Create monitor</el-button>
+      <div class="flex flex-wrap gap-2">
+        <el-button :loading="loading" @click="load">Refresh</el-button>
+        <el-button v-if="canWrite" type="primary" :disabled="loading || !!loadError || !geos.some(geo => geo.enabled)" @click="openEditor()">Create monitor</el-button>
+      </div>
     </div>
 
-    <el-card shadow="never" v-loading="loading">
-      <el-table :data="monitors" empty-text="No monitors yet">
-        <el-table-column prop="name" label="Monitor" min-width="170" />
-        <el-table-column prop="keyword" label="Keyword" min-width="180" />
-        <el-table-column label="ASINs" width="90">
-          <template #default="{ row }">{{ row.asins.length }}</template>
-        </el-table-column>
-        <el-table-column label="Geos" width="90">
-          <template #default="{ row }">{{ row.geo_profile_ids.length }}</template>
-        </el-table-column>
-        <el-table-column prop="provider_mode" label="Mode" width="110">
-          <template #default="{ row }">
-            <el-tag :type="row.provider_mode === 'strict' ? 'warning' : 'info'">{{ row.provider_mode }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="Auto strict" width="190">
-          <template #default="{ row }">
-            <el-tag
-              :type="policyMode(row as Monitor) === 'on'
-                ? 'success'
-                : policyMode(row as Monitor) === 'off'
-                  ? 'info'
-                  : 'warning'"
-              size="small"
-            >
-              {{ policyLabel(row as Monitor) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="search_depth" label="Depth" width="90" />
-        <el-table-column prop="schedule" label="Schedule" min-width="150">
-          <template #default="{ row }">{{ row.schedule || 'Manual' }}</template>
-        </el-table-column>
-        <el-table-column label="Status" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? 'Enabled' : 'Disabled' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="Actions" width="470" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" plain :disabled="!row.enabled" @click="run(row)">Run now</el-button>
-            <el-button
-              v-if="row.provider_mode === 'managed'"
-              size="small"
-              type="warning"
-              plain
-              :disabled="!row.enabled"
-              @click="run(row, true)"
-            >
-              Verify now
-            </el-button>
-            <el-button size="small" @click="openAlerts(row as Monitor)">Alerts</el-button>
-            <el-button size="small" @click="openPolicy(row as Monitor)">Verify</el-button>
-            <el-button size="small" @click="toggleEnabled(row as Monitor)">{{ row.enabled ? 'Disable' : 'Enable' }}</el-button>
-            <el-button size="small" type="danger" text @click="remove(row as Monitor)">Delete</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" show-icon />
+    <el-alert v-if="!loading && !loadError && !geos.some(geo => geo.enabled)" title="Add a region before creating your first monitor" type="info" :closable="false">
+      <p>Start with one delivery ZIP. Each selected region adds a probe to a run.</p>
+      <el-button v-if="canWrite" class="mt-2" @click="router.push('/ranking/geo-profiles')">Add Geo Profile</el-button>
+      <p v-else>Ask a workspace administrator to create a region and monitor.</p>
+    </el-alert>
+    <el-input v-if="monitors.length" v-model="query" aria-label="Find a monitor" placeholder="Search name, keyword or ASIN" clearable />
+    <div v-loading="loading" class="min-h-24">
+      <el-empty v-if="!loading && !loadError && !filtered.length" :description="monitors.length ? 'No monitors match your search.' : 'No monitors yet. Create one, then choose Run now to collect your first result.'" />
+      <div class="grid gap-4 xl:grid-cols-2">
+        <article v-for="row in filtered" :key="row.id" :aria-label="row.name" class="min-w-0">
+          <el-card shadow="never">
+            <div class="flex gap-3 items-start justify-between">
+              <div class="min-w-0">
+                <h2 class="font-semibold break-words">{{ row.name }}</h2>
+                <p class="text-sm text-muted-foreground break-words mt-1">{{ row.keyword }}</p>
+              </div>
+              <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? 'Enabled' : 'Disabled' }}</el-tag>
+            </div>
+            <p class="text-sm mt-4 break-words">{{ row.asins.join(', ') }}</p>
+            <p class="text-sm text-muted-foreground mt-2">{{ row.geo_profile_ids.length }} regions · {{ row.provider_mode }} · depth {{ row.search_depth }}</p>
+            <p class="text-sm text-muted-foreground mt-1 break-words">{{ frequency(row) }}</p>
+            <p class="text-xs text-muted-foreground mt-1">Auto strict: {{ policyLabel(row) }}</p>
+            <div class="flex flex-wrap gap-2 mt-4 monitor-actions">
+              <el-button v-if="canWrite" type="primary" :loading="busy.includes(row.id)" :disabled="!row.enabled || !!loadError" @click="run(row)">Run now</el-button>
+              <el-button @click="results(row)">Results</el-button>
+              <el-button v-if="canWrite" :disabled="loading || !!loadError" @click="openEditor(row)">Edit</el-button>
+              <el-dropdown v-if="canWrite" trigger="click" @command="command => more(command, row)">
+                <el-button :disabled="busy.includes(row.id)">More</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="alerts">Alerts</el-dropdown-item>
+                    <el-dropdown-item command="policy">Verification policy</el-dropdown-item>
+                    <el-dropdown-item v-if="row.provider_mode === 'managed'" command="verify" :disabled="!row.enabled">Verify now</el-dropdown-item>
+                    <el-dropdown-item command="toggle" divided>{{ row.enabled ? 'Disable' : 'Enable' }}</el-dropdown-item>
+                    <el-dropdown-item command="delete">Delete</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </el-card>
+        </article>
+      </div>
+    </div>
 
-    <el-dialog v-model="dialog" title="Create monitor" width="min(680px, 92vw)" destroy-on-close>
-      <el-form label-position="top">
-        <el-form-item label="Name">
-          <el-input v-model="form.name" placeholder="Walking Pad · US" />
-        </el-form-item>
-        <div class="grid gap-x-4 md:grid-cols-2">
-          <el-form-item label="Marketplace">
-            <el-select v-model="form.marketplace" class="w-full">
-              <el-option label="Amazon.com (US)" value="amazon.com" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="Provider">
-            <el-select v-model="form.provider_mode" class="w-full">
-              <el-option label="Managed" value="managed" />
-              <el-option label="Strict verify" value="strict" />
-            </el-select>
-          </el-form-item>
-        </div>
-        <div
-          v-if="form.provider_mode === 'managed'"
-          class="grid gap-x-4 md:grid-cols-2"
-        >
-          <el-form-item label="Auto strict verification">
-            <el-select v-model="form.auto_strict_mode" class="w-full">
-              <el-option label="Inherit workspace default" value="inherit" />
-              <el-option label="On for this monitor" value="on" />
-              <el-option label="Off for this monitor" value="off" />
-            </el-select>
-          </el-form-item>
-          <el-form-item
-            v-if="form.auto_strict_mode !== 'inherit'"
-            label="Minimum confidence"
-          >
-            <el-input-number
-              v-model="form.auto_strict_min_confidence"
-              :min="1"
-              :max="100"
-              :step="5"
-            />
-            <span class="ml-2 text-xs text-muted-foreground">%</span>
-          </el-form-item>
-          <el-form-item
-            v-if="form.auto_strict_mode !== 'inherit'"
-            label="Max paid strict probes / run"
-          >
-            <el-input-number
-              v-model="form.auto_strict_max_probes_per_run"
-              :min="0"
-              :max="100"
-            />
-          </el-form-item>
-        </div>
-        <el-form-item label="Keyword">
-          <el-input v-model="form.keyword" placeholder="walking pad" />
-        </el-form-item>
-        <el-form-item label="ASINs">
-          <el-input v-model="form.asinsText" type="textarea" :rows="3" placeholder="One ASIN per line" />
-        </el-form-item>
-        <el-form-item label="Geo Profiles">
-          <el-select v-model="form.geo_profile_ids" multiple class="w-full" placeholder="Select geographies">
-            <el-option
-              v-for="geo in geos"
-              :key="geo.id"
-              :label="geo.name + ' · ' + geo.delivery_postal_code"
-              :value="geo.id"
-            />
-          </el-select>
-        </el-form-item>
-        <div class="grid gap-x-4 md:grid-cols-2">
-          <el-form-item label="Search depth">
-            <el-input-number v-model="form.search_depth" :min="1" :max="500" />
-          </el-form-item>
-          <el-form-item label="Schedule (optional)">
-            <el-input v-model="form.schedule" placeholder="UTC cron, e.g. 0 */6 * * *" />
-          </el-form-item>
-        </div>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialog = false">Cancel</el-button>
-        <el-button type="primary" :loading="submitting" @click="create">Create</el-button>
-      </template>
-    </el-dialog>
+    <MonitorEditor v-model="dialog" :monitor="editing" :geos="geos" @saved="saved" />
+    <MonitorActivity v-model="activityOpen" :monitor="activityMonitor" :queued-job="queuedJob" />
 
     <el-dialog
       v-model="policyDialog"
@@ -465,3 +354,9 @@ onMounted(load)
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.monitor-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+</style>

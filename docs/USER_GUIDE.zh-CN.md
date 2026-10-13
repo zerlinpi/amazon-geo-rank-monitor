@@ -54,12 +54,34 @@ docker compose exec -T api alembic current
 
 ## 4. 创建第一次排名监控
 
-1. 打开 **Geo Profiles**。创建一个与目标 Amazon marketplace 对应的地区，填写地区名称、目标国家/州/城市/邮编、Amazon 配送邮编、设备类型及正权重。
-2. 打开 **Monitors**。选择 marketplace，填写明确的搜索关键词、一个或多个 ASIN、Geo Profiles、搜索深度（如 100），选择 Managed/Strict 策略。
-3. 初次建议使用 **Managed** 模式和极少量区域，确认余额、数据来源、排名与计费后再增加监控规模。
-4. 需要定时运行时配置标准五字段 cron（按 **UTC** 解释，例如 `0 */6 * * *`）。Scheduler 只派发最新应运行的时间槽，不批量补齐所有停机期间的历史时间槽。
-5. 手动触发一次 Monitor，打开 **Run History** 观察 queued/running/succeeded/partially_succeeded/failed，并查看完整观测、每 GEO 的自然排名、有效排名、快照与错误。
-6. 若目标 ASIN 未找到，但请求成功，则通常是 `found=false` 且 `effective_rank=search_depth+1`；如供应商出错应检查错误/重试，而不是认定商品掉出排名。
+开始前，请管理员确认采集供应商已配置、Workspace 有可用 credits，且 Worker 正常运行。只创建配置不会自动证明这些外部条件已就绪。
+
+1. 打开 **Geo Profiles → Add Geo Profile**。先填 **Name** 和 **Delivery postal code**，点击 **Create**。默认 Amazon.com / US / Desktop；IP 地区和国家在 **Advanced region settings** 内，设备和权重可以按需调整。地区 ID 由服务端自动生成，不需要填写。
+2. 点击 **Go to monitors → Create monitor**。填写名称、关键词、ASIN，选择刚才创建的地区。多个 ASIN 可按行、逗号或空格分隔，重复项自动去掉。
+3. **Run frequency** 默认 **Manual only**，适合第一次检查。需要定时监控时可直接选择每小时、每 6 小时、每天 09:00 UTC；**Custom schedule** 保留五字段 cron。所有定时时间按 **UTC**，例如每天 09:00 UTC 等于北京时间 17:00。
+4. **Advanced settings** 默认收起，保留搜索深度（默认 100）和 Managed / Strict 模式。首次建议用 Managed 和少量地区。自动 Strict 的专用设置位于监控卡片 **More → Verification policy**。
+5. 点击 **Create** 保存，再点击该卡片的 **Run now** 执行。保存不会自动创建手动任务；设了周期且启用的监控会在到达计划时由 Scheduler 派发。Scheduler 不会批量补齐停机期间所有遗漏时间槽。
+6. **Monitor activity** 窗口显示排队、运行、完成、等待自动重试或失败。点 **View result** 直接查看这一轮的区域排名、有效排名、快照和错误；结果链接刷新后仍打开同一轮明细。
+7. 之后从卡片的 **Results** 返回最近 10 个任务。无需一直等待：关闭窗口不会取消已提交任务，状态刷新也不会重复提交任务。
+
+### 日常操作
+
+| 要做的事 | 操作入口与结果 |
+| --- | --- |
+| 查找已有监控 | Monitors 搜索框按名称、关键词或 ASIN 筛选 |
+| 改关键词、ASIN、地区或运行频率 | **Edit → Save changes**；保留监控 ID、既有历史和自动 Strict 覆盖策略 |
+| 暂停定时监控 | **More → Disable**；不会取消已经入队的任务，之后可 Enable 恢复 |
+| 配置告警 / 自动核验 | **More → Alerts / Verification policy** |
+| 单独进行一次 Strict 核验 | **More → Verify now**；确认后才入队，取消不会提交任务 |
+| 表单提示错误 | 修正具体字段后重试；服务端拒绝保存时已填内容保留 |
+| 列表加载失败 | 点击 **Refresh**；错误提示不会冒充空数据 |
+| 状态刷新失败 | 点击 **Refresh activity**，只重新读取任务，不创建新的收费采集 |
+
+任务窗口仅在打开且浏览器标签可见时轮询活跃任务；窗口关闭或标签隐藏后停止轮询。列表不会为每个监控持续请求全部历史。
+
+**状态含义**：Queued 表示等待 Worker，Running 表示正在执行；Completed 表示完成，Partially completed 表示部分区域失败。Waiting to retry 表示自动退避重试；Needs attention 表示重试次数已用尽，应先让管理员检查 **System Status**。排队长期不动时先检查 Worker 和额度，避免连续创建新任务。
+
+若请求成功但目标 ASIN 在搜索深度内未找到，通常是 `found=false`、`effective_rank=search_depth+1`。供应商失败要检查错误，不应认定商品掉出排名。
 
 **成本估算**：一次 SERP 请求可匹配多个 ASIN，账单主要由 GEO 探针次数和验证模式决定，不能用 ASIN × GEO 简单估价。默认 Managed 每探针 1 credit、Strict 每探针 5 credits，但应以当前 Workspace 的费率与结算规则为准。切勿用生产密钥批量实验。
 

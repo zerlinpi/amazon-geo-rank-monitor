@@ -4,6 +4,7 @@ import { historyTimeFilters, recentHistoryRange } from '@/utils/history-time'
 
 defineOptions({ name: 'RunHistory' })
 
+const route = useRoute()
 const loading = ref(false)
 const rows = ref<RankRunSummary[]>([])
 const selected = ref<RankRun | null>(null)
@@ -178,6 +179,10 @@ function triggerLabel(trigger: string) {
   }
   return labels[trigger] || trigger
 }
+
+watch(() => route.query.run, (id) => {
+  if (typeof id === 'string' && id) void view({ id })
+}, { immediate: true })
 
 onMounted(search)
 </script>
