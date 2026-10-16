@@ -99,3 +99,23 @@ def test_webhook_is_signature_routed_without_api_key() -> None:
     )
     assert response.status_code == 200
     assert stripe.webhook_calls == [(b"raw-event", "sig")]
+
+
+def test_free_billing_reports_mode_blocks_checkout_and_retains_signed_webhooks():
+    client, _, auth, _, stripe = setup_client()
+    client.app.state.services.billing_mode = "free"
+    assert client.get("/api/v1/billing/status").status_code == 401
+    response = client.get("/api/v1/billing/status", headers=auth)
+    assert response.status_code == 200
+    assert response.json()["mode"] == "free"
+    assert response.json()["checkout_available"] is False
+    assert client.get("/api/v1/billing/packs", headers=auth).json() == []
+    assert client.post("/api/v1/billing/checkout", headers=auth, json={
+        "credit_pack_id": "starter",
+    }).status_code == 409
+    assert stripe.checkout_calls == []
+    response = client.post("/api/v1/billing/webhook", content=b"old-paid-event", headers={
+        "Stripe-Signature": "sig",
+    })
+    assert response.status_code == 200
+    assert stripe.webhook_calls == [(b"old-paid-event", "sig")]

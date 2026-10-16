@@ -138,12 +138,11 @@ class RankWorker:
                 len(request.geo_profiles) - len(prepared_cache),
                 0,
             )
-            if self._billing is not None and reserve_probe_count > 0:
+            reserve_credits = self._rate_card.quote(job["provider_mode"], reserve_probe_count)
+            if self._billing is not None and reserve_credits > 0:
                 reservation = self._billing.reserve(
                     owner_id=job["owner_id"],
-                    credits=self._rate_card.quote(
-                        job["provider_mode"], reserve_probe_count
-                    ),
+                    credits=reserve_credits,
                     idempotency_key=(
                         f"rank_job:{job['id']}:attempt:{job['attempt_count']}"
                     ),

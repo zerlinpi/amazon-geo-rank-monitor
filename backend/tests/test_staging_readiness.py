@@ -8,6 +8,7 @@ from amazon_geo_rank_monitor.operations.readiness import run_staging_readiness
 
 def settings(**overrides) -> AppSettings:
     values = {
+        "billing_mode": "prepaid",
         "session_cookie_secure": True,
         "public_web_url": "https://app.example.com",
         "sso_callback_url": "https://api.example.com/api/v1/auth/sso/callback",
@@ -25,6 +26,21 @@ def settings(**overrides) -> AppSettings:
     }
     values.update(overrides)
     return AppSettings(_env_file=None, **values)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["free", "prepaid"])
+async def test_free_or_manually_funded_installation_does_not_require_stripe(mode):
+    def stripe_probe(_settings):
+        raise AssertionError("Stripe must not be contacted when checkout is disabled")
+
+    result = await run_staging_readiness(
+        settings(billing_mode=mode, stripe_secret_key=None, stripe_webhook_secret=None,
+                 stripe_success_url="http://localhost", stripe_cancel_url="http://localhost"),
+        live=True, smtp_probe=lambda _: None, stripe_probe=stripe_probe,
+    )
+    assert result["status"] == "pass"
+    assert all(c["status"] == "skip" for c in result["checks"] if c["name"].startswith("stripe"))
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,357 @@
 
 Amazon geographic organic-rank monitoring service. It observes the same Amazon keyword from multiple geographic profiles, locates one or more ASINs in each SERP, and calculates a weighted organic rank.
 
+## 中文部署与使用总指南
+
+**当前默认是免费使用模式：`BILLING_MODE=free`。注册后的 Workspace 即使余额为 0，也可以执行排名监控；不需要先接 Stripe 或充值。** 免费指本应用不扣 credits，Oxylabs、住宅代理、服务器和邮件服务的实际费用由各自服务商决定。没有采集服务商凭据时，能启动页面，但不能取得真实 Amazon 排名。
+
+本项目是服务器运行、浏览器操作的 Web 系统。Windows 用户可通过浏览器使用，或用 Docker Desktop/WSL2 启动容器；当前没有独立、签名的 `.exe` 安装包。以下操作适用于仓库代码，不表示已替你部署服务器或配置第三方账户。
+
+阅读顺序：
+
+1. [需要准备的资料](#operator-materials)
+2. [第一次安装与启动](#operator-install)
+3. [注册账户与首次监控](#operator-first-run)
+4. [免费模式与指定账户余额管理](#operator-credits)
+5. [日常功能怎么使用](#operator-workflows)
+6. [维护、升级、备份和排错](#operator-maintenance)
+7. [开发运行与接口集成](#operator-development)
+
+<a id="operator-materials"></a>
+
+### 1. 需要准备什么资料
+
+| 资料或资源 | 何时需要 | 获取或填写方式 | 对应配置/入口 |
+| --- | --- | --- | --- |
+| 可持续运行的主机、Git、Docker Engine/Desktop 与 Compose v2 | 容器部署必需 | 主机需能拉取 GitHub 源码、容器镜像和依赖；真正采集时需能访问提供商与目标站点 | 项目根目录 `compose.yaml` |
+| 服务器登录权限 | 安装、升级、调账时 | 仅交给维护人员；普通用户只需浏览器账户 | SSH/服务器终端；不要把登录口令放进源码 |
+| 域名、DNS 与 HTTPS 证书 | 对外提供浏览器服务时 | 将域名指向主机，在宿主机反向代理终止 TLS | `PUBLIC_WEB_URL`、`CORS_ORIGINS`、`SESSION_COOKIE_SECURE` |
+| 数据库密码与应用密钥 | 首次部署必需 | 自行生成随机值，保存到根目录 `.env`，另做受控备份 | `POSTGRES_PASSWORD`、`API_KEY_PEPPER` 和加密字段 |
+| Oxylabs Amazon Search 的 Web Scraper API 用户名/密码 | Managed 真实采集必需 | 在供应商账户开通相应产品并获取凭据；确认账户有可用配额 | `OXYLABS_USERNAME`、`OXYLABS_PASSWORD` |
+| 住宅代理用户名、密码、网关 | 使用 Strict 时 | 开通住宅代理；与 Managed API 凭据分开核对 | `RESIDENTIAL_PROXY_USERNAME/PASSWORD/SERVER` |
+| SMTP 主机、端口、发件邮箱、用户名/授权密码 | 邮箱验证、找回密码、邀请、告警和报告 | 向邮箱服务商获取 SMTP 参数；当前客户端支持 SMTP + STARTTLS，不直接连接隐式 TLS 的 465 端口 | `SMTP_*` |
+| 第一个使用者的邮箱、密码、显示名、Workspace 名称 | 首次登录必需 | 在注册页面自行填写，没有预设管理员密码 | 浏览器 Register/Create account |
+| Amazon 站点、搜索关键词、目标 ASIN | 每个监控必需 | 从实际商品与目标搜索场景取得；ASIN 填商品编号，不填完整链接 | Monitors / Rank Explorer |
+| 配送地区邮编、地区名称、权重、设备 | 地区监控必需 | 例如美国 ZIP `10001`；邮编按字符串填写，保留开头的 0 | Geo Profiles |
+| Stripe API Key、Webhook signing secret、充值包价格 | 将来启用线上付费充值时 | 免费或管理员手动发额度都不需要；先用 Stripe 测试环境验证 | `STRIPE_*`、`CREDIT_PACK_*` |
+| 通知收件人或 webhook 地址 | 启用相应告警/报告时 | 使用自己的测试收件人先验收；自定义 webhook 域名需允许 | Rank Alerts / Analytics & Reports |
+| OIDC/SCIM 身份提供商资料 | 企业单点登录/自动配员时 | 常规邮箱登录不需要；由身份平台管理员提供 issuer/client 等配置 | Workspace 中的 SSO/SCIM 设置 |
+
+常规排名监控不要求你提供 Amazon Seller Central 登录密码或 Amazon Ads API Token。供应商凭据保存在服务端，不填入普通浏览器表单或前端 `VITE_*` 变量。
+
+**最小可用组合**：主机 + 数据库/应用密钥 + Managed 采集凭据 + 一个邮箱注册账户 + 一个关键词/ASIN/ZIP。先保持自动 Strict 关闭。没有 SMTP 时不会真实发信，不能承诺密码恢复、成员邀请或邮件告警可用；开放给其他人长期使用前应配置并实测邮件。
+
+### 2. 配置项怎么填
+
+所有后端进程共用根目录 `.env`。修改后要重建/重启 API、Worker、Scheduler，使计费和密钥配置一致。不要只改前端或只重启 API。
+
+| 配置组 | 主要字段 | 初次使用建议 |
+| --- | --- | --- |
+| 免费/收费 | `BILLING_MODE` | 保持 `free`；只有明确恢复额度计费才改 `prepaid` |
+| 费率 | `MANAGED_SERP_CREDIT_COST=1`、`STRICT_SERP_CREDIT_COST=5` | 仅 prepaid 下生效；free 下实际应用费率为 0 |
+| 数据库 | `POSTGRES_PASSWORD`、`DATABASE_URL`、`AUTO_CREATE_SCHEMA` | Compose 自动连接内置 PostgreSQL，强制迁移管理；根目录默认 SQLite URL 仅用于裸进程开发 |
+| 应用安全 | `API_KEY_PEPPER`、`MFA_ENCRYPTION_KEY`、`SSO_ENCRYPTION_KEY`、`SCIM_TOKEN_PEPPER`、`ALERT_ENCRYPTION_KEY`、`REPORT_ENCRYPTION_KEY` | 生成独立随机值；投入使用后保留原值，随意更换会使密钥或加密数据失效 |
+| 浏览器地址 | `PUBLIC_WEB_URL`、`CORS_ORIGINS` | 公网填写同一个 HTTPS origin，例如 `https://rank.example.com`，不加 `/#/` 页面路由 |
+| Cookie | `SESSION_COOKIE_SECURE`、`SESSION_COOKIE_SAMESITE` | 公网 `true` / `lax`；仅本机 HTTP 测试可以 `false` |
+| 注册 | `ALLOW_PUBLIC_SIGNUP` | 首次受控注册时 `true`；内部使用可注册完首个 Owner 后改 `false` |
+| 邮件 | `SMTP_HOST/PORT/USERNAME/PASSWORD/FROM_EMAIL/STARTTLS` | 按服务商的 STARTTLS 配置；主机和发件人为空时不发送真实邮件 |
+| 采集 | `OXYLABS_*`、`RESIDENTIAL_PROXY_*` | 先配 Managed；Strict 按需要单独启用 |
+| 自动核验 | `AUTO_STRICT_VERIFICATION_ENABLED=false`、`AUTO_STRICT_MAX_PROBES_PER_RUN=3` | 起步保持关闭；人工确认一次 Strict 成功和成本后再开启 |
+| 缓存 | `PROBE_CACHE_MANAGED_TTL_SECONDS=300`、`PROBE_CACHE_STRICT_TTL_SECONDS=0` | Managed 默认 5 分钟；Strict 默认重新采集；缓存命中页面有来源信息 |
+| 队列 | `JOB_MAX_ATTEMPTS=3`、`JOB_LEASE_SECONDS=900`、`JOB_RETRY_BASE_SECONDS=30`、`JOB_RETRY_MAX_SECONDS=900` | 先保留默认值；根据实测耗时调整，不能用缩短租约解决慢采集 |
+| 执行轮询 | `WORKER_POLL_SECONDS=2`、`SCHEDULER_POLL_SECONDS=30` | 默认即可；不同副本使用独立 Worker/Scheduler ID |
+| 代理信任 | `AGRM_NETWORK_*`、`AGRM_FRONTEND_IP`、`TRUSTED_EDGE_PROXY_CIDR` | 不冲突时保留默认；不要改成信任所有来源 |
+| 支付 | `STRIPE_*`、`CREDIT_PACK_*_AMOUNT_MINOR` | 当前可留空/0；不要为了启动免费监控而配置支付 |
+
+完整变量模板在 `.env.example`。`VITE_AGRM_*` 是前端构建时配置，不是服务端秘密配置；Compose 前端通过同源 `/api/` 请求，通常不需要手动改 API 地址。
+
+<a id="operator-install"></a>
+
+### 3. 第一次安装与启动
+
+以下容器命令在项目根目录执行，终端示例使用 Bash/WSL。
+
+```sh
+git clone https://github.com/zerlinpi/amazon-geo-rank-monitor.git
+cd amazon-geo-rank-monitor
+cp .env.example .env
+chmod 600 .env
+```
+
+首次初始化可用下面脚本补齐空白密钥；它只替换模板中尚未填写的字段，不显示生成值，不重置已有密钥：
+
+```sh
+python3 - <<'PY'
+from pathlib import Path
+import secrets
+p = Path('.env')
+lines = p.read_text(encoding='utf-8').splitlines()
+keys = {'POSTGRES_PASSWORD', 'API_KEY_PEPPER', 'MFA_ENCRYPTION_KEY',
+        'SSO_ENCRYPTION_KEY', 'SCIM_TOKEN_PEPPER', 'ALERT_ENCRYPTION_KEY',
+        'REPORT_ENCRYPTION_KEY'}
+lines = [line + secrets.token_hex(32) if line in {k + '=' for k in keys} else line
+         for line in lines]
+p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+print('Blank local secret fields initialized; values not displayed.')
+PY
+```
+
+编辑 `.env` 填入 Managed 凭据，保留 `BILLING_MODE=free`。不要覆盖旧服务器正在使用的密钥。地址选择如下：
+
+| 项目 | 仅本机测试 | 公网运行 |
+| --- | --- | --- |
+| `PUBLIC_WEB_URL` | `http://localhost:8080` | `https://rank.example.com` |
+| `CORS_ORIGINS` | `http://localhost:8080` | `https://rank.example.com` |
+| `SESSION_COOKIE_SECURE` | `false` | `true` |
+| `SSO_CALLBACK_URL` | `http://localhost:8080/api/v1/auth/sso/callback` | `https://rank.example.com/api/v1/auth/sso/callback` |
+
+本机测试不要混用 `localhost` 与 `127.0.0.1` 登录。启动：
+
+```sh
+docker compose config --quiet
+docker compose build
+docker compose up -d --wait --wait-timeout 180
+docker compose ps
+docker compose exec -T api alembic current
+docker compose exec -T api alembic heads
+curl --fail http://127.0.0.1:8000/health
+curl --fail http://127.0.0.1:8000/ready
+```
+
+数据库当前应到 `20261013_0023`。`migrate` 服务成功后退出是正常行为；API、Worker、Scheduler、数据库、Redis、前端应持续运行且健康。首次构建要下载依赖与浏览器，等待时间取决于网络，不能据此判断业务程序卡死。
+
+本机打开 `http://localhost:8080`。服务器安装后需经 HTTPS 反向代理访问；Compose 默认仅监听宿主机 loopback，不应将数据库、Redis 或 API 8000 端口直接暴露公网。宿主机 Nginx 的核心配置示例（域名和证书路径换成实际值）：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name rank.example.com;
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+    }
+}
+```
+
+这里覆盖客户端传入的转发头，不能把不可信地址追加到信任链。公网域名应已解析并安装有效证书；HTTP 到 HTTPS 重定向由宿主机代理配置。其他容器化 TLS 代理的固定地址/信任配置见 [部署手册](docs/DEPLOYMENT.md)。
+
+<a id="operator-first-run"></a>
+
+### 4. 注册账户并跑通第一条监控
+
+1. 打开注册页面，填写自己的邮箱、密码、显示名与 Workspace 名称。首个创建者成为该 Workspace 的 Owner；`agrm-bootstrap` 只创建机器 API 账户，不会创建可用邮箱登录的管理员。
+2. 到 **Workspace → Credits & Billing**，应看到 **Free mode — no app credits required**。Balance 为 0 是正常状态。若看不到免费提示，先确认部署的是新版且三个后端进程都读取 `BILLING_MODE=free`。
+3. 到 **Geo Profiles → Add Geo Profile**，输入名称 `New York`、配送 ZIP `10001`。默认 Amazon.com / US / Desktop；IP 地区和权重在高级设置中。第一次只创建一个地区即可。
+4. 到 **Monitors → Create monitor**，填写自己的真实关键词（如 `adjustable trailer hitch`）和真实 ASIN（例如你要跟踪的商品编号），勾选地区。每条 Monitor 只有一个关键词，多个关键词分别建 Monitor；同一关键词可以填写多个 ASIN。
+5. 第一次选择 **Manual only**、**Managed**，搜索深度先用较小值（例如 50）。保存后点 **Run now**，查看 Monitor activity 的排队、运行、完成或错误信息。
+6. 点 **View result** 检查目标 ASIN 的自然排名、GEO、采集时间、缓存来源；刷新页面后仍可在 Run History 找到同一条记录。真正覆盖搜索范围但未找到时记为 `found=false`，深度 50 对应有效排名 51；上游错误显示失败，不能当成“未找到”。
+7. 确认真实采集成功后，再增加地区、ASIN、深度或运行频率。每页结果数变化会增加采集页数，扫描上限 20 页；到达上限仍未覆盖深度会报错。
+8. 需要每小时运行时，将 **Run frequency** 改成每小时并启用 Monitor。Scheduler 按 UTC 派发；`0 1 * * *` 是北京时间每天 09:00，`0 9 * * *` 是北京时间每天 17:00。美国地区涉及夏令时，不要把固定 UTC 计划当作全年固定美国当地时间。
+
+免费模式也需要真实提供商账户可用。`/health` 或页面打开成功，只证明部分服务运行正常，不能代替这一轮真实采集验收。排名口径升级后应重新采集基准，旧历史不会自动改写。
+
+<a id="operator-credits"></a>
+
+### 5. 免费模式与单个账户余额怎么管理
+
+#### 5.1 当前默认免费
+
+```env
+BILLING_MODE=free
+```
+
+- 手动/API/MCP 查询、后台 Worker 和自动 Strict 使用相同的零应用费率，不需要预留 credits，不会生成扣费/预留流水。
+- 已有余额、历史充值、历史扣费全部保留；界面关闭在线充值，新建 Checkout 请求返回明确拒绝。
+- 为接收切换前已付款订单的延迟回调，仍可保留 Stripe 配置与签名 webhook；不会因为当前免费而丢弃合法的旧订单到账。
+- 自动 Strict 的运行开关、每轮探针上限仍有效；每日预算为 `0` 仍禁止新增自动/强制 Strict 探针，缓存可复用。**正数 credit 日预算与 pacing 在零费率下不是供应商支出的控制器**，请通过采集服务商配额、监控频率和探针上限控制真实调用。
+
+上述自动核验预算不限制直接以 Strict 为主模式发起的采集；主模式 Strict 的真实费用也应在提供商账户和调用频率上控制。
+
+切换已有运行环境前，暂停新任务提交、停 Scheduler、等待已有任务完成，再统一更新和启动 API/Worker/Scheduler。任务按执行进程当时配置计费；正在执行的旧进程不会因编辑 `.env` 立刻改价，也不会自动退款。
+
+#### 5.2 管理员查询指定账户
+
+余额属于 **Workspace（工作区/租户）**，同一 Workspace 的成员共用余额；它不是每个登录邮箱独立的钱包。同一邮箱可能加入多个 Workspace，因此先查清 ID 和名称再修改。
+
+管理员在服务器项目目录执行，普通用户不需要也不应持有数据库权限：
+
+```sh
+docker compose exec -T api agrm-credits list --email 'owner@example.com'
+docker compose exec -T api agrm-credits list --limit 100
+docker compose exec -T api agrm-credits show --workspace WORKSPACE_ID
+```
+
+第一条返回该邮箱加入的 Workspace；第二条列出工作区（最多 `--limit 500`）；第三条显示指定 ID 的余额与最近 100 条流水。空查询结果表示邮箱/数据库不匹配，不要因此创建一笔未知账户的调账。`WORKSPACE_ID` 换成查询结果中的完整 `workspace_id`。
+
+`balance` 为总余额，`reserved` 为执行中任务预留，`available = balance - reserved`。例如总余额 100、预留 20，则可用 80。免费模式下这些旧余额可以保留给未来恢复计费使用。
+
+#### 5.3 加额度、减额度、直接设定余额
+
+以下默认只预览，不写入数据库。核对输出中的工作区名称、ID、调整前后金额和原因后，对同一条命令加 `--apply` 才执行。
+
+给指定 Workspace 增加 1000 credits：
+
+```sh
+docker compose exec -T api agrm-credits adjust --workspace WORKSPACE_ID --delta 1000 --operator bryant --reason '初始测试额度' --request-id trial-20261013-001
+docker compose exec -T api agrm-credits adjust --workspace WORKSPACE_ID --delta 1000 --operator bryant --reason '初始测试额度' --request-id trial-20261013-001 --apply
+```
+
+扣回 200 credits 或将**总余额**设为 500，分别使用不同操作 ID：
+
+```sh
+docker compose exec -T api agrm-credits adjust --workspace WORKSPACE_ID --delta -200 --operator bryant --reason '扣回多发额度' --request-id correction-20261013-001
+docker compose exec -T api agrm-credits adjust --workspace WORKSPACE_ID --set-balance 500 --operator bryant --reason '设置试用余额' --request-id balance-20261013-001
+```
+
+核对后，在需要执行的命令末尾加 `--apply`。`--delta` 和 `--set-balance` 只能选一个；不能把余额设成负数或低于已预留额度。若已有任务预留 600，就不能直接将总余额设为 500，应先让任务完成/释放，再查询和调整。
+
+每次新业务操作使用新的 `--request-id`；同一操作因终端断线重试时复用原 ID 和所有原参数，系统只执行一次。即使期间发生消费，重放“设为 500”也不会再次把余额抬回 500。重复 ID 携带不同账户、金额、操作人或原因会被拒绝。
+
+操作人是服务器维护者填写的审计标签，实际权限边界是服务器/数据库访问权限，不是仅凭这个名字授权。每笔应用后的变更在同一事务中写入余额及 `admin_adjustment` 流水，包含操作人、原因、金额和请求 ID；可用 `show` 或 **Credits & Billing → Credit ledger** 查看。不要直接用 SQL 修改 `credit_accounts.balance`，那样没有对应账本。
+
+#### 5.4 将来恢复预付费
+
+```env
+BILLING_MODE=prepaid
+MANAGED_SERP_CREDIT_COST=1
+STRICT_SERP_CREDIT_COST=5
+```
+
+可以继续只用管理员命令发额度，**无需 Stripe**。恢复后零可用余额不能执行需要付费的新探针；缓存复用不会当成新的探针收费。更新 `.env` 后统一重建后端容器配置，例如在维护窗口执行 `docker compose up -d --force-recreate api worker scheduler`。
+
+如果需要用户自行在线充值，再配置 Stripe 的 secret key、webhook secret、正数充值包价格以及：
+
+```env
+STRIPE_SUCCESS_URL=https://rank.example.com/#/workspace/billing
+STRIPE_CANCEL_URL=https://rank.example.com/#/workspace/billing
+CREDIT_PACK_STARTER_CREDITS=500
+CREDIT_PACK_STARTER_AMOUNT_MINOR=1000
+```
+
+此价格仅为配置示例，不是建议售价；`AMOUNT_MINOR` 按所选币种的最小单位填写。Webhook URL 为 `https://rank.example.com/api/v1/billing/webhook`，处理 `checkout.session.completed` 和 `checkout.session.async_payment_succeeded` 的已付款事件。成功跳转页面不会自行加余额，必须收到有效签名并通过校验的付款回调。先在测试环境验证重复回调不会重复到账，再启用真实收款。
+
+<a id="operator-workflows"></a>
+
+### 6. 日常功能与操作入口
+
+| 要做什么 | 从哪里操作 | 操作结果与注意点 |
+| --- | --- | --- |
+| 单次查询 | Rank Explorer | 填站点、关键词、ASIN、地区、深度；适合验证配置，不自动变成周期任务 |
+| 新建/修改长期监控 | Monitors → Create/Edit | 保留原 ID 和历史；调整关键词或地区后解释趋势时注意口径变化 |
+| 手动执行和看进度 | Monitors → Run now / Results | 查看该轮队列状态；关闭弹窗不取消任务；刷新状态不重复提交 |
+| 暂停监控 | Monitors → More → Disable | 停止后续定时派发，已入队任务不会自动取消 |
+| 查看历史 | Run History | 关键词、ASIN、时间/状态过滤，摘要分页；点 View 再取完整详情 |
+| 趋势和 CSV | Analytics & Reports | 选择 Monitor 和时间窗口，按汇总或 GEO 导出；检查有效样本覆盖 |
+| 看竞品 | Competitor Intelligence | 基于已保存搜索结果计算自然/广告份额，不等同 Amazon 全站市场份额 |
+| 设置排名通知 | Workspace → Rank Alerts | 选规则、阈值、对象、渠道与冷却时间；转变类规则需要历史有效基准 |
+| 定时报告 | Analytics & Reports | 设置 Monitor、收件人、UTC cron、窗口与 CSV；先 Send now 验证真实收件 |
+| 调整团队权限 | Workspace → Team | Owner/Admin 邀请成员，按实际角色授权；最后一位 Owner 不能被移除 |
+| 密码/MFA/会话 | Workspace → Account Security | 保存恢复码；丢失密码需可用 SMTP；不要通过改数据库绕过验证 |
+| API 集成 | Workspace → API Keys | 创建最小范围 Key，用 `X-API-Key`；通常仅创建时显示明文 |
+| MCP | Workspace → MCP Setup | 本地 stdio 需设置 `MCP_TENANT_ID`；账户余额工具只读，不开放远程调账 |
+| 看失败和积压 | Workspace → System Status | 看 Worker/Scheduler 心跳、队列、重试、Dead Letter、提供商与通知状态 |
+| 额度与流水 | Workspace → Credits & Billing | 免费状态、历史余额、操作人和调账原因；普通网页账户不能修改他人余额 |
+
+Managed 使用配送地区，**不证明出口 IP 已匹配该地区**；Strict 才核验住宅代理出口和配送 ZIP。先单次验证 Strict，再开启自动核验。报表中自然排名越小越好；有效排名会把未找到计入 `search_depth + 1`；加权结果受地区权重和有效观测范围影响。
+
+邮件入口显示“已配置”仅证明填了配置，不证明邮件已送达。请同时检查 delivery history 和真实收件箱。Webhook 仅允许配置的域名，不要为了测试关闭地址校验。
+
+<a id="operator-maintenance"></a>
+
+### 7. 维护、升级与备份
+
+常用只读诊断命令：
+
+```sh
+docker compose ps
+docker compose logs --tail=100 api worker scheduler
+docker compose exec -T api alembic current
+docker compose exec -T worker python -m amazon_geo_rank_monitor.operations.health rank
+docker compose exec -T scheduler python -m amazon_geo_rank_monitor.operations.health scheduler
+docker compose exec -T api agrm-credits --help
+```
+
+`agrm-readiness` 是更完整的生产配置验收工具，涵盖 HTTPS、邮件及 Managed/Strict。免费模式或未启用 Stripe 的手动发额度模式会明确跳过 Stripe 检查；其他未配置的检查仍可能失败。它的结果不是“只验证最小 Managed 安装”的结果。`--live` 可访问已启用的邮件/支付服务但不发送邮件、不收费；`--paid-provider-probes` 会额外执行真实 Managed 和 Strict 探针，可能产生供应商费用，应仅在明确预算的测试环境使用。
+
+备份数据库（在仓库根目录，备份文件不要提交 Git）：
+
+```sh
+mkdir -p backups
+chmod 700 backups
+docker compose exec -T postgres pg_dump -U amazon_geo_rank -d amazon_geo_rank -Fc > backups/agrm.dump
+chmod 600 backups/agrm.dump
+```
+
+这条命令会覆盖同名备份，实际维护请使用带日期的独立文件并保存异地副本。单独备份原有 `.env`/密钥及域名代理配置；缺少原加密密钥时，数据库恢复后也无法解密相关数据。恢复演练必须在隔离空库进行，操作详见 [备份与恢复](docs/BACKUP_RESTORE.md)。不要对生产数据库直接跑测试，也不要在升级时执行 `docker compose down --volumes`。
+
+已有安装升级至本轮版本：
+
+1. 记录旧 Git SHA、镜像与数据库版本，完成并核验备份；明确当前部署的 `BILLING_MODE`，旧付费服务若要维持付费必须显式设为 `prepaid`。
+2. 暂停新任务提交，停 Scheduler，等待执行中和排队任务处理完，再停 Worker/API。
+3. 检出已通过 Validate 的目标提交，保留原 `.env` 与密钥，执行 `docker compose build`。
+4. 执行 `docker compose run --rm migrate`，确认迁移到 `20261013_0023`；此迁移增加调账审计详情字段，保留已有余额和流水。
+5. 执行 `docker compose up -d --wait --wait-timeout 180`，检查健康状态、免费标识、历史记录和一条受控监控；再恢复定时运行。
+
+代码回滚优先使用原镜像、原配置和保留的数据库。将数据库降级到 `0022` 会移除新的调账详情列；除非已经备份并明确接受丢失这部分审计信息，不要为代码回滚删除该列。
+
+### 8. 常见问题怎么处理
+
+| 现象 | 先检查什么 | 处理方式 |
+| --- | --- | --- |
+| 网页打不开 | `docker compose ps`、frontend 日志、域名/证书 | 先本机访问 8080，再检查公网代理；不要直接公开数据库端口 |
+| 登录后又回到登录页 | HTTP/HTTPS、Cookie Secure、CORS、域名是否混用 | 使用配置的同一个 origin；公网保留 Secure Cookie |
+| 余额为 0 无法运行 | Billing 页面模式、Worker 是否旧进程 | free 不应被余额阻止；确认 API/Worker/Scheduler 全部应用新配置 |
+| 一直 queued | Worker 心跳、队列可用时间、数据库与重试退避 | 恢复 Worker/连接后观察；不要反复点 Run now 制造重复任务 |
+| Managed 未配置/认证失败 | `OXYLABS_*`、API 产品权限、供应商配额 | 在服务端改正后重建进程；应用调账不会给供应商账户充值 |
+| Strict 失败 | 住宅代理、浏览器、出口位置、配送 ZIP、运行开关 | 查看该 GEO 的错误；Managed 成功不代表 Strict 成功 |
+| 未找到或排名异常 | 搜索深度、ZIP、设备、缓存时间、采集错误 | 确认完整有效采集后解释；不要把错误样本当名次下降 |
+| 调账说 workspace not found | Workspace ID、所连数据库、邮箱查找结果 | 先 `list --email` 和 `show`，不要猜测 ID |
+| 调账说低于 reserved | 尚有执行中的预留额度 | 等任务结算/释放后再查；不要手动清空预留字段 |
+| 调账说 request_id 已使用 | 是否复用了旧操作 ID且改了金额/原因 | 精确重试保留原参数，新操作使用新 ID |
+| 调账数据库失败 | 连接、迁移版本、数据库状态 | 执行 `alembic current/heads`，检查迁移；命令不会自动新建生产库 |
+| 已付款但余额不变 | 是否免费关闭新支付、webhook 是否送达、签名及订单记录 | 查看 Stripe 事件和账本，避免人工加款后又被正常回调重复补款 |
+| 没收到邮件/报告 | SMTP、TLS、发件人授权、delivery history、垃圾箱 | 配置后重启三类后端进程，并用测试邮箱实际收一封 |
+| 运行缓慢 | 提供商页数、队列长度、CPU/内存、数据库、缓存 | 先减少地区/深度/频率，再按测量定位；没有承诺无限并发 |
+| 免费后仍出现旧额度记录 | 旧任务和历史流水 | 正常保留历史；停旧进程排空任务后再切模式，新任务应不再扣款 |
+
+<a id="operator-development"></a>
+
+### 9. 开发运行与接口集成
+
+生产优先使用以上 Compose 方式。开发机器使用 Python 3.12+、与仓库镜像匹配的 Node 24、Git；从根目录建立 Python 环境，安装锁定依赖：
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements-dev.lock
+.venv/bin/pip install --no-deps -e backend
+npm --prefix frontend ci
+npm --prefix frontend run typecheck
+```
+
+最后一步会同步固定版本的 Fantastic Admin、按锁文件安装其依赖并检查类型。首次开发必须完成这一步；仅执行外层的 `npm ci` 尚未准备好实际 UI 的依赖。
+
+根目录 `.env` 选择开发 SQLite URL、`AUTO_CREATE_SCHEMA=true`、免费模式及 `http://localhost:5173` 对应地址，使用三个终端从根目录分别运行 `.venv/bin/agrm-api`、`.venv/bin/agrm-worker`、`.venv/bin/agrm-scheduler`，另一个终端运行 `npm --prefix frontend run dev`。按前端终端实际显示的端口匹配 CORS 与公开地址。Windows PowerShell 的虚拟环境可执行文件在 `.venv\Scripts\`；其他路径与 shell 语法需按系统调整。
+
+开发 SQLite 使用相对文件路径，所有后端命令必须保持同一工作目录，避免误连另一个空数据库；生产 CLI 建议始终通过 `docker compose exec -T api agrm-credits ...` 运行。
+
+API 文档默认在后端 `/docs`。人类用户经注册登录，机器集成通过 Workspace → API Keys 创建 Key，使用 `X-API-Key`；浏览器写操作还需要 CSRF 令牌。常用接口包括：`GET /api/v1/billing/status`、`GET /api/v1/credits`、`GET /api/v1/credits/ledger`、Geo Profiles、Monitors 与 `GET /api/v1/runs/page`。调账命令没有对应的公开 HTTP/MCP 写接口。
+
+在隔离开发环境验证：
+
+```sh
+(cd backend && TZ=UTC PYTHONPATH=src ../.venv/bin/python -m pytest -q)
+.venv/bin/python -m ruff check backend/src backend/tests
+npm --prefix frontend test
+npm --prefix frontend run typecheck
+npm --prefix frontend run build
+```
+
+浏览器 E2E 使用模拟 SERP 与真实 API/Worker，不会调用付费供应商。PostgreSQL/Redis 专项必须使用专用测试库；这些测试可能删除测试库内数据。CI 通过仅证明自动化验收范围，真实采集、邮件收件、长时间运行和备份恢复仍需在实际部署验收。更详细的内部架构与接口参考保留在本 README 下半部分。
+
 ## Start here
 
 This is a **web SaaS**, not a standalone Windows desktop application. The backend
@@ -20,7 +371,7 @@ based on Fantastic Admin. A signed Windows `.exe` is not currently produced.
 
 ### First monitor in the browser
 
-Once an administrator has configured the provider, funded the workspace and started
+Once an administrator has configured the provider, selected free mode (or funded a prepaid workspace) and started
 the worker, use this short path:
 
 1. **Geo Profiles → Add Geo Profile**: enter a name and delivery ZIP. US/desktop
@@ -56,7 +407,7 @@ Phase 32 hardens the existing product: account/workspace access, geo profiles,
 monitors, managed/strict verification, queued execution, weighted snapshots,
 history, analytics, alerts and prepaid credits. It adds no new business subsystem.
 The baseline entering hardening is `2ef06d5` (2026-09-30); the current database head
-is `20261008_0022`. No published migration is rewritten.
+is `20261013_0023`. No published migration is rewritten.
 
 The required **validate** check covers backend, PostgreSQL migrations/concurrency,
 Redis, frontend tests/typecheck/build, browser E2E in UTC/New York/Singapore,
@@ -437,7 +788,13 @@ MCP tools call the same application services used by REST; there is no duplicate
 
 ## Prepaid credits and Stripe
 
-Rank usage is billed by actual SERP probe, not by ASIN. The default configurable rate card is:
+`BILLING_MODE=free` is now the deployment default: no credit reservation or deduction,
+no new checkout, and zero balance is usable. Existing balances and signed payment
+webhooks are retained. The host-only `agrm-credits` command supports audited manual
+adjustments in either mode; see the Chinese operator guide above.
+
+When explicitly set to `BILLING_MODE=prepaid`, rank usage is billed by actual SERP
+probe, not by ASIN. The default configurable prepaid rate card is:
 
 - managed SERP: 1 credit per geographic probe;
 - strict browser-verified SERP: 5 credits per geographic probe.
@@ -449,10 +806,11 @@ Credit packs are disabled by default because their prices are business configura
 Stripe configuration:
 
 ```env
+BILLING_MODE=prepaid
 STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_SUCCESS_URL=https://app.example.com/billing/success
-STRIPE_CANCEL_URL=https://app.example.com/billing
+STRIPE_SUCCESS_URL=https://app.example.com/#/workspace/billing
+STRIPE_CANCEL_URL=https://app.example.com/#/workspace/billing
 CREDIT_PACK_STARTER_AMOUNT_MINOR=...
 CREDIT_PACK_GROWTH_AMOUNT_MINOR=...
 CREDIT_PACK_SCALE_AMOUNT_MINOR=...
@@ -462,6 +820,7 @@ The browser success redirect never grants credits. Purchased credits are granted
 
 Billing REST endpoints:
 
+- `GET /api/v1/billing/status`
 - `GET /api/v1/credits`
 - `GET /api/v1/credits/ledger`
 - `GET /api/v1/billing/packs`

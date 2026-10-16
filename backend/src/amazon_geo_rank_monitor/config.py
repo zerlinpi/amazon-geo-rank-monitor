@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from amazon_geo_rank_monitor.domain.errors import ConfigurationError
@@ -75,8 +76,9 @@ class AppSettings(BaseSettings):
     scheduler_id: str | None = None
     auto_create_schema: bool = True
     mcp_tenant_id: str | None = None
-    managed_serp_credit_cost: int = 1
-    strict_serp_credit_cost: int = 5
+    billing_mode: Literal["free", "prepaid"] = "free"
+    managed_serp_credit_cost: int = Field(default=1, ge=0)
+    strict_serp_credit_cost: int = Field(default=5, ge=0)
     auto_strict_verification_enabled: bool = False
     auto_strict_rank_delta_threshold: int = 20
     auto_strict_verify_not_found_after_found: bool = True
@@ -89,8 +91,8 @@ class AppSettings(BaseSettings):
     probe_cache_retention_hours: int = 24
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
-    stripe_success_url: str = "http://localhost:5173/billing/success"
-    stripe_cancel_url: str = "http://localhost:5173/billing"
+    stripe_success_url: str = "http://localhost:5173/#/workspace/billing"
+    stripe_cancel_url: str = "http://localhost:5173/#/workspace/billing"
     billing_currency: str = "usd"
     credit_pack_starter_credits: int = 500
     credit_pack_starter_amount_minor: int = 0

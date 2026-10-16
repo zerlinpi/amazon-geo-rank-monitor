@@ -51,3 +51,14 @@ def test_runtime_requires_api_key_pepper() -> None:
     )
     with pytest.raises(ConfigurationError):
         build_services(settings)
+
+
+@pytest.mark.parametrize("mode, costs", [(None, (0, 0)), ("free", (0, 0)), ("prepaid", (2, 7))])
+def test_runtime_billing_mode_controls_all_rate_cards(mode, costs):
+    kwargs = {} if mode is None else {"billing_mode": mode}
+    services = build_services(AppSettings(
+        _env_file=None, database_url="sqlite+pysqlite:///:memory:",
+        api_key_pepper="test", managed_serp_credit_cost=2, strict_serp_credit_cost=7, **kwargs,
+    ))
+    assert (services.rate_card.quote("managed", 1), services.rate_card.quote("strict", 1)) == costs
+    assert services.auto_strict_verifier._rate_card == services.rate_card

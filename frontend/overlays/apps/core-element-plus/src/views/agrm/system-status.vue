@@ -322,6 +322,12 @@ onUnmounted(() => {
         v-if="dailyBudgetStatus"
         class="rounded-lg border p-4 mt-4"
       >
+        <el-alert
+          v-if="dailyBudgetStatus.pacing.next_probe_credits === 0"
+          class="mb-4" type="warning" :closable="false"
+          title="Zero app-credit rate: provider costs are separate."
+          description="Positive credit budgets do not cap upstream charges. Control provider quotas, monitor frequency and per-run verification limits. A daily cap of 0 still blocks new automatic and forced verification calls."
+        />
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div class="font-medium">Live UTC daily credit guardrail</div>

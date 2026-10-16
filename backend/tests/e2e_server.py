@@ -16,6 +16,7 @@ from amazon_geo_rank_monitor.repositories.models import RankRunRow
 directory = tempfile.TemporaryDirectory(prefix="agrm-e2e-")
 services, provider = build_offline_services(
     f"sqlite+pysqlite:///{Path(directory.name) / 'e2e.db'}",
+    billing_mode="free",
 )
 for zone in ["utc", "new_york", "singapore"]:
     account = services.accounts.register(
@@ -23,7 +24,6 @@ for zone in ["utc", "new_york", "singapore"]:
         display_name="Browser owner", workspace_name=f"E2E {zone}",
     )
     owner = account.principal.owner_id
-    services.billing_repository.grant(owner_id=owner, credits=500, idempotency_key=f"seed:{zone}")
     for index in range(105):
         run_id = str(uuid4())
         started_at = datetime.now(UTC) - timedelta(hours=index * 2, minutes=1)

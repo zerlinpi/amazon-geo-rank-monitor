@@ -285,6 +285,13 @@ export interface CreditBalance {
   available: number
 }
 
+export interface BillingStatus {
+  mode: 'free' | 'prepaid'
+  managed_credit_cost: number
+  strict_credit_cost: number
+  checkout_available: boolean
+}
+
 export interface CreditPack {
   id: string
   name: string
@@ -298,6 +305,7 @@ export interface LedgerEntry {
   entry_type: string
   delta_credits: number
   balance_after: number
+  details?: { operator?: string, reason?: string, mode?: string, value?: number } | null
   reference_type?: string | null
   reference_id?: string | null
   created_at: string
@@ -946,6 +954,7 @@ export const agrmApi = {
   ),
   validateKey: () => data<CreditBalance>(client.get('/api/v1/credits')),
   getCredits: () => data<CreditBalance>(client.get('/api/v1/credits')),
+  getBillingStatus: () => data<BillingStatus>(client.get('/api/v1/billing/status')),
   getLedger: (limit = 100) => data<LedgerEntry[]>(client.get('/api/v1/credits/ledger', { params: { limit } })),
   getCreditPacks: () => data<CreditPack[]>(client.get('/api/v1/billing/packs')),
   createCheckout: (credit_pack_id: string) => data<CheckoutResult>(

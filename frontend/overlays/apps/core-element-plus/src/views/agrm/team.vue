@@ -673,7 +673,13 @@ onMounted(load)
           type="info"
           :closable="false"
           title="The daily cap is a live Workspace guardrail."
-          description="It counts settled and currently reserved Strict Verification credits for the UTC day. Forecast-aware pacing only defers paid automatic Strict probes when the current burn rate predicts cap exhaustion today; cache hits and manual force remain available, while the hard cap stays authoritative."
+          description="It counts settled and reserved Strict Verification app credits for the UTC day. Pacing defers paid automatic verification; the cap also applies to forced verification. These settings do not cover direct primary Strict searches."
+        />
+        <el-alert
+          v-if="dailyBudgetStatus?.pacing.next_probe_credits === 0"
+          class="mb-4" type="warning" :closable="false"
+          title="Zero app-credit rate: provider costs are separate."
+          description="Positive credit caps and pacing do not limit provider spending at this rate. Use the verification switch, per-run probe limit, monitor frequency and provider quotas. A daily cap of 0 blocks new automatic and forced verification calls."
         />
 
         <div

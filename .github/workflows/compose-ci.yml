@@ -38,6 +38,8 @@ jobs:
           docker compose exec -T worker python -m amazon_geo_rank_monitor.operations.health rank
           docker compose exec -T scheduler python -m amazon_geo_rank_monitor.operations.health scheduler
           docker compose exec -T api alembic current
+          docker compose exec -T api agrm-credits --help
+          docker compose exec -T api agrm-credits list
       - name: Check trusted ingress, reject forged client IPs and protect callback logs
         run: |
           python backend/tests/compose_ingress_smoke.py

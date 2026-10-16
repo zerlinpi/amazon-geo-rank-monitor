@@ -58,6 +58,7 @@ class AppServices:
     reports: Any | None = None
     email_delivery_configured: bool = False
     billing_repository: Any | None = None
+    billing_mode: str = "prepaid"
     rate_card: Any | None = None
     auto_strict_verifier: Any | None = None
     auto_strict_runtime_policy: dict[str, Any] | None = None

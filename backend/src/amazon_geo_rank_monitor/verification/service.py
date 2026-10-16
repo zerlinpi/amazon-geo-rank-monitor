@@ -269,11 +269,15 @@ class AutoStrictVerifier:
                 return outcome
 
             strict_probe_credits = self._rate_card.quote("strict", 1)
+            if self._daily_credit_budget == 0:
+                outcome.skipped_reason = "daily_credit_budget_exhausted"
+                return outcome
             now = datetime.now(UTC)
             reservation_budget_limit = self._daily_credit_budget
             pacing_enforced = False
             if (
-                self._daily_budget_pacing_enabled
+                strict_probe_credits > 0
+                and self._daily_budget_pacing_enabled
                 and "manual_force" not in outcome.triggers
                 and owner_id is not None
             ):
@@ -304,7 +308,7 @@ class AutoStrictVerifier:
                     )
                     pacing_enforced = True
 
-            if self._billing is not None and owner_id is not None:
+            if self._billing is not None and owner_id is not None and strict_probe_credits > 0:
                 idempotency_key = (
                     f"auto_strict:{reference_id}:{geo_profile.id}"
                 )
