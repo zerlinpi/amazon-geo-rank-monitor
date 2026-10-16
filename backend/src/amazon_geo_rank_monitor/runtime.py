@@ -259,6 +259,12 @@ def build_services(settings: AppSettings) -> AppServices:
     )
 
     billing = BillingRepository(engine)
+    rate_card = RateCard(
+        managed_serp=0 if settings.billing_mode == "free" else settings.managed_serp_credit_cost,
+        browser_verified_serp=(
+            0 if settings.billing_mode == "free" else settings.strict_serp_credit_cost
+        ),
+    )
     _seed_credit_packs(billing, settings)
     provider_registry = ProviderRegistry(
         managed=_managed_provider(settings),
@@ -280,10 +286,7 @@ def build_services(settings: AppSettings) -> AppServices:
         strict_provider=provider_registry.get("strict"),
         probe_cache=probe_cache,
         billing_repository=billing,
-        rate_card=RateCard(
-            managed_serp=settings.managed_serp_credit_cost,
-            browser_verified_serp=settings.strict_serp_credit_cost,
-        ),
+        rate_card=rate_card,
         max_upstream_probes_per_run=settings.auto_strict_max_probes_per_run,
     )
     return AppServices(
@@ -309,10 +312,8 @@ def build_services(settings: AppSettings) -> AppServices:
         reports=reports,
         email_delivery_configured=bool(settings.smtp_host and settings.smtp_from_email),
         billing_repository=billing,
-        rate_card=RateCard(
-            managed_serp=settings.managed_serp_credit_cost,
-            browser_verified_serp=settings.strict_serp_credit_cost,
-        ),
+        billing_mode=settings.billing_mode,
+        rate_card=rate_card,
         auto_strict_verifier=auto_strict_verifier,
         auto_strict_runtime_policy={
             "enabled": settings.auto_strict_verification_enabled,

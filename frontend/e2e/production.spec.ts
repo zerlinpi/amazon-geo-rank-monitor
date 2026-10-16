@@ -43,6 +43,24 @@ async function history(page) {
   await expect(page.getByText('Page 1 · 50 runs · newest first')).toBeVisible()
 }
 
+test('free billing needs no recharge and recovers a failed status read', async ({ page, context }) => {
+  await page.route('**/api/v1/billing/status', route => route.fulfill({
+    status: 503, json: { detail: 'Fixture unavailable' },
+  }), { times: 1 })
+  await page.goto('/#/workspace/billing')
+  await expect(page.getByText('Unable to load billing information', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Refresh billing', exact: true }).click()
+  await expect(page.getByText('Free mode — no app credits required', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Recharge', exact: true })).toHaveCount(0)
+  const credits = await context.request.get('http://127.0.0.1:8000/api/v1/credits')
+  expect((await credits.json()).balance).toBe(0)
+  await page.route('**/api/v1/billing/status', route => route.fulfill({
+    json: { mode: 'prepaid', checkout_available: false, managed_credit_cost: 1, strict_credit_cost: 5 },
+  }), { times: 1 })
+  await page.getByRole('button', { name: 'Refresh billing', exact: true }).click()
+  await expect(page.getByText('Contact the deployment administrator to adjust your workspace credits.', { exact: false })).toBeVisible()
+})
+
 test('email configuration notices recover from errors and reflect configuration changes', async ({ page }) => {
   const endpoint = '**/api/v1/notifications/status'
   const warning = page.getByText('Email delivery is not configured', { exact: true })

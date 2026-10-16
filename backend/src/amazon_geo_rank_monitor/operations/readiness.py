@@ -28,7 +28,7 @@ class ReadinessCheck:
 
     @property
     def passed(self) -> bool:
-        return self.status == "pass"
+        return self.status in {"pass", "skip"}
 
 
 def _result(name: str, passed: bool, detail: str) -> ReadinessCheck:
@@ -52,7 +52,7 @@ def _is_https_url(value: str) -> bool:
 
 def configuration_checks(settings: AppSettings) -> list[ReadinessCheck]:
     cors_origins = settings.cors_origin_list
-    return [
+    checks = [
         _result(
             "secure_session_cookie",
             settings.session_cookie_secure,
@@ -134,6 +134,19 @@ def configuration_checks(settings: AppSettings) -> list[ReadinessCheck]:
             ),
         ),
     ]
+    if not _stripe_checks_enabled(settings):
+        checks = [
+            ReadinessCheck(item.name, "skip", "Checkout disabled; Stripe is optional")
+            if item.name.startswith("stripe_") else item
+            for item in checks
+        ]
+    return checks
+
+
+def _stripe_checks_enabled(settings: AppSettings) -> bool:
+    return settings.billing_mode == "prepaid" and bool(
+        settings.stripe_secret_key or settings.stripe_webhook_secret
+    )
 
 
 def _smtp_live_probe(settings: AppSettings) -> None:
@@ -237,6 +250,9 @@ async def run_staging_readiness(
             ("smtp_live", smtp_probe or _smtp_live_probe),
             ("stripe_live", stripe_probe or _stripe_live_probe),
         ):
+            if name == "stripe_live" and not _stripe_checks_enabled(settings):
+                checks.append(ReadinessCheck(name, "skip", "Checkout disabled; Stripe is optional"))
+                continue
             try:
                 await asyncio.wait_for(
                     asyncio.to_thread(probe, settings),

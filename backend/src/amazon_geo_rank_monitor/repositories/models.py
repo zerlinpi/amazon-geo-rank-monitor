@@ -858,6 +858,7 @@ class CreditLedgerEntryRow(Base):
     entry_type: Mapped[str] = mapped_column(String(40), nullable=False)
     delta_credits: Mapped[int] = mapped_column(Integer, nullable=False)
     balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     reservation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     reference_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reference_id: Mapped[str | None] = mapped_column(String(128), nullable=True)

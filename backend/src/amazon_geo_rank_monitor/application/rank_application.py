@@ -125,10 +125,11 @@ async def execute_rank_check(
         len(request.geo_profiles) - len(prepared_cache),
         0,
     )
-    if billing is not None and reserve_probe_count > 0:
+    reserve_credits = rate_card.quote(provider_mode, reserve_probe_count)
+    if billing is not None and reserve_credits > 0:
         reservation = billing.reserve(
             owner_id=owner_id,
-            credits=rate_card.quote(provider_mode, reserve_probe_count),
+            credits=reserve_credits,
             idempotency_key=f"rank_check:{reference_id}",
             reference_type="rank_check",
             reference_id=reference_id,

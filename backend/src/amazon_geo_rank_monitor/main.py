@@ -13,6 +13,7 @@ from amazon_geo_rank_monitor.config import AppSettings
 from amazon_geo_rank_monitor.domain.errors import ConfigurationError
 from amazon_geo_rank_monitor.mcp.server import build_local_mcp_server
 from amazon_geo_rank_monitor.mcp.tools import RankMcpTools
+from amazon_geo_rank_monitor.operations.credits import credits_main as credits_main
 from amazon_geo_rank_monitor.operations.health import keep_worker_alive
 from amazon_geo_rank_monitor.operations.readiness import run_staging_readiness
 from amazon_geo_rank_monitor.runtime import build_services

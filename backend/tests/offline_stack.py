@@ -36,10 +36,11 @@ class DisabledStrictProvider:
         raise AssertionError("offline fixture must never request a strict proxy")
 
 
-def build_offline_services(database_url):
+def build_offline_services(database_url, *, billing_mode="prepaid"):
     settings = AppSettings(
         _env_file=None,
         database_url=database_url,
+        billing_mode=billing_mode,
         api_key_pepper="offline-test-only",
         auto_create_schema=True,
         allow_public_signup=True,

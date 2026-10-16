@@ -137,7 +137,7 @@ onMounted(loadGeos)
           type="warning"
           :closable="false"
           title="This run will request strict browser verification for each managed Geo."
-          description="Strict verification remains subject to the runtime kill switch, available credits, strict cache, and the configured probe budget."
+          description="Strict verification follows the runtime switch, cache and probe limits. Prepaid mode also requires app credits; external provider charges can apply in either mode."
         />
       </el-form>
     </el-card>

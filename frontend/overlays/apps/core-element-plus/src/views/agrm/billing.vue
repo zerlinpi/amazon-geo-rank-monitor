@@ -1,25 +1,36 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { agrmApi } from '@/api/agrm'
+import type { BillingStatus } from '@/api/agrm'
 
 defineOptions({ name: 'Billing' })
 
 const loading = ref(false)
+const loadError = ref(false)
+const billingStatus = ref<BillingStatus | null>(null)
+const free = computed(() => billingStatus.value?.mode === 'free')
 const credits = ref({ balance: 0, reserved: 0, available: 0 })
 const packs = ref<any[]>([])
 const ledger = ref<any[]>([])
 
 async function load() {
   loading.value = true
+  loadError.value = false
   try {
-    const [creditData, packData, ledgerData] = await Promise.all([
+    const [creditData, packData, ledgerData, statusData] = await Promise.all([
       agrmApi.getCredits(),
       agrmApi.getCreditPacks(),
       agrmApi.getLedger(100),
+      agrmApi.getBillingStatus(),
     ])
     credits.value = creditData
     packs.value = packData
     ledger.value = ledgerData
+    billingStatus.value = statusData
+  }
+  catch {
+    loadError.value = true
+    billingStatus.value = null
   }
   finally {
     loading.value = false
@@ -49,12 +60,21 @@ onMounted(load)
 <template>
   <div class="p-4 md:p-6 space-y-5" v-loading="loading">
     <div>
-      <div class="text-xs text-muted-foreground tracking-widest uppercase">Prepaid usage</div>
+      <div class="text-xs text-muted-foreground tracking-widest uppercase">Workspace usage</div>
       <h1 class="text-2xl font-semibold mt-1">Credits & Billing</h1>
       <p class="text-sm text-muted-foreground mt-1">
-        Credits are consumed by actual SERP probes, not by the number of ASINs matched in one SERP.
+        {{ free ? 'Monitoring does not deduct app credits. Existing balances are retained.' : 'Workspace members share one credit balance. Charges depend on successful geographic probes, not ASIN count.' }}
       </p>
+      <el-button class="mt-3" :loading="loading" @click="load">Refresh billing</el-button>
     </div>
+
+    <el-alert v-if="loadError" title="Unable to load billing information" type="error" :closable="false" show-icon />
+    <el-alert
+      v-if="free"
+      title="Free mode — no app credits required"
+      description="A zero balance does not block monitoring. External data-provider and proxy charges still apply."
+      type="success" :closable="false" show-icon
+    />
 
     <div class="grid gap-4 sm:grid-cols-3">
       <el-card shadow="never"><el-statistic title="Balance" :value="credits.balance" /></el-card>
@@ -62,9 +82,12 @@ onMounted(load)
       <el-card shadow="never"><el-statistic title="Available" :value="credits.available" /></el-card>
     </div>
 
-    <el-card shadow="never">
+    <el-card v-if="billingStatus && !free" shadow="never">
       <template #header><span class="font-medium">Recharge credits</span></template>
-      <div v-if="packs.length" class="grid gap-4 md:grid-cols-3">
+      <p class="text-sm text-muted-foreground mb-4">
+        Managed: {{ billingStatus.managed_credit_cost }} credits / probe · Strict: {{ billingStatus.strict_credit_cost }} credits / probe
+      </p>
+      <div v-if="billingStatus.checkout_available && packs.length" class="grid gap-4 md:grid-cols-3">
         <div v-for="pack in packs" :key="pack.id" class="p-5 border rounded-xl">
           <div class="text-sm text-muted-foreground">{{ pack.name }}</div>
           <div class="text-3xl font-semibold mt-2">{{ pack.credits }}</div>
@@ -75,7 +98,7 @@ onMounted(load)
       </div>
       <el-empty
         v-else
-        description="No purchasable credit packs are configured. Set server-side pack prices first."
+        description="Online recharge is unavailable. Contact the deployment administrator to adjust your workspace credits."
       />
     </el-card>
 
@@ -93,6 +116,8 @@ onMounted(load)
         <el-table-column prop="balance_after" label="Balance after" width="130" />
         <el-table-column prop="reference_type" label="Reference" min-width="150" />
         <el-table-column prop="reference_id" label="Reference ID" min-width="220" show-overflow-tooltip />
+        <el-table-column prop="details.operator" label="Operator" min-width="140" />
+        <el-table-column prop="details.reason" label="Adjustment reason" min-width="220" show-overflow-tooltip />
         <el-table-column label="Time" min-width="180">
           <template #default="{ row }">{{ new Date(row.created_at).toLocaleString() }}</template>
         </el-table-column>

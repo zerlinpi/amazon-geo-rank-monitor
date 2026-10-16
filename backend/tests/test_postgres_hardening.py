@@ -63,10 +63,43 @@ def race(action, count=8):
         return list(pool.map(run, range(count)))
 
 
+def test_postgres_manual_credit_retries_are_atomic_on_a_new_account(schema):
+    billing = BillingRepository(schema)
+    results = race(lambda _: billing.adjust_balance(
+        owner_id="owner", delta=100, operator="test", reason="Initial allowance",
+        request_id="same-request", apply=True,
+    ))
+    assert sum(not result["replayed"] for result in results) == 1
+    assert billing.get_balance("owner")["balance"] == 100
+    assert len(billing.list_ledger(owner_id="owner")) == 1
+
+
+def test_postgres_adjustment_and_reservation_cannot_overdraw_account(schema):
+    billing = BillingRepository(schema)
+    billing.grant(owner_id="owner", credits=10, idempotency_key="initial")
+
+    def action(index):
+        try:
+            if index == 0:
+                billing.adjust_balance(owner_id="owner", balance=0, operator="test",
+                                       reason="Close allowance", request_id="close", apply=True)
+            else:
+                billing.reserve(owner_id="owner", credits=10, idempotency_key="run",
+                                reference_type="rank_job", reference_id="run")
+        except (ValueError, InsufficientCreditsError):
+            return "blocked"
+        return "applied"
+
+    from amazon_geo_rank_monitor.domain.errors import InsufficientCreditsError
+
+    assert sorted(race(action, count=2)) == ["applied", "blocked"]
+    assert billing.get_balance("owner")["available"] == 0
+
+
 def test_fresh_postgres_migration_schema_and_bounded_rollback(database, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", database.url.render_as_string(hide_password=False))
     config = Config("alembic.ini")
-    assert ScriptDirectory.from_config(config).get_heads() == ["20261008_0022"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["20261013_0023"]
     command.upgrade(config, "head")
     baseline_index = "ix_rank_jobs_owner_monitor_status_run"
     assert baseline_index in {

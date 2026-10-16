@@ -28,7 +28,12 @@ Local SQLite remains useful for development; use PostgreSQL for multiple workers
    requires `OXYLABS_USERNAME/PASSWORD`; strict probes require the residential
    proxy settings and independently verify both IP and Amazon Deliver-to location.
    Keep `AUTO_STRICT_VERIFICATION_ENABLED=false` until budgets and geography have
-   been checked. Configure credit pack amounts before enabling Stripe checkout.
+   been checked. Keep `BILLING_MODE=free` for no application credit charges; zero
+   balance is valid and Stripe is not required. Provider/hosting fees still apply.
+   For prepaid operation, set `BILLING_MODE=prepaid`: the host administrator can
+   fund workspaces with `agrm-credits` without Stripe. Configure both Stripe keys
+   and credit pack amounts only when enabling online checkout. See the
+   [README balance-management instructions](../README.md#operator-credits).
 6. Set `ALLOW_PUBLIC_SIGNUP=false` when onboarding is invitation-only. Register the
    first owner during a controlled initial window before disabling public signup.
    The bootstrap CLI creates a machine API key, not a human session.
@@ -37,6 +42,9 @@ Compose reads the same `.env` for API, worker, scheduler and migration, preventi
 policy, billing and encryption drift. It overrides DB connection, schema creation,
 API listen address/port and trusted frontend address; migrations run explicitly with
 `AUTO_CREATE_SCHEMA=false`.
+When switching billing mode, stop scheduling and drain existing jobs first; then
+restart API, worker and scheduler with the same `BILLING_MODE`. Queued jobs use the
+mode active when they execute. Existing balances and ledger entries are retained.
 `POSTGRES_PASSWORD` is Compose-only. `VITE_AGRM_*` are build-time frontend values;
 the frontend image always uses `/` for API requests through its same-origin proxy.
 If changing the CSRF cookie name, rebuild with the matching frontend configuration.

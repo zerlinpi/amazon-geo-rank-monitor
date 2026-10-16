@@ -19,7 +19,10 @@ from .models import (
     CreditPackRow,
     CreditReservationRow,
     PaymentRow,
+    TenantRow,
+    UserRow,
     WebhookEventRow,
+    WorkspaceMembershipRow,
 )
 
 
@@ -41,6 +44,97 @@ class BillingRepository:
             if row is None:
                 return {"balance": 0, "reserved": 0, "available": 0}
             return self._serialize_account(row)
+
+    def list_accounts(self, *, email: str | None = None, limit: int = 100) -> list[dict]:
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        statement = select(TenantRow, CreditAccountRow).outerjoin(
+            CreditAccountRow, CreditAccountRow.owner_id == TenantRow.id,
+        )
+        if email is not None:
+            statement = statement.where(TenantRow.id.in_(
+                select(WorkspaceMembershipRow.owner_id).join(
+                    UserRow, UserRow.id == WorkspaceMembershipRow.user_id,
+                ).where(UserRow.email == email.strip().lower())
+            ))
+        with self._sessions() as session:
+            return [
+                {"workspace_id": tenant.id, "workspace_name": tenant.name,
+                 **self._serialize_account(account)}
+                for tenant, account in session.execute(
+                    statement.order_by(TenantRow.name, TenantRow.id).limit(limit),
+                )
+            ]
+
+    def account_details(self, owner_id: str) -> dict:
+        with self._sessions() as session:
+            tenant = session.get(TenantRow, owner_id)
+            if tenant is None:
+                raise KeyError("workspace not found")
+            return {"workspace_id": tenant.id, "workspace_name": tenant.name,
+                    **self._serialize_account(session.get(CreditAccountRow, owner_id))}
+
+    def adjust_balance(
+        self, *, owner_id: str, operator: str, reason: str, request_id: str,
+        delta: int | None = None, balance: int | None = None, apply: bool = False,
+    ) -> dict:
+        """Host-operator command only; append a ledger entry atomically with the balance."""
+        if (delta is None) == (balance is None):
+            raise ValueError("choose exactly one of delta or balance")
+        value = delta if delta is not None else balance
+        if type(value) is not int or abs(value) > 2**31 - 1:
+            raise ValueError("credits must be a signed 32-bit integer")
+        if balance is not None and balance < 0:
+            raise ValueError("balance must be non-negative")
+        for label, text, maximum in (
+            ("operator", operator, 120), ("reason", reason, 500), ("request_id", request_id, 128),
+        ):
+            if not text.strip() or len(text.strip()) > maximum:
+                raise ValueError(f"{label} must contain 1 to {maximum} characters")
+        details = {"operator": operator.strip(), "reason": reason.strip(),
+                   "mode": "delta" if delta is not None else "set", "value": value}
+        key = f"admin_adjustment:{request_id.strip()}"
+        with self._sessions.begin() as session:
+            tenant = session.get(TenantRow, owner_id)
+            if tenant is None:
+                raise KeyError("workspace not found")
+            # Lock before checking the request key: concurrent retries must see
+            # the committed ledger entry after the first adjustment completes.
+            account = (
+                self._account_for_update(session, owner_id) if apply
+                else session.get(CreditAccountRow, owner_id)
+            )
+            current = self._serialize_account(account)
+            existing = session.scalar(select(CreditLedgerEntryRow).where(
+                CreditLedgerEntryRow.idempotency_key == key,
+            ))
+            if existing is not None:
+                if (existing.owner_id != owner_id or existing.entry_type != "admin_adjustment"
+                        or existing.details != details):
+                    raise ValueError("request_id was already used with different parameters")
+                return {"workspace_id": owner_id, "workspace_name": tenant.name,
+                        "applied": True, "replayed": True, "request_id": request_id.strip(),
+                        "balance_after": existing.balance_after, "current": current}
+            after = current["balance"] + delta if delta is not None else balance
+            if after < current["reserved"]:
+                raise ValueError("balance cannot be below reserved credits or zero")
+            if after > 2**31 - 1:
+                raise ValueError("balance exceeds the supported credit limit")
+            change = after - current["balance"]
+            if apply:
+                account.balance = after
+                account.updated_at = datetime.now(UTC)
+                session.add(CreditLedgerEntryRow(
+                    id=str(uuid4()), owner_id=owner_id, entry_type="admin_adjustment",
+                    delta_credits=change, balance_after=after, details=details,
+                    reference_type="operator_request", reference_id=request_id.strip(),
+                    idempotency_key=key,
+                ))
+            return {"workspace_id": owner_id, "workspace_name": tenant.name,
+                    "applied": apply, "replayed": False, "request_id": request_id.strip(),
+                    "balance_before": current["balance"], "balance_after": after,
+                    "reserved": current["reserved"], "available_after": after - current["reserved"],
+                    "delta_credits": change, "details": details}
 
     def grant(
         self,
@@ -359,6 +453,7 @@ class BillingRepository:
                     "entry_type": row.entry_type,
                     "delta_credits": row.delta_credits,
                     "balance_after": row.balance_after,
+                    "details": row.details,
                     "reservation_id": row.reservation_id,
                     "reference_type": row.reference_type,
                     "reference_id": row.reference_id,
@@ -559,6 +654,11 @@ class BillingRepository:
 
     @staticmethod
     def _account_for_update(session, owner_id: str) -> CreditAccountRow:
+        dialect = session.get_bind().dialect.name
+        insert = pg_insert if dialect == "postgresql" else sqlite_insert
+        session.execute(insert(CreditAccountRow).values(
+            owner_id=owner_id, balance=0, reserved=0,
+        ).on_conflict_do_nothing(index_elements=["owner_id"]))
         account = session.scalar(
             select(CreditAccountRow)
             .where(CreditAccountRow.owner_id == owner_id)

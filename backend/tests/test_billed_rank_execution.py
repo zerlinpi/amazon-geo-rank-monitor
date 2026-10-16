@@ -53,6 +53,7 @@ def make_services(
     strict_provider=None,
     auto_strict=False,
     strict_probe_budget=None,
+    rate_card=None,
 ):
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -66,7 +67,7 @@ def make_services(
         )
     geo = GeoRepository(engine)
     billing = BillingRepository(engine)
-    rate_card = RateCard(managed_serp=1, browser_verified_serp=5)
+    rate_card = rate_card or RateCard(managed_serp=1, browser_verified_serp=5)
     registry = ProviderRegistry(
         managed=provider,
         strict=strict_provider or provider,
@@ -110,6 +111,26 @@ def add_geo(repo, profile_id, zip_code):
             weight=Decimal("1"),
         ),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode, force", [("managed", False), ("strict", False), ("managed", True)])
+async def test_free_direct_and_forced_strict_runs_need_no_credit_balance(mode, force):
+    provider = CountingProvider()
+    services, geo, billing = make_services(
+        provider, auto_strict=force, rate_card=RateCard(0, 0),
+    )
+    item = add_geo(geo, "ny", "10001")
+    result = await execute_rank_check(
+        services=services, owner_id="tenant-1", marketplace="amazon.com",
+        keyword="trailer hitch", asins=["B0TARGET01"],
+        geo_profile_ids=[item["id"]], search_depth=100, provider_mode=mode,
+        force_strict_verification=force,
+    )
+    assert result.status == "succeeded"
+    assert provider.calls == (2 if force else 1)
+    assert billing.get_balance("tenant-1") == {"balance": 0, "reserved": 0, "available": 0}
+    assert billing.list_ledger(owner_id="tenant-1") == []
 
 
 @pytest.mark.asyncio

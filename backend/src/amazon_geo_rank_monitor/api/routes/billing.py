@@ -6,8 +6,30 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from amazon_geo_rank_monitor.api.dependencies import get_services, require_scope
 from amazon_geo_rank_monitor.api.schemas import CheckoutCreate
+from amazon_geo_rank_monitor.billing.rate_card import RateCard
 
 router = APIRouter(prefix="/api/v1", tags=["billing"])
+
+
+@router.get("/billing/status")
+def billing_status(
+    request: Request,
+    owner_id: str = Depends(require_scope("billing:read")),
+):
+    del owner_id
+    services = get_services(request)
+    free = services.billing_mode == "free"
+    rates = services.rate_card or RateCard()
+    return {
+        "mode": services.billing_mode,
+        "managed_credit_cost": 0 if free else rates.managed_serp,
+        "strict_credit_cost": 0 if free else rates.browser_verified_serp,
+        "checkout_available": bool(
+            not free and services.stripe_billing is not None
+            and services.billing_repository is not None
+            and services.billing_repository.list_credit_packs()
+        ),
+    }
 
 
 @router.get("/credits")
@@ -39,7 +61,10 @@ def credit_packs(
     owner_id: str = Depends(require_scope("billing:read")),
 ):
     del owner_id
-    billing = get_services(request).billing_repository
+    services = get_services(request)
+    if services.billing_mode == "free" or services.stripe_billing is None:
+        return []
+    billing = services.billing_repository
     if billing is None:
         raise HTTPException(status_code=503, detail="billing is unavailable")
     return billing.list_credit_packs()
@@ -51,7 +76,10 @@ def create_checkout(
     request: Request,
     owner_id: str = Depends(require_scope("billing:write")),
 ):
-    stripe_billing = get_services(request).stripe_billing
+    services = get_services(request)
+    if services.billing_mode == "free":
+        raise HTTPException(status_code=409, detail="Free mode is active; checkout is disabled")
+    stripe_billing = services.stripe_billing
     if stripe_billing is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

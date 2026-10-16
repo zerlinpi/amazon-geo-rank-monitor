@@ -192,7 +192,7 @@ async function run(row: Monitor, forceStrict = false) {
   try {
     if (forceStrict) {
       await ElMessageBox.confirm(
-        'Force strict verification for this run? This can consume additional credits and remains subject to the configured probe budget.',
+        'Force strict verification for this run? Additional provider requests can incur upstream charges and remain subject to the configured probe limit.',
         'Force strict verification',
         { type: 'warning', confirmButtonText: 'Queue verified run', cancelButtonText: 'Cancel' },
       )

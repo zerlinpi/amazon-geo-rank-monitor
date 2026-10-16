@@ -13,6 +13,7 @@ Set these environment variables:
 ```text
 STAGING_API_URL=https://api-staging.example.com
 STAGING_WEB_URL=https://staging.example.com
+BILLING_MODE=free
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_FROM_EMAIL=noreply@example.com
@@ -35,6 +36,16 @@ RESIDENTIAL_PROXY_PASSWORD
 
 Do not put secrets into repository variables.
 
+`BILLING_MODE` must match the target deployment. The workflow defaults to `free`
+when the variable is absent. Set it explicitly to `prepaid` for a prepaid deployment
+so configured Stripe credentials are checked. Free mode needs no Stripe secrets;
+prepaid operation funded only through `agrm-credits` also needs no Stripe secrets.
+When enabling Stripe checkout, set **both** Stripe secrets. A partially configured
+prepaid Stripe integration fails the gate. Free mode or prepaid mode with neither
+Stripe secret reports Stripe checks as `skip`, not as verified payment readiness.
+This is a full integration gate: SMTP and both provider configurations are still
+required; a minimal Managed-only deployment does not satisfy all of its checks.
+
 ## 2. Run the no-transaction staging gate
 
 In **Actions → Staging Readiness → Run workflow**, leave
@@ -45,7 +56,7 @@ This proves:
 - external HTTPS/TLS reachability of frontend, `/health` and `/ready`;
 - production-style cookie/URL/CORS configuration;
 - SMTP TLS/authentication and NOOP;
-- Stripe API authentication;
+- Stripe API authentication when prepaid Stripe checkout is configured;
 - required provider credentials are present.
 
 It does not send email or create a Stripe payment.
@@ -67,7 +78,7 @@ CI.
 ## 4. Read the evidence
 
 The job uploads `staging-readiness-<run id>` for 30 days. The JSON contains
-only check names, pass/fail state and sanitized details. Upstream exception
+only check names, pass/fail/skip state and sanitized details. Upstream exception
 messages and credential values are deliberately omitted.
 
 A release candidate is ready for human release approval only when:

@@ -2,7 +2,7 @@
 
 > 适用范围：当前 FastAPI + PostgreSQL + Redis + Fantastic Admin Web SaaS。请以实际部署版本、账号权限及环境配置为准。本项目当前**不是** Windows 单机 .exe 程序。
 >
-> 新手先看 [部署文档](DEPLOYMENT.md)；运维与故障处理看 [稳定性手册](PERFORMANCE_STABILITY.md)；Windows 安装包与签名边界看 [Windows 发布说明](WINDOWS_RELEASE.md)。
+> 新手先看 [README 中文部署与使用总指南](../README.md#operator-materials)，包含资料清单、免费配置和逐步操作；运维与故障处理看 [稳定性手册](PERFORMANCE_STABILITY.md)；Windows 安装包与签名边界看 [Windows 发布说明](WINDOWS_RELEASE.md)。
 
 ## 1. 产品能做什么
 
@@ -54,7 +54,7 @@ docker compose exec -T api alembic current
 
 ## 4. 创建第一次排名监控
 
-开始前，请管理员确认采集供应商已配置、Workspace 有可用 credits，且 Worker 正常运行。只创建配置不会自动证明这些外部条件已就绪。
+开始前，请管理员确认采集供应商已配置且 Worker 正常运行。默认 `BILLING_MODE=free`，Workspace 余额为 0 也可运行；仅 `prepaid` 模式需要可用 credits。只创建配置不会自动证明这些外部条件已就绪。
 
 1. 打开 **Geo Profiles → Add Geo Profile**。先填 **Name** 和 **Delivery postal code**，点击 **Create**。默认 Amazon.com / US / Desktop；IP 地区和国家在 **Advanced region settings** 内，设备和权重可以按需调整。地区 ID 由服务端自动生成，不需要填写。
 2. 点击 **Go to monitors → Create monitor**。填写名称、关键词、ASIN，选择刚才创建的地区。多个 ASIN 可按行、逗号或空格分隔，重复项自动去掉。
@@ -85,7 +85,9 @@ docker compose exec -T api alembic current
 
 搜索深度按自然结果数量判断，不按估算页数判断。Managed 和 Strict 最多扫描 20 页；到达限制仍无法覆盖目标深度且搜索未结束时，会显示采集错误。更深搜索可能增加上游请求和费用。升级后的新采集使用修正后的排名口径，旧历史不会自动重写；详见 [实际使用验收](ACCEPTANCE.zh-CN.md)。
 
-**成本估算**：一次 SERP 请求可匹配多个 ASIN，账单主要由 GEO 探针次数和验证模式决定，不能用 ASIN × GEO 简单估价。默认 Managed 每探针 1 credit、Strict 每探针 5 credits，但应以当前 Workspace 的费率与结算规则为准。切勿用生产密钥批量实验。
+**成本估算**：免费模式下应用不预留、不扣除 credits；Oxylabs、代理和服务器仍可能收费。一次 SERP 请求可匹配多个 ASIN，应用计费主要由 GEO 探针次数和验证模式决定，不能用 ASIN × GEO 简单估价。切到 `prepaid` 后，默认 Managed 每探针 1 credit、Strict 每探针 5 credits，以 Billing 页当前费率为准。切勿用生产密钥批量实验。
+
+**手动调整余额**：服务器管理员可通过 `agrm-credits list --email 用户邮箱` 找到 Workspace，再用 `adjust --workspace ID --delta 数量` 增减或 `--set-balance 数量` 设置余额。必须附操作人、原因和唯一请求编号；默认仅预览，添加 `--apply` 才写入，操作保留账本。完整可复制命令见 [README](../README.md#operator-credits)。余额按 Workspace 共享，并非每个成员邮箱各有一份；网页 Owner/Admin 权限不等于服务器运维权限。
 
 ## 5. 查看历史、趋势与竞品
 
@@ -99,7 +101,7 @@ docker compose exec -T api alembic current
 ## 6. Strict 验证、预算和告警
 
 1. 初期保持自动 Strict 关闭；待确认出口 IP 和配送 ZIP、代理预算与合规情况后，在 Workspace 的自动 Strict 策略中逐步开启。
-2. 设置单次任务最多 Strict 探针数、每日信用额度和自动 pacing。每日上限按 UTC 结算，可能包含尚未结算的预留额度；`0` 代表禁止新增付费 Strict。
+2. 设置单次任务最多 Strict 探针数、每日信用额度和自动 pacing。每日上限按 UTC 结算，可能包含尚未结算的预留额度；`0` 会禁止新增自动/手动强制核验的 Strict 上游调用。免费模式费率为 0，正数 credit 预算和 pacing 不能限制真实供应商费用；应靠自动核验开关、单次探针数、监控频率和提供商账户额度控制。这些自动核验设置不限制直接以 Strict 为主模式发起的采集。
 3. 在 **System Status** 查看 Strict 请求、尝试、成功、跳过、缓存命中、pacing 延后原因及真实结算额。缓存命中不等同于新鲜的实时 Strict 采集。
 4. 在 **Rank Alerts** 配置 rank drop/improve、Top N 进出、not found、Strict 失败/预算耗尽等规则，选择 Monitor/ASIN/GEO、阈值和冷却期。
 5. 可用邮箱、Slack Incoming Webhook 或显式允许域名的 HTTPS webhook。通知发送失败保留在 delivery history，不应将已完成的 rank job 回退为失败。

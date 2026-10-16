@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Free mode and operator-managed credits
+
+- Default to `BILLING_MODE=free` across API, Worker and automatic Strict checks:
+  zero application balance is valid, probes do not reserve or deduct app credits,
+  and new online checkout is disabled. Existing balances and signed payment
+  callbacks are retained. External provider and hosting fees still apply.
+- Keep `prepaid` available with either administrator funding or Stripe checkout.
+  Show the active mode, rates, recoverable billing errors and adjustment details.
+- Add the host-only `agrm-credits` CLI to locate workspaces by email, inspect
+  balances and preview/apply audited increases, decreases or absolute balances.
+  Exact request replay is idempotent; adjustments cannot consume reserved credits.
+- Add migration `20261013_0023` for nullable credit ledger audit details, preserving
+  existing balances/history. Downgrading this revision deletes audit details.
+- Put the Chinese materials checklist, installation, first monitoring run,
+  account administration, daily operation, backup, upgrade and troubleshooting
+  steps directly in README. Align staging checks with the selected billing mode.
+
+Existing paid deployments must explicitly set `BILLING_MODE=prepaid` to retain
+charging. Drain work before changing mode and restart all backend processes
+together. In free mode, positive credit budgets/pacing do not limit upstream
+spend; use provider limits, monitor frequency and per-run probe caps. A zero
+daily budget still blocks new automatic/forced Strict calls.
+
 ## Unreleased — Operational rank acceptance
 
 - Enforce organic search-depth boundaries in target matching and align competitor

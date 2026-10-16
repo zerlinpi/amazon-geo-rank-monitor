@@ -77,3 +77,17 @@ def test_missing_oxylabs_credentials_only_fail_when_provider_is_built() -> None:
     assert settings.oxylabs_username is None
     with pytest.raises(ConfigurationError):
         build_oxylabs_provider(settings)
+
+
+@pytest.mark.parametrize("values", [
+    {"billing_mode": "typo"}, {"managed_serp_credit_cost": -1}, {"strict_serp_credit_cost": -5},
+])
+def test_invalid_billing_configuration_is_rejected(values):
+    with pytest.raises(ValidationError):
+        AppSettings(_env_file=None, **values)
+
+
+def test_stripe_return_urls_open_the_existing_billing_route():
+    settings = AppSettings(_env_file=None)
+    assert settings.stripe_success_url == "http://localhost:5173/#/workspace/billing"
+    assert settings.stripe_cancel_url == "http://localhost:5173/#/workspace/billing"
